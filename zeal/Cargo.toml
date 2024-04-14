@@ -1,0 +1,14 @@
+[package]
+name = "zeal"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.82"
+clap = "4.5.4"
+logos = "0.14.0"
+phf = { version = "0.11.2", features = ["macros"] }
+thiserror = "1.0.58"
+tokio = { version = "1.37.0", features = ["full"] }
