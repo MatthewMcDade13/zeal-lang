@@ -80,7 +80,6 @@ pub enum TokenType {
     DoubleColon,
 }
 
-use anyhow::*;
 use phf::phf_map;
 use std::{collections::HashMap, fmt};
 

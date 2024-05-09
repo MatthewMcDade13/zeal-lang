@@ -1,16 +1,37 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, num::ParseIntError};
 
-use anyhow::{anyhow, Ok};
 use logos::{Lexer, Logos, Skip};
 
-#[derive(Default, Debug, Clone, PartialEq)]
+// type LexResult<T> = anyhow::Result<T, LexError>;
+
+#[derive(thiserror::Error, Default, Debug, Clone, PartialEq)]
 pub enum LexError {
+    #[error("Invalid or Unknown Symbol: {0}")]
     InvalidSymbol(String),
     #[default]
+    #[error("Illegal Character encountered")]
     IllegalCharacter,
+    #[error("Error Parsing Invalid Number: {0}")]
+    InvalidNumber(String),
 }
 
-#[derive(Debug, Clone)]
+impl From<std::num::ParseFloatError> for LexError {
+    fn from(err: std::num::ParseFloatError) -> Self {
+        LexError::InvalidNumber(err.to_string())
+    }
+}
+
+impl From<ParseIntError> for LexError {
+    fn from(err: ParseIntError) -> Self {
+        use std::num::IntErrorKind::*;
+        match err.kind() {
+            PosOverflow | NegOverflow => LexError::InvalidNumber("overflow error".to_owned()),
+            _ => LexError::InvalidNumber("other error".to_owned()),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum Value {
     Nil,
     Bool(bool),
@@ -26,7 +47,7 @@ pub enum Value {
 #[derive(Debug, Clone, Logos)]
 #[logos(skip r"[ \t\r\f]+")]
 #[logos(extras = (usize, usize))]
-#[logos(error = String)]
+#[logos(error = LexError)]
 pub enum Token {
     #[regex(r"\n", newline_cb)]
     NewLine,
@@ -82,20 +103,31 @@ pub fn parse_value(lex: &mut Lexer<'_, Token>) -> anyhow::Result<Value> {
                 Token::String(s) => Value::Str(s),
 
                 _ => {
-                    anyhow::bail!("Unexpected token at {}:{}", lex.extras.0, lex.extras.1);
+                    anyhow::bail!(LexError::InvalidSymbol(format!(
+                        "Unexpected token at {}:{}",
+                        lex.extras.0, lex.extras.1
+                    )));
                 }
             },
             Err(_) => {
-                anyhow::bail!("Unexpected token at {}:{}", lex.extras.0, lex.extras.1);
+                anyhow::bail!(LexError::InvalidSymbol(format!(
+                    "Unexpected token at {}:{}",
+                    lex.extras.0, lex.extras.1
+                )));
+                // "Unexpected token at {}:{}", lex.extras.0, lex.extras.1);
             }
         };
         anyhow::Result::Ok(val)
     } else {
-        anyhow::bail!(
+        anyhow::bail!(LexError::InvalidSymbol(format!(
             "Empty values are invalid. token at {}:{}",
-            lex.extras.0,
-            lex.extras.1
-        )
+            lex.extras.0, lex.extras.1
+        )))
+        //
+        //     "Empty values are invalid. token at {}:{}",
+        //     lex.extras.0,
+        //     lex.extras.1
+        // )
     }
 }
 
@@ -122,7 +154,7 @@ fn parse_array(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
                     arr.push(child_arr);
                 }
                 Token::BracketClose => {
-                    return Ok(Value::Array(arr));
+                    return anyhow::Result::Ok(Value::Array(arr));
                 }
                 // Token::Colon => todo!(),
                 Token::Nil => {
@@ -133,12 +165,22 @@ fn parse_array(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
                 }
                 Token::String(s) => arr.push(Value::Str(s)),
                 _ => {
-                    anyhow::bail!("Unexpected token at: {}:{}", lex.extras.0, lex.extras.1)
+                    // "Unexpected token at: {}:{}", lex.extras.0, lex.extras.1)
+
+                    anyhow::bail!(LexError::InvalidSymbol(format!(
+                        "Unexpected token at {}:{}",
+                        lex.extras.0, lex.extras.1
+                    )));
                 }
             }
         }
     }
-    anyhow::bail!("Unmatched open bracket defined here: {:?}", lex.span())
+
+    anyhow::bail!(LexError::InvalidSymbol(format!(
+        "Unmatched open bracket defined here: {:?}",
+        lex.span()
+    )))
+    // "Unmatched open bracket defined here: {:?}", lex.span())
 }
 
 fn parse_obj(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
@@ -150,7 +192,7 @@ fn parse_obj(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
     while let Some(tok) = lex.next() {
         if let std::result::Result::Ok(token) = tok {
             match token {
-                Token::BraceClosed if !wait_key => return Ok(Value::Obj(map)),
+                Token::BraceClosed if !wait_key => return anyhow::Result::Ok(Value::Obj(map)),
                 Token::NewLine if !wait_key && !wait_comma => {
                     continue;
                 }
@@ -166,21 +208,24 @@ fn parse_obj(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
                     _ => {
                         let s = format!("unexpected token here,({:?}) expected ':'", lex.span());
 
-                        anyhow::bail!(s);
+                        anyhow::bail!(LexError::InvalidSymbol(s));
                     }
                 },
                 _ => {
-                    anyhow::bail!("unexpected token here: {}:{}", lex.extras.0, lex.extras.1);
+                    let s = format!("unexpected token here,({:?}) expected ':'", lex.span());
+
+                    anyhow::bail!(LexError::InvalidSymbol(s));
+                    // "unexpected token here: {}:{}", lex.extras.0, lex.extras.1);
                 }
             }
         }
         wait_comma = !wait_key;
     }
-    anyhow::bail!(
+
+    anyhow::bail!(LexError::InvalidSymbol(format!(
         "unmatched opening brace defined here: {}:{}",
-        lex.extras.0,
-        lex.extras.1
-    );
+        lex.extras.0, lex.extras.1
+    )))
 }
 
 fn newline_cb(lex: &mut Lexer<Token>) -> Skip {
