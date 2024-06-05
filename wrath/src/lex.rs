@@ -1,3 +1,5 @@
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
 use regex::{Captures, Regex};
 
 use crate::val::Value;
@@ -6,6 +8,31 @@ use crate::val::Value;
 pub struct Lexer {
     toks: Vec<String>,
     i: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ListType {
+    List,
+    Array,
+    Hashmap,
+}
+
+impl ListType {
+    pub const fn beg(&self) -> char {
+        match *self {
+            ListType::List => '(',
+            ListType::Array => '[',
+            ListType::Hashmap => '{',
+        }
+    }
+
+    pub const fn end(&self) -> char {
+        match *self {
+            ListType::List => ')',
+            ListType::Array => ']',
+            ListType::Hashmap => '}',
+        }
+    }
 }
 
 impl Lexer {
@@ -64,15 +91,15 @@ impl Lexer {
         match tok {
             "{" => {
                 self.skip(1);
-                todo!();
+                self.read_list(ListType::Hashmap)
             }
             "[" => {
                 self.skip(1);
-                todo!();
+                self.read_list(ListType::Array)
             }
             "(" => {
                 self.skip(1);
-                self.read_list()
+                self.read_list(ListType::List)
             }
             _ => self.read_atom(),
         }
@@ -80,10 +107,12 @@ impl Lexer {
 
     pub fn read_atom(&mut self) -> anyhow::Result<Value> {
         let tok = self.peek().to_owned();
+
         if tok.starts_with("\"") {
+            // TODO :: Need to parse inner string and format for \n and escape inner double quotes
             let s = String::from(&tok[1..(tok.len() - 1)]);
             Ok(Value::Str(s))
-        } else if tok.starts_with("'") {
+        } else if tok.starts_with(":") {
             Ok(Value::Atom(tok))
         } else {
             match tok.parse::<f64>() {
@@ -98,7 +127,7 @@ impl Lexer {
         }
     }
 
-    pub fn read_list(&mut self) -> anyhow::Result<Value> {
+    pub fn read_list(&mut self, ty: ListType) -> anyhow::Result<Value> {
         let mut list = Vec::new();
         loop {
             // assert!(
@@ -108,7 +137,7 @@ impl Lexer {
 
             let tok = self.peek();
 
-            if tok == ")" {
+            if tok.starts_with(ty.end()) {
                 break;
             }
 
@@ -116,7 +145,14 @@ impl Lexer {
             list.push(v);
             self.skip(1);
         }
-        Ok(Value::List(list))
+        match ty {
+            ListType::List => Ok(Value::List(list)),
+            ListType::Array => Ok(Value::Array(list)),
+            ListType::Hashmap => {
+                let hm = vec_tohashmap(&list);
+                Ok(hm)
+            }
+        }
     }
 }
 
@@ -141,4 +177,23 @@ pub fn read_str(src: &str) -> anyhow::Result<Value> {
     let toks = tokenize(src)?;
     let mut lex = Lexer { toks, i: 0 };
     lex.read_form()
+}
+
+fn vec_tohashmap(list: &[Value]) -> Value {
+    let mut hm = HashMap::with_capacity(list.len() / 2);
+
+    assert!(
+        list.len() > 1,
+        "vec_tohashmap :: conversion failed. require minimum 2 items in hashmap literal. found: {}",
+        list.len()
+    );
+    for i in 1..list.len() {
+        let key = &list[i - 1];
+        let val = &list[i];
+        // TODO :: we should have some hashing function switched on the key value type.
+        // so as to avoid relying on stringification for keys
+        hm.insert(key.to_string(), val.clone());
+    }
+
+    Value::Hashmap(hm)
 }

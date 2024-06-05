@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 #[derive(Debug, Default, Clone)]
 pub enum Value {
@@ -7,7 +7,7 @@ pub enum Value {
     Number(f64),
     Str(String),
     Bool(bool),
-    Obj(HashMap<String, Value>),
+    Hashmap(HashMap<String, Value>),
     Symbol(String),
     /// Like symbol, but prefixed with ':'
     Atom(String),
@@ -18,7 +18,7 @@ pub enum Value {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::List(l) | Value::Array(l) => {
+            Value::List(l) => {
                 // let mut s = String::with_capacity(l.len());
 
                 let s = l
@@ -28,13 +28,29 @@ impl Display for Value {
                     .collect::<String>();
                 write!(f, "({})", s)
             }
+            Value::Array(l) => {
+                let s = l
+                    .iter()
+                    .map(|i| i.to_string())
+                    .intersperse(" ".into())
+                    .collect::<String>();
+                write!(f, "[{}]", s)
+            }
 
             Value::Number(n) => {
                 write!(f, "{}", n)
             }
-            Value::Str(s) => write!(f, "{}", s),
+            Value::Str(s) => write!(f, "\"{}\"", s),
             Value::Bool(b) => write!(f, "{}", b),
-            Value::Obj(_) => todo!(),
+            Value::Hashmap(m) => {
+                let mut sb = String::with_capacity(m.len() * 2);
+                for (k, v) in m.iter() {
+                    // TODO :: atoms print an extra ':'
+                    let s = format!("{}: {},", k, v);
+                    sb.push_str(&s);
+                }
+                write!(f, "{{ {sb} }}")
+            }
             Value::Symbol(s) => write!(f, "{}", s),
             Value::Atom(a) => write!(f, ":{}", a),
             Value::Nil => write!(f, "nil"),
