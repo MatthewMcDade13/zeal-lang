@@ -11,6 +11,7 @@ pub enum Value {
     Symbol(String),
     /// Like symbol, but prefixed with ':'
     Atom(String),
+    // Func(fn(&[Value]) -> Value),
     #[default]
     Nil,
 }

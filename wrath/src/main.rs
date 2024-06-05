@@ -4,6 +4,9 @@ use std::fs;
 
 use rustyline::{error::ReadlineError, DefaultEditor};
 
+use crate::env::Env;
+
+mod env;
 mod interp;
 mod lex;
 mod val;
@@ -20,7 +23,7 @@ fn main() -> anyhow::Result<()> {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str())?;
-                let res = interp::rep(line)?;
+                let res = interp::rep(line, Env::default())?;
                 println!("{}", res);
             }
             Err(ReadlineError::Interrupted) => {
