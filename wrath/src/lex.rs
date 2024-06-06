@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use regex::{Captures, Regex};
 
-use crate::val::Value;
+use crate::val::{Value, WHashMap};
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
@@ -111,9 +111,9 @@ impl Lexer {
         if tok.starts_with("\"") {
             // TODO :: Need to parse inner string and format for \n and escape inner double quotes
             let s = String::from(&tok[1..(tok.len() - 1)]);
-            Ok(Value::Str(s))
+            Ok(Value::Str(Rc::from(s)))
         } else if tok.starts_with(":") {
-            Ok(Value::Atom(tok))
+            Ok(Value::Atom(Rc::from(tok)))
         } else {
             match tok.parse::<f64>() {
                 Ok(n) => Ok(Value::Number(n)),
@@ -121,7 +121,7 @@ impl Lexer {
                     "true" => Ok(Value::Bool(true)),
                     "false" => Ok(Value::Bool(false)),
                     "nil" => Ok(Value::Nil),
-                    _ => Ok(Value::Symbol(tok)),
+                    _ => Ok(Value::Symbol(Rc::from(tok.as_str()))),
                 },
             }
         }
@@ -146,8 +146,8 @@ impl Lexer {
             self.skip(1);
         }
         match ty {
-            ListType::List => Ok(Value::List(list)),
-            ListType::Array => Ok(Value::Array(list)),
+            ListType::List => Ok(Value::list()),
+            ListType::Array => Ok(Value::list()),
             ListType::Hashmap => {
                 let hm = vec_tohashmap(&list);
                 Ok(hm)
@@ -195,5 +195,6 @@ fn vec_tohashmap(list: &[Value]) -> Value {
         hm.insert(key.to_string(), val.clone());
     }
 
+    let hm = WHashMap::new(hm);
     Value::Hashmap(hm)
 }

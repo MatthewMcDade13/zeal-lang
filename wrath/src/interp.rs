@@ -14,6 +14,8 @@ pub fn print(ast: Value) -> anyhow::Result<String> {
     Ok(ast.to_string())
 }
 
+pub fn eval_ast(ast: Value, env: Env) -> anyhow::Result<Value> {}
+
 pub fn rep(ast: String, env: Env) -> anyhow::Result<String> {
     let v = read(ast)?;
     let v = eval(v, env)?;
