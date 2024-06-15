@@ -1,6 +1,10 @@
-use std::{collections::HashMap, hash::Hash, num::ParseIntError};
+use std::{cell::RefCell, collections::HashMap, hash::Hash, num::ParseIntError, rc::Rc};
 
+// TODO :: MAKE THE FUCKING GC FIRST
+//
 use logos::{Lexer, Logos, Skip};
+
+use crate::val::Value;
 
 // type LexResult<T> = anyhow::Result<T, LexError>;
 
@@ -29,19 +33,6 @@ impl From<ParseIntError> for LexError {
             _ => LexError::InvalidNumber("other error".to_owned()),
         }
     }
-}
-
-#[derive(Debug)]
-pub enum Value {
-    Nil,
-    Bool(bool),
-    Number(f64),
-    Str(String),
-    Array(Vec<Value>),
-    Obj(HashMap<String, Value>),
-
-    // No-op / whitespace placeholder (for parsing)
-    Void,
 }
 
 #[derive(Debug, Clone, Logos)]
@@ -89,8 +80,8 @@ pub fn parse_value(lex: &mut Lexer<'_, Token>) -> anyhow::Result<Value> {
     if let Some(tok) = lex.next() {
         let val = match tok {
             std::result::Result::Ok(tok) => match tok {
-                Token::NewLine => Value::Void,
-                Token::Word(_) => Value::Void,
+                Token::NewLine => Value::Unit,
+                Token::Word(_) => Value::Unit,
                 Token::Bool(b) => Value::Bool(b),
                 Token::BraceOpen => parse_obj(lex)?,
                 // Token::BraceClosed => todo!(),
@@ -100,7 +91,7 @@ pub fn parse_value(lex: &mut Lexer<'_, Token>) -> anyhow::Result<Value> {
                 Token::Comma => todo!(),
                 Token::Nil => Value::Nil,
                 Token::Number(n) => Value::Number(n),
-                Token::String(s) => Value::Str(s),
+                Token::String(s) => todo!(), // Value::Str(s),
 
                 _ => {
                     anyhow::bail!(LexError::InvalidSymbol(format!(
@@ -154,7 +145,8 @@ fn parse_array(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
                     arr.push(child_arr);
                 }
                 Token::BracketClose => {
-                    return anyhow::Result::Ok(Value::Array(arr));
+                    todo!()
+                    // return anyhow::Result::Ok(Value::Array(arr));
                 }
                 // Token::Colon => todo!(),
                 Token::Nil => {
@@ -163,7 +155,7 @@ fn parse_array(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
                 Token::Number(n) => {
                     arr.push(Value::Number(n));
                 }
-                Token::String(s) => arr.push(Value::Str(s)),
+                Token::String(s) => todo!(), //arr.push(Value::Str(s)),
                 _ => {
                     // "Unexpected token at: {}:{}", lex.extras.0, lex.extras.1)
 
@@ -192,7 +184,7 @@ fn parse_obj(lex: &mut Lexer<Token>) -> anyhow::Result<Value> {
     while let Some(tok) = lex.next() {
         if let std::result::Result::Ok(token) = tok {
             match token {
-                Token::BraceClosed if !wait_key => return anyhow::Result::Ok(Value::Obj(map)),
+                Token::BraceClosed if !wait_key => todo!(), //return anyhow::Result::Ok(Value::Obj(map)),
                 Token::NewLine if !wait_key && !wait_comma => {
                     continue;
                 }
