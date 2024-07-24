@@ -1,282 +1,423 @@
-pub static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
-    "struct" => TokenType::Struct,
-    "trait" => TokenType::Trait,
-    "impl" => TokenType::Impl,
-    "if" => TokenType::If,
-    "else" => TokenType::Else,
-    "true" => TokenType::True,
-    "false" => TokenType::False,
-    "fn" => TokenType::Fn,
-    "nil" => TokenType::Nil,
-    "and" => TokenType::And,
-    "or" => TokenType::Or,
-    "return" => TokenType::Return,
-    "super" => TokenType::Super,
-    "self" => TokenType::ThisSelf,
-    "let" => TokenType::Let,
-    "const" => TokenType::Const,
-    "loop" => TokenType::Loop,
-    "for" => TokenType::For,
-    "while" => TokenType::While,
-    "break" => TokenType::Break,
-    "switch" => TokenType::Switch,
-    "continue" => TokenType::Continue,
-    "print" => TokenType::Print,
+use std::rc::Rc;
+
+use anyhow::bail;
+use log::error;
+use phf::phf_map;
+
+use crate::{
+    ast::{Ast, AstWalkError, Expr},
+    core_types::{
+        num::{ZBool, ZFloat64},
+        str::{ZString, ZSymbol},
+        ZValue,
+    },
+    lex::{LexTok, Tok, TokType},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TokenType {
-    Print,
-    FatArrow,
-    LeftBrace,
-    RightBrace,
-    LeftParen,
-    RightParen,
-    Comma,
-    Dot,
-    Minus,
-    Plus,
-    Semicolon,
-    ForwardSlash,
-    Star,
-    Bang,
-    Equal,
-    BangEqual,
-    EqualEqual,
-    Gt,
-    Ge,
-    Lt,
-    Le,
-    Ident,
-    String,
-    Number,
-    And,
-    Struct,
-    Trait,
-    Impl,
-    Else,
-    False,
-    True,
-    Fn,
-    If,
-
-    Nil,
-    Or,
-    Return,
-    Super,
-    ThisSelf,
-    Let,
-    Const,
-    Eof,
-    Loop,
-    For,
-    While,
-    Break,
-    Switch,
-    Continue,
-    Comment,
-    Unknown,
-    Colon,
-    DoubleColon,
-}
-
-use phf::phf_map;
-use std::{collections::HashMap, fmt};
+pub static KEYWORDS: phf::Map<&'static str, LexTok> = phf_map! {
+    "struct" => LexTok::Struct,
+    "trait" => LexTok::Trait,
+    "impl" => LexTok::Impl,
+    "if" => LexTok::If,
+    "else" => LexTok::Else,
+    "true" => LexTok::Bool(true),
+    "false" => LexTok::Bool(false),
+    "fn" => LexTok::Fn,
+    "nil" => LexTok::Nil,
+    "and" => LexTok::And,
+    "or" => LexTok::Or,
+    "return" => LexTok::Return,
+    "super" => LexTok::Super,
+    "self" => LexTok::ThisSelf,
+    "let" => LexTok::Let,
+    "const" => LexTok::Const,
+    "loop" => LexTok::Loop,
+    "for" => LexTok::For,
+    "while" => LexTok::While,
+    "break" => LexTok::Break,
+    "match" => LexTok::Match,
+    "continue" => LexTok::Continue,
+    "print" => LexTok::Print,
+    "do" => LexTok::Do,
+    "end" => LexTok::End,
+};
 
 #[derive(Debug, Clone)]
-pub struct Token {
-    pub ty: TokenType,
-    pub literal: Value,
-    pub line: u32,
-    pub lexeme: String,
+pub struct Parser {
+    i: usize,
+    tokens: Vec<Tok>,
 }
 
-impl Token {
-    pub const fn empty() -> Self {
-        Self {
-            ty: TokenType::Unknown,
-            literal: Value::Nil,
-            line: 0,
-            lexeme: String::new(),
-        }
-    }
-}
-
-impl std::fmt::Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self {
-            ty,
-            literal,
-            lexeme,
-            line,
-        } = self;
-        write!(f, "LineNo:{line} {ty:?} :: {lexeme} :: {literal:?}")
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Value {
-    Number(f64),
-    // String(String),
-    Boolean(bool),
-    Nil,
-    Obj(HashMap<String, Value>),
-    // No-op / whitespace placeholder (for parsing)
-    Void,
-}
-
-impl Value {
-    pub const fn is_falsey(&self) -> bool {
-        match self {
-            Value::Boolean(false) => true,
-            Value::Nil => true,
-            _ => false,
-        }
-    }
-
-    pub const fn is_obj(&self) -> bool {
-        match self {
-            Value::Obj(_) => true,
-            _ => false,
-        }
-    }
-
-    // pub fn as_obj(&self) -> anyhow::Result<Object> {
-    //     if let Self::Obj(obj) = self {
-    //         Ok(obj.clone())
-    //     } else {
-    //         bail!("Expected Object, got: {}", self.type_string())
-    //     }
-    // }
-    //
-    // pub fn as_number(&self) -> anyhow::Result<f64> {
-    //     let value = self.clone();
-    //     if let Self::Number(n) = value {
-    //         Ok(n)
-    //     } else {
-    //         let type_str = value.type_string();
-    //         bail!(
-    //             "{}",
-    //             AstWalkError::TypeError {
-    //                 value,
-    //                 message: format!("Expected Number, got: {}", type_str)
-    //             }
-    //         )
-    //     }
-    // }
-    //
-    // pub fn as_bool(&self) -> anyhow::Result<bool> {
-    //     let value = self.clone();
-    //     if let Self::Boolean(b) = value {
-    //         Ok(b)
-    //     } else {
-    //         let type_str = value.type_string();
-    //         bail!(
-    //             "{}",
-    //             AstWalkError::TypeError {
-    //                 value,
-    //                 message: format!("Expected Boolean, got: {}", type_str)
-    //             }
-    //         )
-    //     }
-    // }
-    //
-    // pub fn as_string(&self) -> anyhow::Result<String> {
-    //     let value = self.clone();
-    //     if let Self::Obj(Object::String(string)) = value {
-    //         Ok(string)
-    //     } else {
-    //         let type_str = value.type_string();
-    //         bail!("Expected String, got: {}", type_str);
-    //     }
-    // }
-    //
-    // pub fn type_string(&self) -> String {
-    //     match self {
-    //         Value::Number(_) => "Number".into(),
-    //         Value::Boolean(_) => "Boolean".into(),
-    //         Value::Obj(obj) => match obj {
-    //             Object::String(_) => "String".into(),
-    //         },
-    //         Value::Nil => "Unit".into(),
-    //     }
-    // }
-    //
-    pub const fn is_bool(&self) -> bool {
-        if let Self::Boolean(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub const fn is_nil(&self) -> bool {
-        if let Self::Nil = self {
-            true
-        } else {
-            false
-        }
-    }
-}
-
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match self {
-            Value::Number(left) => {
-                if let Value::Number(right) = other {
-                    left == right
-                } else {
-                    false
-                }
-            }
-            Value::Boolean(left) => {
-                if let Value::Boolean(right) = other {
-                    left == right
-                } else {
-                    false
-                }
-            }
-            Value::Obj(obj) => {
-                false
-                //     Object::String(left) => {
-                //         if let Value::Obj(Object::String(right)) = other {
-                //             left == right
-                //         } else {
-                //             false
-                //         }
-                //     }
-            }
-            Value::Nil => {
-                if let Value::Nil = other {
-                    true
-                } else {
-                    false
-                }
-            }
-            Value::Void => todo!(),
-        }
-        // Value::Nil => todo!(),
-    }
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Self::Nil
-    }
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let str = match self {
-            Value::Number(n) => n.to_string(),
-            Value::Boolean(b) => b.to_string(),
-            Value::Obj(obj) => {
-                "".into()
-                // Object::String(string) => string.to_owned(),
-            }
-            Value::Nil => String::from("nil"),
-            Value::Void => todo!(),
+impl Parser {
+    pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<Vec<Expr>> {
+        let mut p = Self {
+            i: 0,
+            tokens: tokens.to_vec(),
         };
-        write!(f, "{}", str)
+        let mut exprs = Vec::new();
+        while !p.is_eof() {
+            let ex = p.expr_statement()?;
+            exprs.push(ex);
+        }
+        Ok(exprs)
+    }
+
+    /// advance cursor to the next expression
+    fn synchronize(&mut self) {
+        self.advance(1);
+        while !self.is_eof() {
+            if let TokType::NewLine | TokType::Semicolon = self.prev().ty {
+                break;
+            }
+            match self.peek().ty {
+                TokType::Struct
+                | TokType::Fn
+                | TokType::Let
+                | TokType::For
+                | TokType::If
+                | TokType::While
+                | TokType::Print
+                | TokType::Return => break,
+                _ => self.advance(1),
+            }
+        }
+    }
+
+    // fn is_expr_end(&self) -> bool {
+    //     match
+    // }
+
+    // Option as parsing an invalid declaration just results in that declaration getting ignored.
+    // we should probably do some logging or error reporting at a higher level so invalid
+    // declarations can be known about and arent completely silently ignored.
+    // fn declaration(&mut self) -> Option<Stmt> {
+    //     let result = if let TokType::Let = self.peek().ty {
+    //         self.advance(1);
+    //         self.let_statement()
+    //     } else {
+    //         self.statement()
+    //     };
+    //     match result {
+    //         anyhow::Result::Ok(stmt) => Some(stmt),
+    //         Err(_) => {
+    //             self.synchronize();
+    //             None
+    //         }
+    //     }
+    // }
+    //
+    // fn let_statement(&mut self) -> anyhow::Result<Stmt> {
+    //     if let TokType::Ident = self.peek().ty {
+    //         let name = self.peek().clone();
+    //         self.advance(1);
+    //         let initializer = if let TokType::Eq = self.peek().ty {
+    //             self.advance(1);
+    //             Some(self.expression()?)
+    //         } else {
+    //             None
+    //         };
+    //
+    //         if let TokType::Semicolon = self.peek().ty {
+    //             let name = name.tok.clone();
+    //             self.advance(1);
+    //             Ok(Stmt::Let { name, initializer })
+    //         } else {
+    //             bail!(
+    //                 "{}",
+    //                 AstWalkError::ParseError {
+    //                     token: self.peek().tok.clone(),
+    //                     message: "Expected ';' after let statement".into()
+    //                 }
+    //             )
+    //         }
+    //     } else {
+    //         bail!(
+    //             "{}",
+    //             AstWalkError::ParseError {
+    //                 token: self.peek().tok.clone(),
+    //                 message: "Expected variable name".into()
+    //             }
+    //         )
+    //     }
+    // }
+    //
+
+    fn expr_statement(&mut self) -> anyhow::Result<Expr> {
+        match self.peek().ty {
+            TokType::Do | TokType::Begin => {
+                self.advance(1);
+                self.block().map(|ex| Expr::Block(ex))
+                // Ok(Expr::Block(self.block()?))
+            }
+            _ => self.statement(),
+        }
+    }
+
+    fn block(&mut self) -> anyhow::Result<Rc<[Expr]>> {
+        let mut stmt_exprs = Vec::new();
+        while self.peek().ty != TokType::End && !self.is_eof() {
+            let st = self.expr_statement()?;
+
+            stmt_exprs.push(st);
+        }
+        if let TokType::End = self.peek().ty {
+            let se = stmt_exprs.into_boxed_slice().into();
+            Ok(se)
+        } else {
+            bail!(
+                "{}",
+                AstWalkError::ParseError {
+                    token: self.peek().tok.clone(),
+                    message: "Expect 'end' after block.".into()
+                }
+            )
+        }
+    }
+
+    // fn statement_print(&mut self) -> anyhow::Result<Stmt> {
+    //     let expr = self.expression()?;
+    //     if let TokType::Semicolon = self.peek().ty {
+    //         self.advance(1);
+    //         Ok(Stmt::Print(expr))
+    //     } else {
+    //         bail!(
+    //             "{}",
+    //             AstWalkError::ParseError {
+    //                 token: self.peek().tok.clone(),
+    //                 message: "Expected ';' after value".into()
+    //             }
+    //         )
+    //     }
+    // }
+    //
+    fn statement(&mut self) -> anyhow::Result<Expr> {
+        let expr = self.expression()?;
+        if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
+            self.advance(1);
+            Ok(expr)
+        } else {
+            bail!(
+                "{}",
+                AstWalkError::ParseError {
+                    token: self.peek().tok.clone(),
+                    message: "Expected newline or ';' after expression".into()
+                }
+            )
+        }
+    }
+
+    fn assignment(&mut self) -> anyhow::Result<Expr> {
+        let expr = self.equality()?;
+
+        if let TokType::Eq = self.peek().ty {
+            self.advance(1);
+            let equals = self.prev().clone();
+            let value = self.assignment()?;
+            if expr.is_symbol() {
+                Ok(Expr::assignment(&expr, &value))
+            } else {
+                bail!(
+                    "{}",
+                    AstWalkError::ParseError {
+                        token: equals.tok.clone(),
+                        message: "Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs".into()
+                    }
+                )
+            }
+            // if let Expr::Name(name) = expr {
+            //     Ok(Expr::Assignment {
+            //         name,
+            //         value: Box::new(value),
+            //     })
+            // } else {
+            // }
+        } else {
+            Ok(expr)
+        }
+    }
+
+    fn expression(&mut self) -> anyhow::Result<Expr> {
+        self.assignment()
+    }
+    fn term(&mut self) -> anyhow::Result<Expr> {
+        // self.expand_binary_expr(ExprRule::Factor, &[TokType::Minus, TokType::Plus])
+        let mut expr = self.factor()?;
+        loop {
+            match self.peek().ty {
+                TokType::Minus | TokType::Plus => {
+                    self.advance(1);
+                    let operator = self.prev().clone().into_sym();
+                    let right = self.factor()?;
+
+                    expr = Expr::binary_op(&expr, &operator, &right);
+                    // expr = Expr::Binary {
+                    //     left: Box::new(expr),
+                    //     operator,
+                    //     right: Box::new(right),
+                    // }
+                }
+                _ => break,
+            }
+        }
+        Ok(expr)
+    }
+    fn comparison(&mut self) -> anyhow::Result<Expr> {
+        let mut expr = self.term()?;
+        loop {
+            match self.peek().ty {
+                TokType::Gt
+                | TokType::Ge
+                | TokType::Lt
+                | TokType::Le
+                | TokType::EqEq
+                | TokType::BangEq => {
+                    self.advance(1);
+                    let operator = self.prev().clone().into_sym();
+                    let right = self.term()?;
+                    expr = Expr::binary_op(&expr, &operator, &right);
+                    // expr = Expr::Binary {
+                    //     left: Box::new(expr),
+                    //     operator,
+                    //     right: Box::new(right),
+                    // }
+                }
+                _ => break,
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn factor(&mut self) -> anyhow::Result<Expr> {
+        let mut expr = self.unary()?;
+        loop {
+            match self.peek().ty {
+                TokType::ForwardSlash | TokType::Star => {
+                    self.advance(1);
+                    let operator = self.prev().clone().into_sym();
+                    let right = self.unary()?;
+                    expr = Expr::binary_op(&expr, &operator, &right);
+                    // expr = Expr::Binary {
+                    //     left: Box::new(expr),
+                    //     operator,
+                    //     right: Box::new(right),
+                    // }
+                }
+                _ => break,
+            }
+        }
+
+        Ok(expr)
+    }
+    fn unary(&mut self) -> anyhow::Result<Expr> {
+        match self.peek().ty {
+            TokType::Bang | TokType::Minus => {
+                self.advance(1);
+                let operator = self.prev().clone().into_sym();
+                let right = self.unary()?;
+                let expr = Expr::unary_op(&operator, &right);
+                Ok(expr)
+                // Ok(Expr::Unary {
+                //     operator,
+                //     right: Box::new(right),
+                // })
+            }
+            _ => self.primary(),
+        }
+    }
+
+    fn primary(&mut self) -> anyhow::Result<Expr> {
+        match self.peek().tok {
+            LexTok::Bool(false) => {
+                self.advance(1);
+                Ok(Expr::Atom(ZValue::Bool(ZBool::from(false))))
+            }
+            LexTok::Bool(true) => {
+                self.advance(1);
+                Ok(Expr::Atom(ZValue::Bool(ZBool::from(true))))
+            }
+            LexTok::Nil => {
+                self.advance(1);
+                Ok(Expr::Atom(ZValue::Nil))
+            }
+            LexTok::Number(ref n) => {
+                let n = *n;
+                self.advance(1);
+                Ok(Expr::Atom(ZValue::Number(ZFloat64::from(n))))
+            }
+            LexTok::String(ref s) => {
+                let s = s.clone();
+                self.advance(1);
+                Ok(Expr::Atom(ZValue::Str(ZString::from(s))))
+            }
+            LexTok::OpenParen => {
+                self.advance(1);
+                let expr = self.expression()?;
+                if self.peek().ty == TokType::CloseParen {
+                    Ok(expr)
+                    // Ok(Expr::Grouping(Box::new(expr)))
+                } else {
+                    Err(anyhow::anyhow!(
+                        "Expected matching ending right parenthesis in expression"
+                    ))
+                }
+            }
+            LexTok::Symbol => {
+                let name = self.peek().clone();
+                self.advance(1);
+                Ok(Expr::Atom(ZValue::Sym(name.into_sym())))
+            }
+            _ => Err(anyhow::anyhow!(
+                "Expected primary or group expression, found: {:?}",
+                self.peek()
+            )),
+        }
+    }
+
+    fn equality(&mut self) -> anyhow::Result<Expr> {
+        let mut expr = self.comparison()?;
+        loop {
+            match self.peek().ty {
+                TokType::BangEq | TokType::EqEq => {
+                    self.advance(1);
+                    let operator = self.prev().clone().into_sym();
+                    let right = self.comparison()?;
+                    expr = Expr::binary_op(&expr, &operator, &right);
+                    // expr = Expr::Binary {
+                    //     left: Box::new(expr),
+                    //     operator,
+                    //     right: Box::new(right),
+                    // }
+                }
+                _ => break,
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn is_eof(&self) -> bool {
+        if let TokType::Eof = self.peek().ty {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn advance(&mut self, n: usize) {
+        assert!(!self.is_eof(), "Tried to advance cursor at EOF token");
+        assert!(
+            self.i + n < self.tokens.len(),
+            "advancing cursor past end of tokens"
+        );
+        self.i += n;
+    }
+
+    fn peek(&self) -> &Tok {
+        &self.tokens[self.i]
+    }
+
+    fn prev(&self) -> &Tok {
+        &self.tokens[self.i - 1]
     }
 }

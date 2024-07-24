@@ -17,6 +17,7 @@ path = "src/lib.rs"
 anyhow = "1.0.82"
 bytemuck = { version = "1.16.0", features = ["min_const_generics", "derive", "bytemuck_derive", "const_zeroed"] }
 clap = "4.5.4"
+log = "0.4.22"
 logos = "0.14.0"
 phf = { version = "0.11.2", features = ["macros"] }
 thiserror = "1.0.58"

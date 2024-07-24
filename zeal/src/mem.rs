@@ -1,11 +1,4 @@
-use std::{
-    alloc::{alloc, Layout},
-    marker::PhantomData,
-    mem::align_of,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-    rc::Rc,
-};
+use std::{marker::PhantomData, ops::Deref, ptr::NonNull, rc::Rc};
 
 use anyhow::bail;
 
