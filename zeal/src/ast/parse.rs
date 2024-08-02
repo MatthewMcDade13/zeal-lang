@@ -1,17 +1,15 @@
 use std::rc::Rc;
 
 use anyhow::bail;
-use log::error;
 use phf::phf_map;
 
 use crate::{
-    ast::{Ast, AstWalkError, Expr},
+    ast::{lex::TokType, AstError, Expr, LexTok, Tok},
     core_types::{
         num::{ZBool, ZFloat64},
         str::{ZString, ZSymbol},
-        ZValue,
+        val::ZValue,
     },
-    lex::{LexTok, Tok, TokType},
 };
 
 pub static KEYWORDS: phf::Map<&'static str, LexTok> = phf_map! {
@@ -55,9 +53,15 @@ impl Parser {
             tokens: tokens.to_vec(),
         };
         let mut exprs = Vec::new();
-        while !p.is_eof() {
-            let ex = p.expr_statement()?;
+        'parse: while !p.is_eof() {
+            let ex = p.statement_expr()?;
             exprs.push(ex);
+            while p.peek().ty == TokType::NewLine {
+                if p.i == p.tokens.len() - 1 {
+                    break 'parse;
+                }
+                p.advance(1);
+            }
         }
         Ok(exprs)
     }
@@ -90,21 +94,22 @@ impl Parser {
     // Option as parsing an invalid declaration just results in that declaration getting ignored.
     // we should probably do some logging or error reporting at a higher level so invalid
     // declarations can be known about and arent completely silently ignored.
-    // fn declaration(&mut self) -> Option<Stmt> {
-    //     let result = if let TokType::Let = self.peek().ty {
-    //         self.advance(1);
-    //         self.let_statement()
-    //     } else {
-    //         self.statement()
-    //     };
-    //     match result {
-    //         anyhow::Result::Ok(stmt) => Some(stmt),
-    //         Err(_) => {
-    //             self.synchronize();
-    //             None
-    //         }
-    //     }
-    // }
+    fn declaration(&mut self) -> Option<Expr> {
+        let result = if let TokType::Let = self.peek().ty {
+            self.advance(1);
+            self.let_expr()
+        } else {
+            self.statement()
+        };
+
+        match result {
+            anyhow::Result::Ok(stmt) => Some(stmt),
+            Err(_) => {
+                self.synchronize();
+                None
+            }
+        }
+    }
     //
     // fn let_statement(&mut self) -> anyhow::Result<Stmt> {
     //     if let TokType::Ident = self.peek().ty {
@@ -141,8 +146,46 @@ impl Parser {
     //     }
     // }
     //
+    //
 
-    fn expr_statement(&mut self) -> anyhow::Result<Expr> {
+    fn let_expr(&mut self) -> anyhow::Result<Expr> {
+        if let TokType::Ident = self.peek().ty {
+            let name = self.peek().clone();
+            self.advance(1);
+            let initializer = if let TokType::Eq = self.peek().ty {
+                self.advance(1);
+                Some(self.expression()?)
+            } else {
+                None
+            };
+
+            if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
+                let name = ZSymbol::from(name);
+                self.advance(1);
+                Ok(Expr::assignment(&name, initializer.as_ref()))
+            } else {
+                bail!(
+                    "{}",
+                    AstError::ParseError {
+                        expr: initializer,
+                        token: self.peek().tok.clone(),
+                        message: "Expected ';' after let statement".into()
+                    }
+                );
+            }
+        } else {
+            bail!(
+                "{}",
+                AstError::ParseError {
+                    expr: None,
+                    token: self.peek().tok.clone(),
+                    message: "Expected variable name".into()
+                }
+            )
+        }
+    }
+
+    fn statement_expr(&mut self) -> anyhow::Result<Expr> {
         match self.peek().ty {
             TokType::Do | TokType::Begin => {
                 self.advance(1);
@@ -156,7 +199,7 @@ impl Parser {
     fn block(&mut self) -> anyhow::Result<Rc<[Expr]>> {
         let mut stmt_exprs = Vec::new();
         while self.peek().ty != TokType::End && !self.is_eof() {
-            let st = self.expr_statement()?;
+            let st = self.statement_expr()?;
 
             stmt_exprs.push(st);
         }
@@ -166,7 +209,8 @@ impl Parser {
         } else {
             bail!(
                 "{}",
-                AstWalkError::ParseError {
+                AstError::ParseError {
+                    expr: Some(Expr::Block(stmt_exprs.into_boxed_slice().into())),
                     token: self.peek().tok.clone(),
                     message: "Expect 'end' after block.".into()
                 }
@@ -198,7 +242,8 @@ impl Parser {
         } else {
             bail!(
                 "{}",
-                AstWalkError::ParseError {
+                AstError::ParseError {
+                    expr: Some(expr),
                     token: self.peek().tok.clone(),
                     message: "Expected newline or ';' after expression".into()
                 }
@@ -213,12 +258,13 @@ impl Parser {
             self.advance(1);
             let equals = self.prev().clone();
             let value = self.assignment()?;
-            if expr.is_symbol() {
-                Ok(Expr::assignment(&expr, &value))
+            if let Some(sym) = expr.inner_symbol() {
+                Ok(Expr::assignment(sym, Some(&value)))
             } else {
                 bail!(
                     "{}",
-                    AstWalkError::ParseError {
+                    AstError::ParseError {
+                        expr: Some(expr),
                         token: equals.tok.clone(),
                         message: "Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs".into()
                     }
@@ -354,6 +400,7 @@ impl Parser {
                 self.advance(1);
                 let expr = self.expression()?;
                 if self.peek().ty == TokType::CloseParen {
+                    self.advance(1);
                     Ok(expr)
                     // Ok(Expr::Grouping(Box::new(expr)))
                 } else {
@@ -397,18 +444,16 @@ impl Parser {
     }
 
     fn is_eof(&self) -> bool {
-        if let TokType::Eof = self.peek().ty {
-            true
-        } else {
-            false
-        }
+        self.peek().ty == TokType::Eof
     }
 
     fn advance(&mut self, n: usize) {
         assert!(!self.is_eof(), "Tried to advance cursor at EOF token");
         assert!(
             self.i + n < self.tokens.len(),
-            "advancing cursor past end of tokens"
+            "advancing cursor past end of tokens. len: {}, i: {}",
+            self.tokens.len(),
+            self.i + n
         );
         self.i += n;
     }

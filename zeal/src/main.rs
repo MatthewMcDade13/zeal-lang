@@ -1,12 +1,14 @@
-use std::{borrow::BorrowMut, cell::RefCell, ops::Deref, rc::Rc};
-
-use logos::Logos;
-
-// mod lex;
+use zeal::ast::Ast;
 
 fn main() -> anyhow::Result<()> {
-    // let mut l = lex::Token::lexer("{ \"asfd\": 123 }");
-    // let v = parse_value(&mut l)?;
-    // println!("{:?}", v);
+    let s = "let x = 5 + 5 + (5 * 3)\n\n";
+
+    // let x = TokBuffer::read_string(s)?;
+    let x = Ast::from_str(s)?;
+    println!("{x}");
+    // for t in x.slice() {
+    // println!("{}", t);
+    // }
+
     Ok(())
 }

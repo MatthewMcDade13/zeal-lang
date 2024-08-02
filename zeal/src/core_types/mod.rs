@@ -2,6 +2,7 @@ pub mod bytes;
 pub mod htable;
 pub mod num;
 pub mod str;
+pub mod val;
 pub mod vec;
 
 use std::{
@@ -41,53 +42,3 @@ use vec::ZVec;
 //     }
 // }
 //
-
-pub type ZList = Rc<Vec<ZValue>>;
-// pub type ZVec = Rc<[Value]>;
-
-#[repr(transparent)]
-#[derive(Debug, Clone)]
-pub struct ZMutRef(Rc<RefCell<ZValue>>);
-
-#[derive(Debug, Clone)]
-pub enum ZValue {
-    Nil,
-    Bool(ZBool),
-    Number(ZFloat64),
-    Byte(ZByte),
-    Buffer(ZBuffer),
-    Str(ZString),
-    Vec(ZVec),
-    Obj(ZHashTable),
-    MutRef(ZMutRef),
-    Rune(ZRune),
-    Sym(ZSymbol),
-
-    // No-op / whitespace placeholder (for parsing)
-    Unit,
-}
-
-impl ZValue {
-    pub const fn is_sym(&self) -> bool {
-        if let Self::Sym(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-    pub const fn nil() -> Self {
-        Self::Nil
-    }
-
-    pub const fn bool(v: bool) -> Self {
-        Self::Bool(ZBool::new(v))
-    }
-}
-
-impl Display for ZValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
-// pub enum ZValue {}

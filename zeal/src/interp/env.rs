@@ -6,7 +6,10 @@ use std::{
 
 use anyhow::bail;
 
-use crate::{ast::AstWalkError, core_types::ZValue, lex::Tok};
+use crate::{
+    ast::{lex::Tok, AstError},
+    core_types::val::ZValue,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
@@ -70,7 +73,7 @@ impl Env {
         } else {
             bail!(
                 "{}",
-                AstWalkError::RuntimeError {
+                AstError::RuntimeError {
                     token: name.tok.clone(),
                     message: format!("Undefined let binding '{}'.", &name.lexeme)
                 }
@@ -84,7 +87,7 @@ impl Env {
         } else {
             bail!(
                 "{}",
-                AstWalkError::RuntimeError {
+                AstError::RuntimeError {
                     token: name.tok.clone(),
                     message: format!("Undefined variable: {}", &name.lexeme)
                 }

@@ -1,19 +1,25 @@
-use std::{cell::RefCell, rc::Rc};
+pub mod env;
+pub mod eval;
 
 use crate::{
-    ast::{self, AstWalkError, Expr},
-    env::{Env, Scope},
+    ast::{self, Ast, AstError, Expr},
+    core_types::val::ZValue,
 };
 use anyhow::*;
+use env::Env;
 
 #[derive(Debug)]
 pub struct Interpreter {
     env: Env,
+    ast: Ast,
 }
 
 impl Default for Interpreter {
     fn default() -> Self {
-        Self { env: Env::new() }
+        Self {
+            env: Env::new(),
+            ast: Ast::empty(),
+        }
     }
 }
 
@@ -21,9 +27,54 @@ impl Interpreter {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn execute(&mut self, stmt: &Expr) -> anyhow::Result<()> {
-        todo!()
+    pub fn eval_file(&mut self, path: &str) -> anyhow::Result<ZValue> {
+        let ast = Ast::from_file(path)?;
+        self.eval_ast(ast)
+    }
+
+    pub fn eval(&mut self, expr: &Expr) -> anyhow::Result<ZValue> {
+        match expr {
+            Expr::Call(cl) => todo!(),
+            Expr::Block(bl) => todo!(),
+            Expr::List(li) => self.eval(li.as_ref()),
+            Expr::Atom(at) => Ok(at.clone()),
+        }
+
         // stmt.walk(self)
+    }
+
+    pub fn eval_ast(&mut self, ast: Ast) -> anyhow::Result<ZValue> {
+        let exprs = ast.slice();
+        let back = exprs.len() - 1;
+        for expr in &exprs[..back] {
+            let _ = self.eval(expr)?;
+        }
+        self.eval(&exprs[back])
+    }
+
+    fn eval_call_list(&mut self, cl: &[Expr]) -> anyhow::Result<ZValue> {
+        let head = cl.first().expect("Cannot apply empty call list!");
+        let mut evaled = Vec::with_capacity(8);
+
+        if let Some(val) = head.as_zval_sym() {
+            if let ZValue::Sym(s) = val {
+                evaled.push(val.clone());
+
+                for expr in &cl[1..] {
+                    let zv = self.eval(expr)?;
+                    // evaled.push(zv);
+                }
+
+                // lookup symbol in environment and execute it as a function with the
+                // rest of the exprs
+                // let func = self.env.get(s);
+                // func(...&cl[1..])
+            }
+
+            todo!();
+        } else {
+            bail!("Head of call list expected to be symbol or atom. was: {head:?}");
+        }
     }
 
     // pub fn execute_block(&mut self, statements: &[Stmt]) -> anyhow::Result<()> {
@@ -42,87 +93,6 @@ impl Interpreter {
     //     expr.walk(self)
     // }
 }
-//
-// impl AstWalker<Stmt, ()> for Interpreter {
-//     fn visit(&mut self, stmt: &ast::Stmt) -> anyhow::Result<()> {
-//         match stmt {
-//             Stmt::Block(block) => self.execute_block(block)?,
-//             Stmt::Expression(expr) => {
-//                 let _ = self.eval(expr)?;
-//             }
-//             Stmt::Print(expr) => {
-//                 let value = self.eval(expr)?;
-//                 println!("{}", value);
-//             }
-//             Stmt::Let { name, initializer } => {
-//                 let value = if let Some(init) = initializer {
-//                     self.eval(init)?
-//                 } else {
-//                     Value::Nil
-//                 };
-//                 self.env.define(&name.lexeme, &value);
-//             }
-//         };
-//         Ok(())
-//     }
-// }
-//
-// impl AstWalker<Ast, Value> for Interpreter {
-//     fn visit(&mut self, expr: &ast::Ast) -> anyhow::Result<Value> {
-//         match expr {
-//             ast::Ast::Binary {
-//                 left,
-//                 operator,
-//                 right,
-//             } => {
-//                 let lvalue = left.walk(self)?;
-//                 let rvalue = right.walk(self)?;
-//                 match operator.ty {
-//                     TokenType::Minus => eval_sub(&lvalue, operator, &rvalue),
-//                     TokenType::Plus => eval_plus(&lvalue, operator, &rvalue),
-//                     TokenType::ForwardSlash => eval_div(&lvalue, operator, &rvalue),
-//                     TokenType::Star => eval_mul(&lvalue, operator, &rvalue),
-//                     TokenType::Lt => eval_lt(&lvalue, operator, &rvalue),
-//                     TokenType::Le => eval_le(&lvalue, operator, &rvalue),
-//                     TokenType::Gt => eval_gt(&lvalue, operator, &rvalue),
-//                     TokenType::Ge => eval_ge(&lvalue, operator, &rvalue),
-//                     TokenType::EqualEqual => Ok(Value::Boolean(lvalue == rvalue)),
-//                     TokenType::BangEqual => Ok(Value::Boolean(lvalue != rvalue)),
-//                     _ => bail!(
-//                         "{}",
-//                         AstWalkError::RuntimeError {
-//                             token: operator.clone(),
-//                             message: "Unknown binary operator found".into()
-//                         }
-//                     ),
-//                 }
-//             }
-//             ast::Ast::Grouping(e) => Ok(e.walk(self)?),
-//             ast::Ast::Literal(lit) => Ok(lit.clone()),
-//             ast::Ast::Unary { operator, right } => {
-//                 let value = right.walk(self)?;
-//                 match operator.ty {
-//                     TokenType::Minus => eval_minus(operator, &value),
-//                     _ => {
-//                         bail!(
-//                             "{}",
-//                             AstWalkError::RuntimeError {
-//                                 token: operator.clone(),
-//                                 message: "Unknown token".into()
-//                             }
-//                         )
-//                     }
-//                 }
-//             }
-//             ast::Ast::Name(name) => self.env.get(name),
-//             ast::Ast::Assignment { name, value } => {
-//                 let value = self.eval(value)?;
-//                 self.env.assign(name, &value)?;
-//                 Ok(value)
-//             }
-//         }
-//     }
-// }
 //
 // // TODO :: Refactor these eval_* functions into a single macro that can print out this code, or at
 // // least define the eval_* functions with highly similar function bodies

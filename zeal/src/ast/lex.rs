@@ -10,7 +10,6 @@ use crate::{
     core_types::{
         num::ZFloat64,
         str::{ZString, ZSymbol},
-        ZValue,
     },
     err::lex::LexError,
 };

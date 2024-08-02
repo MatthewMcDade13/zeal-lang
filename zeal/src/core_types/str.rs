@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     hash::Hash,
     ops::{Deref, Index},
     rc::Rc,
@@ -6,7 +7,7 @@ use std::{
 
 use anyhow::bail;
 
-use crate::{lex::Tok, sys};
+use crate::sys;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -161,25 +162,42 @@ impl ZRune {
     }
 }
 
+impl Display for ZRune {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ZSymbol(ZString);
 
 impl ZSymbol {
+    pub fn name(&self) -> &str {
+        self.0.as_ref()
+    }
+
     #[inline]
     pub fn has_rune_prefix(&self) -> bool {
         self.0.starts_with('#')
     }
 
-    #[inline]
-    pub fn needs_promote_rune(&self) -> bool {
-        self.has_rune_prefix() && self.0.len() <= MAX_RUNE_LEN
-    }
+    // #[inline]
+    // pub fn needs_promote_rune(&self) -> bool {
+    //     self.has_rune_prefix() && self.0.len() <= MAX_RUNE_LEN
+    // }
 
     pub fn into_rune(self, rt: &mut RuneTable) -> anyhow::Result<ZRune> {
         rt.add(&self.0)
     }
 }
 
+impl Display for ZSymbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string())
+    }
+}
+
+use crate::ast::lex::Tok;
 impl From<Tok> for ZSymbol {
     fn from(value: Tok) -> Self {
         value.into_sym()

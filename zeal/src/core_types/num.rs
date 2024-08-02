@@ -113,10 +113,24 @@ impl DerefMut for ZFloat64 {
 
 #[repr(transparent)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
-pub struct ZBool(bool);
+pub struct ZBool(pub(crate) bool);
 impl From<bool> for ZBool {
     fn from(value: bool) -> Self {
         Self(value)
+    }
+}
+
+impl Deref for ZBool {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ZBool {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use super::ZValue;
+use super::val::ZValue;
 
 #[repr(transparent)]
 #[derive(Debug, Clone)]
