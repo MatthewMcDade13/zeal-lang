@@ -95,6 +95,10 @@ impl ZFloat64 {
     pub const fn u64(self) -> u64 {
         self.0 as u64
     }
+
+    pub const fn unwrap(self) -> f64 {
+        self.0
+    }
 }
 
 impl Deref for ZFloat64 {

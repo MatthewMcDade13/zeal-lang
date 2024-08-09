@@ -4,6 +4,8 @@ pub mod reduce;
 
 use crate::ast::lex::{LexTok, Tok, TokBuffer};
 use crate::ast::parse::Parser;
+use crate::compiler::opcode::Op;
+use crate::core_types::keywords;
 use std::{fmt::Display, ops::Index, rc::Rc};
 
 use thiserror::Error;
@@ -84,6 +86,18 @@ pub enum Expr {
 }
 
 impl Expr {
+    pub fn sys_op(&self) -> Option<Op> {
+        let sym = self.inner_symbol()?;
+        match sym.name() {
+            keywords::ADD => Some(Op::Add),
+            keywords::SUB => Some(Op::Add),
+            keywords::DIV => Some(Op::Div),
+            keywords::MUL => Some(Op::Mul),
+            keywords::CONCAT => Some(Op::Concat),
+            _ => None,
+        }
+    }
+
     pub fn assignment(name: &ZSymbol, initializer: Option<&Expr>) -> Self {
         let nv = Self::Atom(ZValue::Nil);
         let init = initializer.unwrap_or(&nv);

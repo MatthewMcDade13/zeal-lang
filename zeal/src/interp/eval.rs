@@ -1,10 +1,22 @@
-use crate::core_types::{str::ZString, val::ZValue};
+use anyhow::bail;
 
-pub struct CoreFn<T>(T)
+use crate::{
+    core_types::{num::ZFloat64, str::ZString, val::ZValue},
+    err::core::RuntimeError,
+};
+
+// NOTE:: We are going to type-check at runtime here, (or maybe after doing a quick typecheck pass?)
+// Why you ask? I decided on going with static tying, though i still do want to have a repl
+// tree-walking interpreter so i can just exec code on the fly, though to be honest, JIT would prob
+// be a lot faster.... lol idk, typecheck at runtime it is. /rant
+
+pub struct CoreFn<T>(pub(crate) T)
 where
-    T: Fn(&[ZValue]) -> ZValue;
+    T: Fn(&[ZValue]) -> ValResult;
 
-macro_rules! eval_binary {
+pub type ValResult = anyhow::Result<ZValue>;
+
+macro_rules! eval_num_binary {
     ($fn_name: ident, $op: ident, $op_type: ident) => {
         pub fn $fn_name(vals: &[ZValue]) -> ZValue {
             let mut acc = $op_type::default();
@@ -16,19 +28,46 @@ macro_rules! eval_binary {
     };
 }
 
-pub fn add_num(vals: &[ZValue]) -> ZValue {
-    let mut acc = 0.0;
+pub fn sub_num(vals: &[ZValue]) -> ValResult {
+    let mut acc = ZFloat64::new(0.0);
     for v in vals {
-        let vn = *v.unwrap_float64();
-        acc = acc + vn;
+        if let ZValue::Number(n) = v {
+            acc = acc - *n;
+        } else {
+            bail!(RuntimeError::InvalidType {
+                expected_type: "Number".into(),
+                actual_type: v.type_string().into(),
+                in_fn: None,
+                message: None,
+            })
+        };
     }
-    ZValue::number(acc)
+    let n = ZValue::Number(acc);
+    Ok(n)
+}
+
+pub fn add_num(vals: &[ZValue]) -> ValResult {
+    let mut acc = ZFloat64::new(0.0);
+    for v in vals {
+        if let ZValue::Number(n) = v {
+            acc = acc - *n;
+        } else {
+            bail!(RuntimeError::InvalidType {
+                expected_type: "Number".into(),
+                actual_type: v.type_string().into(),
+                in_fn: None,
+                message: None,
+            })
+        };
+    }
+    let n = ZValue::Number(acc);
+    Ok(n)
 }
 
 pub fn concat_string(vals: &[ZValue]) -> ZValue {
     let mut acc = String::new();
     for v in vals {
-        let vs = v.unwrap_string();
+        let vs = v.expect_string();
         let vs = vs.as_str();
         acc.push_str(vs);
     }

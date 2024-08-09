@@ -40,7 +40,24 @@ impl ZValue {
         }
     }
 
-    pub const fn unwrap_float64(&self) -> ZFloat64 {
+    pub const fn type_string(&self) -> &'static str {
+        match self {
+            ZValue::Nil => "Nil",
+            ZValue::Bool(_) => "Bool",
+            ZValue::Number(_) => "Number",
+            ZValue::Byte(_) => "Byte",
+            ZValue::Buffer(_) => "Buffer",
+            ZValue::Str(_) => "String",
+            ZValue::Vec(_) => "Vector",
+            ZValue::Obj(_) => "Object",
+            ZValue::MutRef(_) => "Ref",
+            ZValue::Rune(_) => "Rune",
+            ZValue::Sym(_) => "Symbol",
+            ZValue::Unit => "()",
+        }
+    }
+
+    pub const fn expect_float64(&self) -> ZFloat64 {
         if let Self::Number(n) = self {
             *n
         } else {
@@ -56,7 +73,7 @@ impl ZValue {
         }
     }
 
-    pub fn unwrap_string(&self) -> ZString {
+    pub fn expect_string(&self) -> ZString {
         if let Self::Str(s) = self {
             s.clone()
         } else {

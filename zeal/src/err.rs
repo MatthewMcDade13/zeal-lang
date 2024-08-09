@@ -56,3 +56,17 @@ pub mod lex {
         }
     }
 }
+
+pub mod core {
+
+    #[derive(Debug, thiserror::Error, Clone)]
+    pub enum RuntimeError {
+        #[error("Invalid type: expected: {expected_type}; got: {actual_type}. Inside function: {in_fn:?}. Message: {message:?}" )]
+        InvalidType {
+            expected_type: &'static str,
+            actual_type: &'static str,
+            in_fn: Option<&'static str>,
+            message: Option<String>,
+        },
+    }
+}
