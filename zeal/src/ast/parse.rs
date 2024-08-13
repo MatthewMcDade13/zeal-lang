@@ -7,7 +7,7 @@ use crate::{
     ast::{lex::TokType, AstError, Expr, LexTok, Tok},
     core_types::{
         num::{ZBool, ZFloat64},
-        str::{ZString, ZSymbol},
+        str::{ZString, ZIdent},
         val::ZValue,
     },
 };
@@ -54,7 +54,7 @@ impl Parser {
         };
         let mut exprs = Vec::new();
         'parse: while !p.is_eof() {
-            let ex = p.statement_expr()?;
+            let ex = p.declaration().expect("Parse Error.");
             exprs.push(ex);
             while p.peek().ty == TokType::NewLine {
                 if p.i == p.tokens.len() - 1 {
@@ -160,7 +160,7 @@ impl Parser {
             };
 
             if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
-                let name = ZSymbol::from(name);
+                let name = ZIdent::from(name);
                 self.advance(1);
                 Ok(Expr::assignment(&name, initializer.as_ref()))
             } else {

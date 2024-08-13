@@ -15,7 +15,7 @@ use std::{
 use bytes::{ZBuffer, ZByte};
 use htable::ZHashTable;
 use num::{ZBool, ZFloat64};
-use str::{ZRune, ZString, ZSymbol};
+use str::{ZRune, ZString, ZIdent};
 use vec::ZVec;
 
 pub mod keywords {

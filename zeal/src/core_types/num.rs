@@ -1,4 +1,4 @@
-use std::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
+use std::ops::{Add, Deref, DerefMut, Div, Mul, Neg, Sub};
 
 #[repr(transparent)]
 #[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd)]
@@ -76,6 +76,14 @@ impl Div for ZFloat64 {
 
     fn div(self, rhs: Self) -> Self::Output {
         Self::new(self.0 / rhs.0)
+    }
+}
+
+impl Neg for ZFloat64 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
     }
 }
 

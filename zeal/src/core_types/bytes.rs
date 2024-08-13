@@ -8,6 +8,12 @@ use std::{
 #[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct ZByte(u8);
 
+impl ZByte {
+    pub const fn new(b: u8) -> Self {
+        Self(b)
+    }
+}
+
 impl Deref for ZByte {
     type Target = u8;
 

@@ -57,7 +57,8 @@ impl From<u8> for Op {
         if value >= Op::Unknown as u8 {
             Self::Unknown
         } else {
-            value.into()
+            let op: Op = unsafe { std::mem::transmute(value) };
+            op
         }
     }
 }
@@ -96,6 +97,46 @@ impl OpParam {
             OpParam::Byte24(_) => OP24,
             OpParam::Byte32(_) => OP32,
             OpParam::Byte64(_) => OP64,
+        }
+    }
+
+    pub const fn to_u8(self) -> u8 {
+        match self {
+            OpParam::Byte(b) => b,
+            OpParam::Byte16(b) => b[0],
+            OpParam::Byte24(b) => b[0],
+            OpParam::Byte32(b) => b[0],
+            OpParam::Byte64(b) => b[0],
+        }
+    }
+
+    pub fn to_f64(self) -> f64 {
+        match self {
+            OpParam::Byte(b) => b as f64,
+            OpParam::Byte16(b) => f64::from_le_bytes([b[0], b[1], 0, 0, 0, 0, 0, 0]),
+            OpParam::Byte24(b) => f64::from_le_bytes([b[0], b[1], b[2], 0, 0, 0, 0, 0]),
+            OpParam::Byte32(b) => f64::from_le_bytes([b[0], b[1], b[2], b[3], 0, 0, 0, 0]),
+            OpParam::Byte64(b) => f64::from_le_bytes(b),
+        }
+    }
+
+    pub const fn to_u32(self) -> u32 {
+        match self {
+            OpParam::Byte(b) => b as u32,
+            OpParam::Byte16(b) => u32::from_le_bytes([b[0], b[1], 0, 0]),
+            OpParam::Byte24(b) => u32::from_le_bytes([b[0], b[1], b[2], 0]),
+            OpParam::Byte32(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            OpParam::Byte64(b) => u64::from_le_bytes(b) as u32,
+        }
+    }
+
+    pub const fn to_i32(self) -> i32 {
+        match self {
+            OpParam::Byte(b) => b as i32,
+            OpParam::Byte16(b) => i32::from_le_bytes([b[0], b[1], 0, 0]),
+            OpParam::Byte24(b) => i32::from_le_bytes([b[0], b[1], b[2], 0]),
+            OpParam::Byte32(b) => i32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            OpParam::Byte64(b) => i64::from_le_bytes(b) as i32,
         }
     }
 }
@@ -232,8 +273,37 @@ impl Bytecode {
         self.buf.len()
     }
 
-    pub fn opcode_at(&self, index: usize) -> Opcode {
-        read_opcode(self.buf.as_ref(), index)
+    pub fn opcode_at(&self, index: usize) -> Option<Opcode> {
+        let ops = &self.buf;
+        if index >= ops.len() {
+            return None;
+        }
+
+        let op = Op::from(ops[index]);
+        let stride = op.stride();
+        let param = if stride > 0 {
+            let iparam = index + stride;
+            assert!(iparam < ops.len());
+            let param_slice = &ops[index..iparam];
+            match stride {
+                OP8 => Some(OpParam::Byte(ops[iparam])),
+                OP16 => Some(OpParam::Byte16(array_from_slice(param_slice))),
+                OP24 => Some(OpParam::Byte24(array_from_slice(param_slice))),
+                OP32 => Some(OpParam::Byte32(array_from_slice(param_slice))),
+                OP64 => Some(OpParam::Byte64(array_from_slice(param_slice))),
+                _ => unreachable!("invalid bytecode parameter length: {}", stride),
+            }
+        } else {
+            None
+        };
+        Some(Opcode { op, param })
+    }
+
+    pub fn expect_opcode_at(&self, index: usize) -> Opcode {
+        self.opcode_at(index).expect(&format!(
+            "Opcode index out of range! given: {index}, expected <: {}",
+            self.buf.len()
+        ))
     }
 
     pub fn append_bytes(&mut self, bytes: &[u8]) {
@@ -302,9 +372,11 @@ pub struct ChunkIter {
 //     Opcode { op, param }
 // }
 
-fn read_opcode(buf: &[u8], index: usize) -> Opcode {
+fn read_opcode(buf: &[u8], index: usize) -> Option<Opcode> {
     let ops: &[u8] = buf;
-    assert!(index < ops.len());
+    if index >= ops.len() {
+        return None;
+    }
 
     let op = Op::from(ops[index]);
     let stride = op.stride();
@@ -323,5 +395,5 @@ fn read_opcode(buf: &[u8], index: usize) -> Opcode {
     } else {
         None
     };
-    Opcode { op, param }
+    Some(Opcode { op, param })
 }

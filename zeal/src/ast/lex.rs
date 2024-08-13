@@ -9,7 +9,7 @@ use logos::{Lexer, Logos, Skip};
 use crate::{
     core_types::{
         num::ZFloat64,
-        str::{ZString, ZSymbol},
+        str::{ZString, ZIdent},
     },
     err::lex::LexError,
 };
@@ -85,8 +85,8 @@ impl Tok {
         }
     }
 
-    pub fn into_sym(self) -> ZSymbol {
-        ZSymbol::from(self.lexeme)
+    pub fn into_sym(self) -> ZIdent {
+        ZIdent::from(self.lexeme)
     }
 }
 

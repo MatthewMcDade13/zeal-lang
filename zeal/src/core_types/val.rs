@@ -4,7 +4,7 @@ use super::{
     bytes::{ZBuffer, ZByte},
     htable::ZHashTable,
     num::{ZBool, ZFloat64},
-    str::{ZRune, ZString, ZSymbol},
+    str::{ZIdent, ZRune, ZString},
     vec::ZVec,
 };
 
@@ -25,7 +25,7 @@ pub enum ZValue {
     Obj(ZHashTable),
     MutRef(ZMutRef),
     Rune(ZRune),
-    Sym(ZSymbol),
+    Sym(ZIdent),
 
     // No-op / whitespace placeholder (for parsing)
     Unit,
@@ -54,6 +54,28 @@ impl ZValue {
             ZValue::Rune(_) => "Rune",
             ZValue::Sym(_) => "Symbol",
             ZValue::Unit => "()",
+        }
+    }
+
+    #[inline]
+    pub fn is_truthy(&self) -> bool {
+        !self.is_falsey()
+    }
+
+    pub fn is_falsey(&self) -> bool {
+        match self {
+            ZValue::Nil => true,
+            ZValue::Bool(b) => b.0,
+            ZValue::Number(n) => n.unwrap() == 0.0,
+            ZValue::Byte(b) => *b == ZByte::new(0),
+            ZValue::Buffer(buf) => buf.len() == 0,
+            ZValue::Str(s) => s.len() == 0,
+            ZValue::Vec(v) => v.len() == 0,
+            ZValue::Obj(_) => false,
+            ZValue::MutRef(_) => false,
+            ZValue::Rune(r) => false,
+            ZValue::Sym(sym) => false,
+            ZValue::Unit => true,
         }
     }
 
@@ -101,7 +123,7 @@ impl ZValue {
         Self::Number(ZFloat64::new(v))
     }
 
-    pub fn symbol(sym: &ZSymbol) -> Self {
+    pub fn symbol(sym: &ZIdent) -> Self {
         Self::Sym(sym.clone())
     }
 

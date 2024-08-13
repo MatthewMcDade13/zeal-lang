@@ -20,4 +20,8 @@ impl ZVec {
     pub fn slice(&self) -> &[ZValue] {
         self.0.as_ref()
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 }

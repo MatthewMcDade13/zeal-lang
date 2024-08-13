@@ -19,14 +19,24 @@ pub mod opcode;
 pub struct Archon;
 
 impl Archon {
-    pub fn compile(ast: &Ast) -> anyhow::Result<Vec<Chunk>> {
-        let mut chunks = Vec::with_capacity(ast.slice().len());
+    pub fn compile(ast: &Ast) -> anyhow::Result<Chunk> {
+        let mut ch = Chunk::default();
+        Self::compile_with(ast, &mut ch);
+        Ok(ch)
+        // let mut chunks = Vec::with_capacity(ast.slice().len());
+        // for expr in ast.slice() {
+        //     let mut ch = Chunk::default();
+        //     Self::compile_expr(&mut ch, expr)?;
+        //     chunks.push(ch);
+        // }
+        // Ok(chunks)
+    }
+
+    pub fn compile_with(ast: &Ast, ch: &mut Chunk) -> anyhow::Result<()> {
         for expr in ast.slice() {
-            let mut ch = Chunk::default();
-            Self::compile_expr(&mut ch, expr)?;
-            chunks.push(ch);
+            Self::compile_expr(ch, expr)?;
         }
-        Ok(chunks)
+        Ok(())
     }
 
     fn compile_expr(ch: &mut Chunk, expr: &Expr) -> anyhow::Result<()> {

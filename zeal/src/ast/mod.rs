@@ -10,7 +10,7 @@ use std::{fmt::Display, ops::Index, rc::Rc};
 
 use thiserror::Error;
 
-use crate::core_types::{str::ZSymbol, val::ZValue};
+use crate::core_types::{str::ZIdent, val::ZValue};
 
 #[derive(Debug, Clone)]
 pub struct Ast(Box<[Expr]>);
@@ -59,6 +59,21 @@ impl Ast {
     pub fn slice_mut(&mut self) -> &mut [Expr] {
         self.0.as_mut()
     }
+
+    pub fn to_list(&self) -> Vec<ZValue> {
+        let mut list = Vec::new();
+
+        for ast in self.0.iter() {
+            match ast {
+                Expr::Call(_) => todo!(),
+                Expr::Block(_) => todo!(),
+                Expr::List(_) => todo!(),
+                Expr::Atom(_) => todo!(),
+            }
+        }
+
+        list
+    }
 }
 
 impl Display for Ast {
@@ -86,11 +101,33 @@ pub enum Expr {
 }
 
 impl Expr {
+    // fn reduce_expr<Reducer, Ret>(reducer: Reducer, acc: &mut Vec<Ret>) -> Ret
+    // where
+    //     Reducer: (Fn(ZValue) -> Ret),
+    // {
+    // }
+    //
+    // pub fn reduce<Reducer, Ret>(&self, reducer: Reducer) -> Ret
+    // where
+    //     Reducer: (Fn(ZValue) -> Ret),
+    // {
+    //     let mut acc = Vec::new();
+    //
+    //     match self {
+    //         Expr::Call(cb) => ,
+    //         Expr::Block(_) => todo!(),
+    //         Expr::List(_) => todo!(),
+    //         Expr::Atom(_) => todo!(),
+    //     }
+    //     todo!()
+    //     acc
+    // }
+
     pub fn sys_op(&self) -> Option<Op> {
         let sym = self.inner_symbol()?;
         match sym.name() {
             keywords::ADD => Some(Op::Add),
-            keywords::SUB => Some(Op::Add),
+            keywords::SUB => Some(Op::Sub),
             keywords::DIV => Some(Op::Div),
             keywords::MUL => Some(Op::Mul),
             keywords::CONCAT => Some(Op::Concat),
@@ -98,12 +135,12 @@ impl Expr {
         }
     }
 
-    pub fn assignment(name: &ZSymbol, initializer: Option<&Expr>) -> Self {
+    pub fn assignment(name: &ZIdent, initializer: Option<&Expr>) -> Self {
         let nv = Self::Atom(ZValue::Nil);
         let init = initializer.unwrap_or(&nv);
 
         let ast = [
-            Self::Atom(ZValue::Sym(ZSymbol::from("="))),
+            Self::Atom(ZValue::Sym(ZIdent::from("="))),
             Self::Atom(ZValue::Sym(name.clone())),
             init.clone(),
             // Self::Atom(name.clone()),
@@ -113,7 +150,7 @@ impl Expr {
         Self::Call(ast)
     }
 
-    pub fn binary_op(left: &Expr, op: &ZSymbol, right: &Expr) -> Self {
+    pub fn binary_op(left: &Expr, op: &ZIdent, right: &Expr) -> Self {
         let ast = [
             Self::Atom(ZValue::Sym(op.clone())),
             left.clone(),
@@ -125,7 +162,7 @@ impl Expr {
         Self::Call(ast)
     }
 
-    pub fn unary_op(op: &ZSymbol, right: &Expr) -> Self {
+    pub fn unary_op(op: &ZIdent, right: &Expr) -> Self {
         let ast = [
             Self::Atom(ZValue::Sym(op.clone())),
             right.clone(),
@@ -155,7 +192,7 @@ impl Expr {
         }
     }
 
-    pub const fn inner_symbol(&self) -> Option<&ZSymbol> {
+    pub const fn inner_symbol(&self) -> Option<&ZIdent> {
         match self {
             Self::Atom(v) => match v {
                 ZValue::Sym(s) => Some(s),

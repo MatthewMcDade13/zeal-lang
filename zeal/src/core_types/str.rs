@@ -169,9 +169,9 @@ impl Display for ZRune {
 }
 
 #[derive(Debug, Clone)]
-pub struct ZSymbol(ZString);
+pub struct ZIdent(ZString);
 
-impl ZSymbol {
+impl ZIdent {
     pub fn name(&self) -> &str {
         self.0.as_ref()
     }
@@ -191,32 +191,32 @@ impl ZSymbol {
     }
 }
 
-impl Display for ZSymbol {
+impl Display for ZIdent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.to_string())
     }
 }
 
 use crate::ast::lex::Tok;
-impl From<Tok> for ZSymbol {
+impl From<Tok> for ZIdent {
     fn from(value: Tok) -> Self {
         value.into_sym()
     }
 }
 
-impl From<&str> for ZSymbol {
+impl From<&str> for ZIdent {
     fn from(value: &str) -> Self {
         Self(ZString::from(value))
     }
 }
 
-impl From<String> for ZSymbol {
+impl From<String> for ZIdent {
     fn from(value: String) -> Self {
         Self(ZString::from(value))
     }
 }
 
-impl From<Rc<str>> for ZSymbol {
+impl From<Rc<str>> for ZIdent {
     fn from(value: Rc<str>) -> Self {
         Self(ZString(Rc::clone(&value)))
     }

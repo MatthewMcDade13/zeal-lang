@@ -8,9 +8,10 @@ use crate::{
 
 use super::opcode::{Bytecode, Op, Opcode};
 
+#[derive(Debug, Clone)]
 pub struct Chunk {
-    buf: Bytecode,
-    constants: Vec<ZValue>,
+    pub buf: Bytecode,
+    pub constants: Vec<ZValue>,
 }
 
 impl Default for Chunk {
@@ -27,6 +28,17 @@ impl Chunk {
             constants: Vec::with_capacity(const_cap),
         }
     }
+
+    #[inline]
+    pub fn opcode_at(&self, index: usize) -> Option<Opcode> {
+        self.buf.opcode_at(index)
+    }
+
+    #[inline]
+    pub fn expect_opcode_at(&self, index: usize) -> Opcode {
+        self.buf.expect_opcode_at(index)
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.buf.len()
@@ -53,6 +65,17 @@ impl Chunk {
 
     pub fn constants(&self) -> &[ZValue] {
         self.constants.as_ref()
+    }
+
+    pub fn try_read_const(&self, opcode: Opcode) -> Option<&ZValue> {
+        match opcode.op {
+            Op::Const8 | Op::Const16 | Op::Const24 | Op::Const32 | Op::Const64 => {
+                let param = opcode.param.unwrap();
+                let id = param.to_u32() as usize;
+                Some(&self.constants[id])
+            }
+            _ => None,
+        }
     }
 
     pub fn push_number(&mut self, n: f64) {
@@ -112,27 +135,65 @@ impl Chunk {
             }
         }
     }
+
+    pub fn debug_dissassembly(&self) -> String {
+        let mut s = String::new();
+        let mut i = 0;
+        while i < self.buf.len() {
+            let opcode = self.buf.opcode_at(i).unwrap();
+            let op = match opcode.op {
+                Op::Return => "RETURN",
+                Op::Print => "PRINT",
+                Op::Pop => "POP",
+                Op::Add => "ADD",
+                Op::Sub => "SUB",
+                Op::Div => "DIV",
+                Op::Mul => "MUL",
+                Op::Neg => "NEGATE",
+                Op::Not => "NOT",
+                Op::Nil => "NIL",
+                Op::True => "TRUE",
+                Op::False => "FALSE",
+                Op::Concat => "CONCAT",
+                Op::Const8 => {
+                    i += 1;
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("CONST8 => {}, actual: {}", index, self.constants[index])
+                }
+                Op::Const16 => {
+                    i += 1;
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("CONST16 => {}, actual: {}", index, self.constants[index])
+                }
+                Op::Const24 => {
+                    i += 1;
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("CONST24 => {}, actual: {}", index, self.constants[index])
+                }
+                Op::Const32 => {
+                    i += 1;
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("CONST32 => {}, actual: {}", index, self.constants[index])
+                }
+                Op::Const64 => {
+                    i += 1;
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("CONST64 => {}, actual: {}", index, self.constants[index])
+                }
+                Op::Unknown => "UNKNOWN_OP",
+            };
+
+            // println!("{i}");
+            s.push_str(&format!("{op}\n"));
+            i += 1;
+        }
+        s
+    }
 }
 
-// impl IntoIterator for Chunk {
-//     type Item = Opcode;
-//
-//     type IntoIter = std::vec::IntoIter<>//ChunkIter<_>;
-//
-//     fn into_iter(self) -> Self::IntoIter {
-//         todo!()
-//     }
-// }
-// // impl Display for Chunk {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let mut s = String::new();
-//
-//         let mut biter = self.buf.iter();
-//         while biter.next() {
-//
-//         }
-//         for i in 0..self.buf.len() {}
-//
-//         write!(f, "{}", s)
-//     }
-// }
+impl Display for Chunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self.debug_dissassembly();
+        write!(f, "{s}")
+    }
+}
