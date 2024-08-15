@@ -1,6 +1,7 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Index};
 
 use anyhow::bail;
+use stack::Stack;
 
 use crate::{
     ast::Ast,
@@ -12,13 +13,15 @@ use crate::{
     core_types::val::ZValue,
 };
 
+pub mod stack;
+
 macro_rules! binary_op {
     ($stack: ident, $op: tt) => {
 
         {
 
-            let right = $stack.pop().expect_float64();
-            let left = $stack.pop().expect_float64();
+            let right = $stack.expect_pop().expect_float64();
+            let left = $stack.expect_pop().expect_float64();
             let res = ZValue::Number(left $op right);
             $stack.push(res);
         }
@@ -29,12 +32,12 @@ macro_rules! binary_op {
 pub const STACK_MAX: usize = 0x20;
 #[derive(Debug, Clone)]
 pub struct VM {
-    stack: Stack<STACK_MAX>,
+    stack: super::vm::stack::Stack<STACK_MAX>,
     chunks: Vec<Chunk>,
     /// index of current running chunk.
     depth: usize,
-    /// program counter for current running chunk.
-    pc: usize,
+    /// program counter for current running chunk. (chunk counter)
+    cc: usize,
 }
 
 impl VM {
@@ -43,15 +46,37 @@ impl VM {
             stack: Stack::new(),
             chunks: Vec::with_capacity(8),
             depth: 0,
-            pc: 0,
+            cc: 0,
         }
+    }
+
+    pub fn dump_stack(&self) -> String {
+        self.stack.to_string()
+    }
+
+    pub fn dump_chunks(&self) -> String {
+        self.chunks
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<String>()
+    }
+
+    pub fn dump(&self) -> String {
+        let mut dump = String::from("\n ----- DUMP -----\n");
+        let stack = self.stack.to_string();
+        let bcode = self.dump_chunks();
+        dump.push_str(&stack);
+        dump.push_str(&bcode);
+        dump.push_str(&format!("pc: {}, current depth: {}\n", self.cc, self.depth));
+        dump.push_str(" ----- DUMP END ------\n");
+
+        dump
     }
 
     #[inline]
     /// Compiles string of zeal source code into a single chunk and returns the depth (index) of the newly pushed chunk.
     pub fn compile_source(&mut self, src: &str) -> anyhow::Result<usize> {
         let ast = Ast::from_str(src)?;
-        // println!("{ast}");
         self.compile_ast(&ast)
     }
 
@@ -80,26 +105,29 @@ impl VM {
     }
 
     pub fn exec_all(&mut self) -> anyhow::Result<()> {
-        self.pc = 0;
         for i in 0..self.chunks.len() {
             self.depth = i;
+            self.cc = 0;
             let _ = self.exec_chunk(i)?;
         }
         Ok(())
     }
 
     pub fn exec_chunk(&mut self, depth: usize) -> anyhow::Result<ZValue> {
+        self.cc = 0;
         if let Some(chunk) = self.chunks.get(depth) {
-            let code = chunk.code();
-
-            while self.pc < code.len() {
-                let oc = self.expect_opcode_at(self.pc, depth);
-
+            for opcode in chunk.iter() {
                 let c = &self.chunks[self.depth];
-                let offset = vm_exec_opcode(&mut self.stack, &c.constants, oc)?;
-                self.pc += offset;
+                let _ = vm_exec_opcode(&mut self.stack, &c.constants, opcode)?;
             }
-            // println!("{:?}", self.stack);
+
+            // while self.cc < code.len() {
+            //     let oc = self.expect_opcode_at(self.cc, depth);
+            //
+            //     let c = &self.chunks[self.depth];
+            //     let offset = vm_exec_opcode(&mut self.stack, &c.constants, oc)?;
+            //     self.cc += offset;
+            // }
             let top = if let Some(t) = self.stack.peek_top() {
                 t.clone()
             } else {
@@ -124,12 +152,19 @@ impl VM {
 
     pub fn exec_source(&mut self, src: &str) -> anyhow::Result<ZValue> {
         let depth = self.compile_source(src)?;
-        println!("{:?}", self);
+        println!("COMPILED SOURCE");
         self.exec_chunk(depth)
     }
 
     pub fn bytecode(&self) -> &Bytecode {
         self.chunk().code()
+    }
+}
+
+impl Display for VM {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let d = self.dump();
+        write!(f, "{d}")
     }
 }
 
@@ -142,11 +177,11 @@ fn vm_exec_opcode<const S: usize>(
     match opcode.op {
         Op::Return => {}
         Op::Print => {
-            let v = stack.pop();
+            let v = stack.expect_pop();
             println!("{}", v.to_string())
         }
         Op::Pop => {
-            let _ = stack.pop();
+            let _ = stack.expect_pop();
         }
         Op::Add => {
             binary_op!(stack, +);
@@ -161,11 +196,11 @@ fn vm_exec_opcode<const S: usize>(
         Op::Div => binary_op!(stack, /),
         Op::Mul => binary_op!(stack, *),
         Op::Neg => {
-            let val = stack.pop().expect_float64();
+            let val = stack.expect_pop().expect_float64();
             stack.push(ZValue::Number(-val));
         }
         Op::Not => {
-            let val = stack.pop();
+            let val = stack.expect_pop();
             let res = if val.is_truthy() { false } else { true };
             stack.push(ZValue::bool(res));
         }
@@ -195,87 +230,3 @@ fn vm_exec_opcode<const S: usize>(
 // fn compile_source(src: &str) -> anyhow::Result<Vec<Chunk>> {
 
 // }
-
-#[derive(Debug, Clone)]
-struct Stack<const S: usize> {
-    top: isize,
-    buf: [ZValue; S],
-}
-
-impl<const S: usize> Stack<S> {
-    pub fn new() -> Self {
-        let buf: [ZValue; S] = (0..S)
-            .map(|_| ZValue::Nil)
-            .collect::<Vec<ZValue>>()
-            .try_into()
-            .unwrap();
-        Self { top: 0, buf }
-    }
-
-    pub const fn peekn(&self, n: isize) -> Option<&ZValue> {
-        let i = self.top() as isize + n;
-        if i < 0 || i >= S as isize {
-            None
-        } else {
-            let i = i as usize;
-            Some(&self.buf[i])
-        }
-    }
-
-    pub fn peekn_mut(&mut self, n: isize) -> Option<&mut ZValue> {
-        let i = self.top() as isize + n;
-        if i < 0 || i >= S as isize {
-            None
-        } else {
-            let i = i as usize;
-            Some(&mut self.buf[i])
-        }
-    }
-
-    pub const fn peek_top(&self) -> Option<&ZValue> {
-        self.peekn(self.top() as isize)
-    }
-
-    pub fn peek(&self) -> &ZValue {
-        let i = self.top();
-        self.peekn(i as isize)
-            .expect("Stack peek index out of range! top: {i} | STACK_MAX: {STACK_MAX}")
-    }
-
-    pub fn peek_mut(&mut self) -> &mut ZValue {
-        let i = self.top();
-        self.peekn_mut(i as isize)
-            .expect("Stack peek index out of range! top: {i} | STACK_MAX: {STACK_MAX}")
-    }
-
-    pub const fn top(&self) -> usize {
-        if self.top - 1 < 0 {
-            0
-        } else {
-            self.top as usize - 1
-        }
-    }
-
-    pub const fn len(&self) -> usize {
-        self.top() + 1
-    }
-
-    pub const fn max(&self) -> usize {
-        S
-    }
-
-    /// Pushes value onto top of stack. Returns index of item that was pushed.
-    pub fn push(&mut self, val: ZValue) -> usize {
-        let i = self.top();
-        self.buf[i] = val;
-        self.top += 1;
-        i
-    }
-
-    pub fn pop(&mut self) -> ZValue {
-        let i = self.top();
-        let v = self.buf[i].clone();
-        self.top -= 1;
-        v
-    }
-}

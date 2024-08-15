@@ -79,11 +79,14 @@ impl ZValue {
         }
     }
 
-    pub const fn expect_float64(&self) -> ZFloat64 {
+    pub fn expect_float64(&self) -> ZFloat64 {
         if let Self::Number(n) = self {
             *n
         } else {
-            panic!("CORE PANIC! :: Value cannot be converted to a Number!");
+            panic!(
+                "CORE PANIC! :: Value: {} cannot be converted to a Number! ",
+                self
+            )
         }
     }
 

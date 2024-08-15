@@ -26,6 +26,20 @@ where
     dst[..n].clone_from_slice(&src[..n])
 }
 
+pub unsafe fn array_from_raw<const S: usize, T>(ptr: *const T, len: usize) -> [T; S]
+where
+    T: Default + Copy,
+{
+    let mut i = 0;
+    let mut result = [T::default(); S];
+    while i < len {
+        let elem = ptr.add(i).as_ref().expect("null ptr deref!!!");
+        result[i] = *elem;
+        i += 1;
+    }
+    result
+}
+
 #[inline]
 pub fn array_from_slice<const S: usize, T>(sl: &[T]) -> [T; S]
 where

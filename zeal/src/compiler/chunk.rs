@@ -6,7 +6,29 @@ use crate::{
     sys::copy_slice_into,
 };
 
-use super::opcode::{Bytecode, Op, Opcode};
+use super::opcode::{read_ptr_as_bytecode, Bytecode, Op, Opcode};
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkIter {
+    begin: *const u8,
+    i: usize,
+    len: usize,
+}
+
+impl Iterator for ChunkIter {
+    type Item = Opcode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i > self.len {
+            None
+        } else {
+            let opcode = unsafe { read_ptr_as_bytecode(self.begin, self.i, self.len) }
+                .expect("cant get opcode from chunk!");
+            self.i += opcode.offset();
+            Some(opcode)
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Chunk {
@@ -26,6 +48,15 @@ impl Chunk {
         Self {
             buf: Bytecode::from(Vec::with_capacity(buf_cap)),
             constants: Vec::with_capacity(const_cap),
+        }
+    }
+
+    pub fn iter(&self) -> ChunkIter {
+        let begin = self.buf.slice().as_ptr();
+        ChunkIter {
+            begin,
+            i: 0,
+            len: self.buf.len(),
         }
     }
 

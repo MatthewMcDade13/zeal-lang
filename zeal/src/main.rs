@@ -9,7 +9,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut vm = VM::new();
     let v = vm.exec_source(SOURCE)?;
-    println!("{v}");
+    println!("{}", vm.dump());
     // let x = TokBuffer::read_string(s)?;
 
     // let x = Ast::from_str(SOURCE)?;

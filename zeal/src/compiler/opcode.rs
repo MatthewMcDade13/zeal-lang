@@ -5,7 +5,10 @@ use std::{
 
 use anyhow::bail;
 
-use crate::{core_types::val::ZValue, sys::array_from_slice};
+use crate::{
+    core_types::val::ZValue,
+    sys::{array_from_raw, array_from_slice},
+};
 
 //
 
@@ -274,29 +277,7 @@ impl Bytecode {
     }
 
     pub fn opcode_at(&self, index: usize) -> Option<Opcode> {
-        let ops = &self.buf;
-        if index >= ops.len() {
-            return None;
-        }
-
-        let op = Op::from(ops[index]);
-        let stride = op.stride();
-        let param = if stride > 0 {
-            let iparam = index + stride;
-            assert!(iparam < ops.len());
-            let param_slice = &ops[index..iparam];
-            match stride {
-                OP8 => Some(OpParam::Byte(ops[iparam])),
-                OP16 => Some(OpParam::Byte16(array_from_slice(param_slice))),
-                OP24 => Some(OpParam::Byte24(array_from_slice(param_slice))),
-                OP32 => Some(OpParam::Byte32(array_from_slice(param_slice))),
-                OP64 => Some(OpParam::Byte64(array_from_slice(param_slice))),
-                _ => unreachable!("invalid bytecode parameter length: {}", stride),
-            }
-        } else {
-            None
-        };
-        Some(Opcode { op, param })
+        read_slice_as_bytecode(self.buf.as_ref(), index)
     }
 
     pub fn expect_opcode_at(&self, index: usize) -> Opcode {
@@ -310,12 +291,59 @@ impl Bytecode {
         self.buf.extend_from_slice(bytes)
     }
 }
-#[derive(Debug, Clone, Copy)]
-pub struct ChunkIter {
-    beg: *const u8,
-    curr: usize,
-    len: usize,
+
+pub fn read_slice_as_bytecode(ops: &[u8], index: usize) -> Option<Opcode> {
+    if index >= ops.len() {
+        return None;
+    }
+
+    let op = Op::from(ops[index]);
+    let stride = op.stride();
+    let param = if stride > 0 {
+        let iparam = index + stride;
+        assert!(iparam < ops.len());
+        let param_slice = &ops[index..iparam];
+        match stride {
+            OP8 => Some(OpParam::Byte(ops[iparam])),
+            OP16 => Some(OpParam::Byte16(array_from_slice(param_slice))),
+            OP24 => Some(OpParam::Byte24(array_from_slice(param_slice))),
+            OP32 => Some(OpParam::Byte32(array_from_slice(param_slice))),
+            OP64 => Some(OpParam::Byte64(array_from_slice(param_slice))),
+            _ => unreachable!("invalid bytecode parameter length: {}", stride),
+        }
+    } else {
+        None
+    };
+    Some(Opcode { op, param })
 }
+
+pub unsafe fn read_ptr_as_bytecode(ops: *const u8, index: usize, len: usize) -> Option<Opcode> {
+    if index >= len {
+        return None;
+    }
+    let op = *ops.add(index);
+    let op = Op::from(op);
+
+    let stride = op.stride();
+    let param = if stride > 0 {
+        let iparam = index + stride;
+        assert!(iparam < len);
+        // let param_slice = &ops[index..iparam];
+
+        match stride {
+            OP8 => Some(OpParam::Byte(*ops.add(iparam))),
+            OP16 => Some(OpParam::Byte16(array_from_raw(ops, len))),
+            OP24 => Some(OpParam::Byte24(array_from_raw(ops, len))),
+            OP32 => Some(OpParam::Byte32(array_from_raw(ops, len))),
+            OP64 => Some(OpParam::Byte64(array_from_raw(ops, len))),
+            _ => unreachable!("invalid bytecode parameter length: {}", stride),
+        }
+    } else {
+        None
+    };
+    Some(Opcode { op, param })
+}
+
 //
 // impl ChunkIter {
 //     pub const fn full_slice(&self) -> &[u8] {
