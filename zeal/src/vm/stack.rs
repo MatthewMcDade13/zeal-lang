@@ -4,14 +4,18 @@ use crate::core_types::val::ZValue;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default)]
-struct StackCursor(isize);
+pub struct StackCursor(isize);
 impl StackCursor {
     pub const fn zero() -> Self {
         Self(0)
     }
 
     pub const fn new() -> Self {
-        Self::zero()
+        Self::empty()
+    }
+
+    pub const fn empty() -> Self {
+        Self(-1)
     }
 
     pub const fn offset(self, offset: usize) -> Self {
@@ -36,9 +40,17 @@ impl StackCursor {
         }
     }
 
+    pub const fn len(self) -> usize {
+        if self.0 < 0 {
+            0
+        } else {
+            self.0 as usize + 1
+        }
+    }
+
     /// if self.0 < 0
     pub const fn is_end(self) -> bool {
-        self.0 < 0
+        self.len() == 0
     }
 
     /// Unwraps index if greater than or equal to 0, otherwise returns 0
@@ -96,10 +108,10 @@ impl Iterator for StackPeeker {
     type Item = ZValue;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.i > self.buf_len {
+        if self.buf_len == 0 || self.i >= self.buf_len {
             None
         } else {
-            let i = self.buf_len - self.i;
+            let i = (self.buf_len - 1) - self.i;
             let zval = unsafe {
                 let v = self.buf_begin.add(i);
                 v.as_ref().expect("null ptr deref!!!")
@@ -129,7 +141,7 @@ impl<const S: usize> Stack<S> {
             .try_into()
             .unwrap();
         Self {
-            cursor: StackCursor::new(),
+            cursor: StackCursor::empty(),
             buf,
         }
     }
@@ -138,8 +150,8 @@ impl<const S: usize> Stack<S> {
         let buf_begin = self.buf.as_ptr();
         StackPeeker {
             buf_begin,
-            i: 0,
-            buf_len: self.cursor.as_index(),
+            i: 1,
+            buf_len: self.len(),
         }
     }
 
@@ -192,7 +204,11 @@ impl<const S: usize> Stack<S> {
     }
 
     pub const fn len(&self) -> usize {
-        self.cursor.as_index()
+        if let Some(index) = self.cursor.try_as_index() {
+            index + 1
+        } else {
+            0
+        }
     }
 
     pub const fn max(&self) -> usize {
@@ -201,15 +217,15 @@ impl<const S: usize> Stack<S> {
 
     /// Pushes value onto top of stack. Returns index of item that was pushed.
     pub fn push(&mut self, val: ZValue) -> usize {
-        let i = if let Some(index) = self.cursor.try_as_index() {
-            index
+        self.cursor = if self.cursor.0 < 0 {
+            StackCursor::zero()
         } else {
-            self.cursor = StackCursor::zero();
-            self.cursor.0 as usize
+            self.cursor.inc()
         };
+        let i = self.cursor.0 as usize;
 
         self.buf[i] = val;
-        self.cursor = self.cursor.inc();
+        // self.cursor = self.cursor.inc();
         i
     }
 
@@ -221,6 +237,7 @@ impl<const S: usize> Stack<S> {
         if let Some(i) = self.cursor.try_as_index() {
             let v = self.buf[i].clone();
             self.cursor = self.cursor.dec();
+
             Some(v)
         } else {
             None

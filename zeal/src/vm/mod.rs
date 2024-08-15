@@ -20,10 +20,15 @@ macro_rules! binary_op {
 
         {
 
+
             let right = $stack.expect_pop().expect_float64();
             let left = $stack.expect_pop().expect_float64();
+
             let res = ZValue::Number(left $op right);
             $stack.push(res);
+
+
+
         }
 
     };
@@ -117,17 +122,9 @@ impl VM {
         self.cc = 0;
         if let Some(chunk) = self.chunks.get(depth) {
             for opcode in chunk.iter() {
-                let c = &self.chunks[self.depth];
-                let _ = vm_exec_opcode(&mut self.stack, &c.constants, opcode)?;
+                vm_exec_opcode(&mut self.stack, &chunk.constants, opcode)?;
             }
 
-            // while self.cc < code.len() {
-            //     let oc = self.expect_opcode_at(self.cc, depth);
-            //
-            //     let c = &self.chunks[self.depth];
-            //     let offset = vm_exec_opcode(&mut self.stack, &c.constants, oc)?;
-            //     self.cc += offset;
-            // }
             let top = if let Some(t) = self.stack.peek_top() {
                 t.clone()
             } else {
@@ -152,7 +149,6 @@ impl VM {
 
     pub fn exec_source(&mut self, src: &str) -> anyhow::Result<ZValue> {
         let depth = self.compile_source(src)?;
-        println!("COMPILED SOURCE");
         self.exec_chunk(depth)
     }
 

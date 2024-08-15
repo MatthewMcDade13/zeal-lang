@@ -103,6 +103,10 @@ impl OpParam {
         }
     }
 
+    pub const fn offset(&self) -> usize {
+        self.nbytes() + 1
+    }
+
     pub const fn to_u8(self) -> u8 {
         match self {
             OpParam::Byte(b) => b,
@@ -153,7 +157,7 @@ pub struct Opcode {
 impl Opcode {
     pub const fn offset(&self) -> usize {
         if let Some(param) = self.param {
-            param.nbytes()
+            param.offset()
         } else {
             1
         }
@@ -317,8 +321,12 @@ pub fn read_slice_as_bytecode(ops: &[u8], index: usize) -> Option<Opcode> {
     Some(Opcode { op, param })
 }
 
-pub unsafe fn read_ptr_as_bytecode(ops: *const u8, index: usize, len: usize) -> Option<Opcode> {
-    if index >= len {
+pub unsafe fn read_raw_slice_as_bytecode(
+    ops: *const u8,
+    index: usize,
+    len: usize,
+) -> Option<Opcode> {
+    if len == 0 || index >= len {
         return None;
     }
     let op = *ops.add(index);
