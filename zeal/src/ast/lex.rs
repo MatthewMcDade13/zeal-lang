@@ -9,7 +9,7 @@ use logos::{Lexer, Logos, Skip};
 use crate::{
     core_types::{
         num::ZFloat64,
-        str::{ZString, ZIdent},
+        str::{ZIdent, ZString},
     },
     err::lex::LexError,
 };
@@ -85,7 +85,7 @@ impl Tok {
         }
     }
 
-    pub fn into_sym(self) -> ZIdent {
+    pub fn into_ident(self) -> ZIdent {
         ZIdent::from(self.lexeme)
     }
 }
@@ -109,6 +109,7 @@ pub enum TokType {
     EqEq,
     Eof,
     Comment,
+    Var,
 
     Struct,
     Trait,
@@ -143,6 +144,7 @@ pub enum TokType {
     Continue,
 
     Print,
+    Println,
 
     Plus,
 
@@ -218,6 +220,7 @@ impl From<&LexTok> for TokType {
             LexTok::Super => TokType::Super,
             LexTok::ThisSelf => TokType::ThisSelf,
             LexTok::Let => TokType::Let,
+            LexTok::Var => TokType::Var,
             LexTok::Const => TokType::Const,
             LexTok::Loop => TokType::Loop,
             LexTok::For => TokType::For,
@@ -225,13 +228,14 @@ impl From<&LexTok> for TokType {
             LexTok::Break => TokType::Break,
             LexTok::Match => TokType::Match,
             LexTok::Continue => TokType::Continue,
+            LexTok::Println => TokType::Println,
             LexTok::Print => TokType::Print,
             LexTok::Plus => TokType::Plus,
             LexTok::Minus => TokType::Minus,
             LexTok::ForwardSlash => TokType::ForwardSlash,
             LexTok::Star => TokType::Star,
             LexTok::NewLine => TokType::NewLine,
-            LexTok::Symbol => TokType::Ident,
+            LexTok::Ident => TokType::Ident,
             LexTok::Bool(true) => TokType::True,
             LexTok::Bool(false) => TokType::False,
             LexTok::Do => TokType::Do,
@@ -298,6 +302,9 @@ pub enum LexTok {
     #[token("self")]
     ThisSelf,
 
+    #[token("var")]
+    Var,
+
     #[token("let")]
     Let,
 
@@ -325,6 +332,9 @@ pub enum LexTok {
     #[token("print")]
     Print,
 
+    #[token("println")]
+    Println,
+
     #[token("+")]
     Plus,
 
@@ -341,7 +351,7 @@ pub enum LexTok {
     NewLine,
 
     #[regex(r"\w+")]
-    Symbol,
+    Ident,
 
     #[token("false", |_| false)]
     #[token("true", |_| true)]

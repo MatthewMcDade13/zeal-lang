@@ -10,18 +10,34 @@ use crate::{
     sys::{array_from_raw, array_from_slice},
 };
 
+#[derive(Debug, Clone, Copy)]
+pub enum VarOp {
+    Define,
+    Get,
+    Set,
+}
+
 //
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Op {
     Return,
+    Println,
     Print,
     Pop,
+    // Pops n times. parameter: u8
+    PopN,
     Add,
     Sub,
     Div,
     Mul,
+    Eq,
+    Gt,
+    Lt,
+    Ge,
+    Le,
+    NotEq,
     Neg,
     Not,
     Nil,
@@ -33,6 +49,13 @@ pub enum Op {
     Const24,
     Const32,
     Const64,
+    DefineGlobal,
+    GetGlobal,
+    SetGlobal,
+
+    DefineLocal,
+    GetLocal,
+    SetLocal,
     Unknown,
 }
 
@@ -44,8 +67,13 @@ impl Op {
             Op::Const24 => OP24,
             Op::Const32 => OP32,
             Op::Const64 => OP64,
+            Op::PopN => OP8,
             _ => 0,
         }
+    }
+
+    pub const fn offset(self) -> usize {
+        self.stride() + 1
     }
 }
 
@@ -103,8 +131,60 @@ impl OpParam {
         }
     }
 
+    pub const fn as_const_op(&self) -> Op {
+        match self {
+            OpParam::Byte(_) => Op::Const8,
+            OpParam::Byte16(_) => Op::Const16,
+            OpParam::Byte24(_) => Op::Const24,
+            OpParam::Byte32(_) => Op::Const32,
+            OpParam::Byte64(_) => Op::Const64,
+        }
+    }
+
     pub const fn offset(&self) -> usize {
         self.nbytes() + 1
+    }
+
+    /// Tries to get smallest param for any positive 64bit number (eg: Byte for numbers 0-255, ect.)
+    pub const fn pack(v: u64) -> Self {
+        match v {
+            0..0xFF => Self::Byte(v as u8),
+            0xFF..0xFFFF => {
+                let b = v as u16;
+                Self::Byte16(b.to_le_bytes())
+            }
+            0xFFFF..0xFFFFFFFF => {
+                let b = v as u32;
+                // for i in 0..3 {
+                // dst[i] = b[i];
+                // }
+                Self::Byte32(b.to_le_bytes())
+            }
+            _ => Self::Byte64(v.to_le_bytes()),
+        }
+    }
+
+    pub const fn byte(v: u8) -> Self {
+        Self::Byte(v)
+    }
+
+    pub const fn byte16(v: u16) -> Self {
+        Self::Byte16(v.to_le_bytes())
+    }
+
+    pub fn byte24(v: u32) -> Self {
+        let bs = &v.to_le_bytes()[..3];
+        let mut dst = [0; 3];
+        dst.copy_from_slice(bs);
+        Self::Byte24(dst)
+    }
+
+    pub const fn byte32(v: u32) -> Self {
+        Self::Byte32(v.to_le_bytes())
+    }
+
+    pub const fn byte64(v: u64) -> Self {
+        Self::Byte64(v.to_le_bytes())
     }
 
     pub const fn to_u8(self) -> u8 {

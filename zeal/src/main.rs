@@ -4,11 +4,12 @@ use zeal::{
     vm::VM,
 };
 
+const PATH: &'static str = "./src/scripts/calculator.zeal";
 fn main() -> anyhow::Result<()> {
     const SOURCE: &'static str = "4 * 3 + 10 / 5 - 6\n\n"; //\nlet x = 5 + 5 + (5 * 3)\n\n";
 
     let mut vm = VM::new();
-    let v = vm.exec_source(SOURCE)?;
+    let v = vm.exec_file(PATH)?;
     println!("{v}");
     // let x = TokBuffer::read_string(s)?;
 

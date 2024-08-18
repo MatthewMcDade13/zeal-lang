@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Index};
+use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use anyhow::bail;
 use stack::Stack;
@@ -10,12 +10,28 @@ use crate::{
         opcode::{Bytecode, Op, Opcode},
         Archon,
     },
-    core_types::val::ZValue,
+    core_types::{num::ZBool, str::RuneTable, val::ZValue},
 };
 
 pub mod stack;
+macro_rules! logical_binary_op {
+    ($stack: ident, $op: tt) => {
 
-macro_rules! binary_op {
+        {
+            let right = $stack.expect_pop().expect_float64();
+            let left = $stack.expect_pop().expect_float64();
+
+            let res = ZValue::Bool(ZBool::new(left $op right));
+            $stack.push(res);
+
+
+
+        }
+
+    };
+}
+
+macro_rules! num_binary_op {
     ($stack: ident, $op: tt) => {
 
         {
@@ -43,6 +59,7 @@ pub struct VM {
     depth: usize,
     /// program counter for current running chunk. (chunk counter)
     cc: usize,
+    globals: HashMap<String, ZValue>, // runes: RuneTable,
 }
 
 impl VM {
@@ -52,6 +69,8 @@ impl VM {
             chunks: Vec::with_capacity(8),
             depth: 0,
             cc: 0,
+            globals: HashMap::new(),
+            // runes: RuneTable::empty(),
         }
     }
 
@@ -121,8 +140,95 @@ impl VM {
     pub fn exec_chunk(&mut self, depth: usize) -> anyhow::Result<ZValue> {
         self.cc = 0;
         if let Some(chunk) = self.chunks.get(depth) {
+            let stack = &mut self.stack;
             for opcode in chunk.iter() {
-                vm_exec_opcode(&mut self.stack, &chunk.constants, opcode)?;
+                match opcode.op {
+                    Op::Return => {}
+                    Op::Println => {
+                        let v = stack.peek_top().expect("cannot peek an empty stack!");
+                        println!("{}", v.to_string())
+                    }
+
+                    Op::Print => {
+                        let v = stack.peek_top().expect("cannot peek an empty stack!");
+                        print!("{}", v.to_string())
+                    }
+
+                    Op::Pop => {
+                        let _ = stack.expect_pop();
+                    }
+                    Op::PopN => {
+                        let param = opcode.param.unwrap();
+                        let n = param.to_u32() as usize;
+                        for _ in 0..n {
+                            let _ = stack.expect_pop();
+                        }
+                    }
+                    Op::Add => {
+                        num_binary_op!(stack, +);
+                        // let right = self.stack.pop().expect_float64();
+                        // let left = self.stack.pop().expect_float64();
+                        // let res = ZValue::Number(left + right);
+                        // self.stack.push(res);
+                    }
+                    Op::Sub => {
+                        num_binary_op!(stack, -);
+                    }
+                    Op::Div => num_binary_op!(stack, /),
+                    Op::Mul => num_binary_op!(stack, *),
+                    Op::Neg => {
+                        let val = stack.expect_pop().expect_float64();
+                        stack.push(ZValue::Number(-val));
+                    }
+                    Op::Not => {
+                        let val = stack.expect_pop();
+                        let res = if val.is_truthy() { false } else { true };
+                        stack.push(ZValue::bool(res));
+                    }
+                    Op::Nil => {
+                        let _ = stack.push(ZValue::Nil);
+                    }
+                    Op::True => {
+                        let _ = stack.push(ZValue::bool(true));
+                    }
+                    Op::False => {
+                        let _ = stack.push(ZValue::bool(false));
+                    }
+                    Op::Concat => todo!(),
+                    Op::Const8 | Op::Const16 | Op::Const24 | Op::Const32 | Op::Const64 => {
+                        // let param = opcode.param.unwrap();
+                        // let id = param.to_u32() as usize;
+                        // let v = constants[id].clone();
+                        // let v = self.chunk().try_read_const(opcode).unwrap();
+                        let v = read_constant(&opcode, &chunk.constants)
+                            .expect("Failed to read Constant!");
+
+                        stack.push(v.clone());
+                    }
+                    Op::Unknown => todo!(),
+                    Op::DefineGlobal => {
+                        let name = read_constant(&opcode, &chunk.constants)
+                            .expect("Failed to read constant global!!!");
+                        if let ZValue::Ident(s) = name {
+                            let val = stack.expect_pop();
+                            self.globals.insert(s.name().to_owned(), val);
+                        }
+                    }
+                    Op::GetGlobal => todo!(),
+                    Op::SetGlobal => todo!(),
+                    Op::DefineLocal => todo!(),
+                    Op::GetLocal => todo!(),
+                    Op::SetLocal => todo!(),
+                    Op::Eq => logical_binary_op!(stack, ==),
+                    Op::Gt => logical_binary_op!(stack, >),
+                    Op::Lt => logical_binary_op!(stack, <),
+                    Op::Ge => logical_binary_op!(stack, >),
+                    Op::Le => logical_binary_op!(stack, <),
+                    Op::NotEq => logical_binary_op!(stack, !=),
+                };
+
+                // Ok(opcode.offset())
+                // vm_exec_opcode(&mut self.stack, &chunk.constants, opcode)?;
             }
 
             let top = if let Some(t) = self.stack.peek_top() {
@@ -146,6 +252,11 @@ impl VM {
     //     }
     //     Ok(())
     // }
+    //
+    pub fn exec_file(&mut self, path: &str) -> anyhow::Result<ZValue> {
+        let source = std::fs::read_to_string(path)?;
+        self.exec_source(&source)
+    }
 
     pub fn exec_source(&mut self, src: &str) -> anyhow::Result<ZValue> {
         let depth = self.compile_source(src)?;
@@ -164,63 +275,13 @@ impl Display for VM {
     }
 }
 
-/// Executes given opcode and returns the offset index to the next opcode
-fn vm_exec_opcode<const S: usize>(
-    stack: &mut Stack<S>,
-    constants: &[ZValue],
-    opcode: Opcode,
-) -> anyhow::Result<usize> {
-    match opcode.op {
-        Op::Return => {}
-        Op::Print => {
-            let v = stack.expect_pop();
-            println!("{}", v.to_string())
-        }
-        Op::Pop => {
-            let _ = stack.expect_pop();
-        }
-        Op::Add => {
-            binary_op!(stack, +);
-            // let right = self.stack.pop().expect_float64();
-            // let left = self.stack.pop().expect_float64();
-            // let res = ZValue::Number(left + right);
-            // self.stack.push(res);
-        }
-        Op::Sub => {
-            binary_op!(stack, -);
-        }
-        Op::Div => binary_op!(stack, /),
-        Op::Mul => binary_op!(stack, *),
-        Op::Neg => {
-            let val = stack.expect_pop().expect_float64();
-            stack.push(ZValue::Number(-val));
-        }
-        Op::Not => {
-            let val = stack.expect_pop();
-            let res = if val.is_truthy() { false } else { true };
-            stack.push(ZValue::bool(res));
-        }
-        Op::Nil => {
-            let _ = stack.push(ZValue::Nil);
-        }
-        Op::True => {
-            let _ = stack.push(ZValue::bool(true));
-        }
-        Op::False => {
-            let _ = stack.push(ZValue::bool(false));
-        }
-        Op::Concat => todo!(),
-        Op::Const8 | Op::Const16 | Op::Const24 | Op::Const32 | Op::Const64 => {
-            let param = opcode.param.unwrap();
-            let id = param.to_u32() as usize;
-            let v = constants[id].clone();
-            // let v = self.chunk().try_read_const(opcode).unwrap();
-            stack.push(v);
-        }
-        Op::Unknown => todo!(),
-    };
-
-    Ok(opcode.offset())
+const fn read_constant<'a>(opcode: &Opcode, constants: &'a [ZValue]) -> Option<&'a ZValue> {
+    if let Some(param) = opcode.param {
+        let id = param.to_u32() as usize;
+        Some(&constants[id])
+    } else {
+        None
+    }
 }
 
 // fn compile_source(src: &str) -> anyhow::Result<Vec<Chunk>> {

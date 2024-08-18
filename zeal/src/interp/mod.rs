@@ -35,8 +35,9 @@ impl Interpreter {
     pub fn eval(&mut self, expr: &Expr) -> anyhow::Result<ZValue> {
         match expr {
             Expr::Call(cl) => todo!(),
+            Expr::Effect(ef) => todo!(),
             Expr::Block(bl) => todo!(),
-            Expr::List(li) => self.eval(li.as_ref()),
+            // Expr::List(li) => self.eval(li.as_ref()),
             Expr::Atom(at) => Ok(at.clone()),
         }
 
@@ -44,7 +45,7 @@ impl Interpreter {
     }
 
     pub fn eval_ast(&mut self, ast: Ast) -> anyhow::Result<ZValue> {
-        let exprs = ast.slice();
+        let exprs = &ast.tree;
         let back = exprs.len() - 1;
         for expr in &exprs[..back] {
             let _ = self.eval(expr)?;
@@ -56,13 +57,13 @@ impl Interpreter {
         let head = cl.first().expect("Cannot apply empty call list!");
         let mut evaled = Vec::with_capacity(8);
 
-        if let Some(val) = head.as_zval_sym() {
-            if let ZValue::Sym(s) = val {
+        if let Some(val) = head.as_zval_ident() {
+            if let ZValue::Ident(s) = val {
                 evaled.push(val.clone());
 
                 for expr in &cl[1..] {
                     let zv = self.eval(expr)?;
-                    // evaled.push(zv);
+                    evaled.push(zv);
                 }
 
                 // lookup symbol in environment and execute it as a function with the

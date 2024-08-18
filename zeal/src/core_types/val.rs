@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Display, ops::Add, rc::Rc};
+use std::{cell::RefCell, fmt::Display, hash::Hash, ops::Add, rc::Rc};
 
 use super::{
     bytes::{ZBuffer, ZByte},
@@ -25,15 +25,102 @@ pub enum ZValue {
     Obj(ZHashTable),
     MutRef(ZMutRef),
     Rune(ZRune),
-    Sym(ZIdent),
+    Ident(ZIdent),
+    // List(Rc<[Self]>),
 
     // No-op / whitespace placeholder (for parsing)
     Unit,
 }
 
+impl Eq for ZValue {}
+
+impl PartialEq for ZValue {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            ZValue::Nil => {
+                if let ZValue::Nil = other {
+                    true
+                } else {
+                    false
+                }
+            }
+            ZValue::Bool(sb) => {
+                if let Self::Bool(other_bool) = other {
+                    sb == other_bool
+                } else {
+                    false
+                }
+            }
+            ZValue::Number(n) => {
+                if let Self::Number(other_n) = other {
+                    n == other_n
+                } else {
+                    false
+                }
+            }
+            ZValue::Byte(_) => todo!(),
+            ZValue::Buffer(_) => todo!(),
+            ZValue::Str(s) => {
+                if let Self::Str(other_s) = other {
+                    s == other_s
+                } else {
+                    false
+                }
+            }
+            ZValue::Vec(_) => todo!(),
+            ZValue::Obj(_) => todo!(),
+            ZValue::MutRef(_) => todo!(),
+            ZValue::Rune(_) => todo!(),
+            ZValue::Ident(ident) => {
+                if let Self::Ident(other_ident) = other {
+                    ident == other_ident
+                } else {
+                    false
+                }
+            }
+            ZValue::Unit => {
+                if let Self::Unit = other {
+                    true
+                } else {
+                    false
+                }
+            } // ZValue::List(li) => {
+              //     if let Self::List(other_li) = other {
+              //         li == other_li
+              //     } else {
+              //         false
+              //     }
+              // }
+        }
+    }
+}
+
+impl Hash for ZValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            ZValue::Nil => (0xDEADBEEFu64).hash(state),
+            ZValue::Bool(b) => b.hash(state),
+            ZValue::Number(n) => n.u64().hash(state),
+            ZValue::Byte(_) => todo!(),
+            ZValue::Buffer(_) => todo!(),
+            ZValue::Str(st) => st.hash(state),
+            ZValue::Vec(v) => v.hash(state),
+            ZValue::Obj(_) => todo!(),
+            ZValue::MutRef(_) => todo!(),
+            ZValue::Rune(_) => todo!(),
+            ZValue::Ident(ident) => ident.name().hash(state),
+            ZValue::Unit => 0xACAB.hash(state),
+            // ZValue::List(li) => li.hash(state),
+        }
+    }
+}
+
 impl ZValue {
-    pub const fn is_sym(&self) -> bool {
-        if let Self::Sym(_) = self {
+    pub fn empty_vec() -> Self {
+        Self::Vec(ZVec::new())
+    }
+    pub const fn is_ident(&self) -> bool {
+        if let Self::Ident(_) = self {
             true
         } else {
             false
@@ -52,8 +139,9 @@ impl ZValue {
             ZValue::Obj(_) => "Object",
             ZValue::MutRef(_) => "Ref",
             ZValue::Rune(_) => "Rune",
-            ZValue::Sym(_) => "Symbol",
+            ZValue::Ident(_) => "Symbol",
             ZValue::Unit => "()",
+            // ZValue::List(_) => "AstList",
         }
     }
 
@@ -74,8 +162,9 @@ impl ZValue {
             ZValue::Obj(_) => false,
             ZValue::MutRef(_) => false,
             ZValue::Rune(r) => false,
-            ZValue::Sym(sym) => false,
+            ZValue::Ident(sym) => false,
             ZValue::Unit => true,
+            // ZValue::List(li) => li.len() == 0,
         }
     }
 
@@ -126,8 +215,12 @@ impl ZValue {
         Self::Number(ZFloat64::new(v))
     }
 
-    pub fn symbol(sym: &ZIdent) -> Self {
-        Self::Sym(sym.clone())
+    pub fn ident_from_str(string: &str) -> Self {
+        Self::Ident(ZIdent::new(string))
+    }
+
+    pub fn ident(ident: ZIdent) -> Self {
+        Self::Ident(ident)
     }
 
     pub fn string(s: ZString) -> Self {
@@ -150,13 +243,14 @@ impl Display for ZValue {
             ZValue::Number(n) => n.to_string(),
             ZValue::Byte(b) => b.to_string(),
             ZValue::Buffer(_buf) => todo!(),
-            ZValue::Str(s) => s.to_string(),
-            ZValue::Vec(_) => todo!(),
+            ZValue::Str(s) => format!("\"{}\"", s.to_string()),
+            ZValue::Vec(v) => v.iter().map(|v| v.to_string()).collect::<String>(),
             ZValue::Obj(_) => todo!(),
             ZValue::MutRef(_) => todo!(),
             ZValue::Rune(ri) => ri.to_string(),
-            ZValue::Sym(s) => s.to_string(),
+            ZValue::Ident(s) => format!("#{}", s.to_string()),
             ZValue::Unit => "unit()".into(),
+            // ZValue::List(_) => todo!(),
         };
         write!(f, "{}", s)
     }

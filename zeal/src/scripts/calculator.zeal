@@ -1,0 +1,7 @@
+let x = 5 * 5
+
+let y = x == 10
+
+println x
+println y
+

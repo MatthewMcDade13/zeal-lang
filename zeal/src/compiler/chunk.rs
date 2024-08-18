@@ -2,11 +2,18 @@ use std::fmt::Display;
 
 use crate::{
     compiler::opcode::{OpParam, OP16, OP24, OP32, OP64, OP8},
-    core_types::val::ZValue,
+    core_types::{
+        str::{ZIdent, ZString},
+        val::ZValue,
+    },
     sys::copy_slice_into,
+    vm::{self, VM},
 };
 
-use super::opcode::{read_raw_slice_as_bytecode, Bytecode, Op, Opcode};
+use super::{
+    opcode::{read_raw_slice_as_bytecode, Bytecode, Op, Opcode, VarOp},
+    state::ScopeState,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ChunkIter {
@@ -35,6 +42,7 @@ impl Iterator for ChunkIter {
 pub struct Chunk {
     pub buf: Bytecode,
     pub constants: Vec<ZValue>,
+    pub scope: ScopeState,
 }
 
 impl IntoIterator for Chunk {
@@ -59,6 +67,7 @@ impl Chunk {
         Self {
             buf: Bytecode::from(Vec::with_capacity(buf_cap)),
             constants: Vec::with_capacity(const_cap),
+            scope: ScopeState::with_capacity(Self::DEFAULT_CAPACITY),
         }
     }
 
@@ -97,6 +106,7 @@ impl Chunk {
     }
 
     /// Gets bygtecode as a raw &[u8]
+    #[inline]
     pub fn bytes(&self) -> &[u8] {
         self.buf.slice()
     }
@@ -105,6 +115,7 @@ impl Chunk {
         &self.buf
     }
 
+    #[inline]
     pub fn constants(&self) -> &[ZValue] {
         self.constants.as_ref()
     }
@@ -120,28 +131,51 @@ impl Chunk {
         }
     }
 
-    pub fn push_number(&mut self, n: f64) {
+    #[inline]
+    pub fn push_string(&mut self, string: &str) -> usize {
+        self.push_constant(ZValue::string(ZString::from(string)))
+    }
+
+    #[inline]
+    pub fn push_ident(&mut self, ident: ZIdent) -> usize {
+        self.push_constant(ZValue::ident(ident))
+    }
+
+    #[inline]
+    pub fn push_ident_str(&mut self, string: &str) -> usize {
+        self.push_constant(ZValue::ident_from_str(string))
+    }
+
+    pub fn push_variable(&mut self, name: ZIdent, var_op: VarOp) -> usize {
+        let v = ZValue::Ident(name);
+
         let id = self.constants.len();
-        let v = ZValue::number(n);
         self.constants.push(v);
 
-        let (param, op) = match id {
-            0..0xFF => (OpParam::Byte(id as u8), Op::Const8),
-            0xFF..0xFFFF => {
-                let b = id as u16;
-                (OpParam::Byte16(b.to_le_bytes()), Op::Const16)
+        let param = OpParam::pack(id as u64);
+        let is_global = self.scope.depth() == 0;
+        let op = match var_op {
+            VarOp::Define => {
+                if is_global {
+                    Op::DefineGlobal
+                } else {
+                    Op::DefineLocal
+                }
             }
-            0xFFFF..0xFFFFFF => {
-                let b = id as u32;
-                let b = b.to_le_bytes();
-                let mut dst = [0u8; 3];
-                dst.copy_from_slice(&b[..OP24]);
-                // for i in 0..3 {
-                // dst[i] = b[i];
-                // }
-                (OpParam::Byte24(dst), Op::Const24)
+            VarOp::Get => {
+                if is_global {
+                    Op::GetGlobal
+                } else {
+                    Op::GetLocal
+                }
             }
-            _ => panic!("Constant array longer than {}", 0xFFFFFF),
+            VarOp::Set => {
+                if is_global {
+                    Op::SetGlobal
+                } else {
+                    Op::SetLocal
+                }
+            }
         };
 
         let op = Opcode {
@@ -149,6 +183,25 @@ impl Chunk {
             param: Some(param),
         };
         self.push_opcode(op);
+        param.to_u32() as usize
+    }
+    /// adds v to constant table, returns id of constant
+    pub fn push_constant(&mut self, v: ZValue) -> usize {
+        let id = self.constants.len();
+        self.constants.push(v);
+        let param = OpParam::pack(id as u64);
+        let op = param.as_const_op();
+
+        let op = Opcode {
+            op,
+            param: Some(param),
+        };
+        self.push_opcode(op);
+        param.to_u32() as usize
+    }
+
+    pub fn push_number(&mut self, n: f64) -> usize {
+        self.push_constant(ZValue::number(n))
     }
 
     pub fn push_opcode<T>(&mut self, opcode: T)
@@ -185,8 +238,14 @@ impl Chunk {
             let opcode = self.buf.opcode_at(i).unwrap();
             let op = match opcode.op {
                 Op::Return => "RETURN",
+                Op::Println => "PRINTLN",
                 Op::Print => "PRINT",
                 Op::Pop => "POP",
+                Op::PopN => {
+                    i += 1;
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("POPN => {}, actual: {}", index, self.constants[index])
+                }
                 Op::Add => "ADD",
                 Op::Sub => "SUB",
                 Op::Div => "DIV",
@@ -223,6 +282,19 @@ impl Chunk {
                     &format!("CONST64 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Unknown => "UNKNOWN_OP",
+                Op::DefineGlobal => todo!(),
+                Op::GetGlobal => todo!(),
+                Op::SetGlobal => todo!(),
+
+                Op::DefineLocal => todo!(),
+                Op::GetLocal => todo!(),
+                Op::SetLocal => todo!(),
+                Op::Eq => "EQ",
+                Op::Gt => "GT",
+                Op::Lt => "LT",
+                Op::Ge => "GE",
+                Op::Le => "LE",
+                Op::NotEq => "NEQ",
             };
 
             // println!("{i}");

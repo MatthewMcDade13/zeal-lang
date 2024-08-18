@@ -17,52 +17,31 @@ where
 pub type ValResult = anyhow::Result<ZValue>;
 
 macro_rules! eval_num_binary {
-    ($fn_name: ident, $op: ident, $op_type: ident) => {
-        pub fn $fn_name(vals: &[ZValue]) -> ZValue {
-            let mut acc = $op_type::default();
+    ($fn_name: ident, $op: tt, $init: expr) => {
+        pub fn $fn_name(vals: &[ZValue]) -> ValResult {
+            let mut acc = ZFloat64::new($init);
             for v in vals {
-                acc = acc $op  ;
+                if let ZValue::Number(n) = v {
+                    acc = acc * *n;
+                } else {
+                    bail!(RuntimeError::InvalidType {
+                        expected_type: "Number".into(),
+                        actual_type: v.type_string().into(),
+                        in_fn: None,
+                        message: None,
+                    })
+                }
             }
-            ZValue::from(acc)
+            let n = ZValue::Number(acc);
+            Ok(n)
         }
     };
 }
 
-pub fn sub_num(vals: &[ZValue]) -> ValResult {
-    let mut acc = ZFloat64::new(0.0);
-    for v in vals {
-        if let ZValue::Number(n) = v {
-            acc = acc - *n;
-        } else {
-            bail!(RuntimeError::InvalidType {
-                expected_type: "Number".into(),
-                actual_type: v.type_string().into(),
-                in_fn: None,
-                message: None,
-            })
-        };
-    }
-    let n = ZValue::Number(acc);
-    Ok(n)
-}
-
-pub fn add_num(vals: &[ZValue]) -> ValResult {
-    let mut acc = ZFloat64::new(0.0);
-    for v in vals {
-        if let ZValue::Number(n) = v {
-            acc = acc - *n;
-        } else {
-            bail!(RuntimeError::InvalidType {
-                expected_type: "Number".into(),
-                actual_type: v.type_string().into(),
-                in_fn: None,
-                message: None,
-            })
-        };
-    }
-    let n = ZValue::Number(acc);
-    Ok(n)
-}
+eval_num_binary!(mul_num, *, 1.0);
+eval_num_binary!(div_num, /, 1.0);
+eval_num_binary!(add_nun, +, 0.0);
+eval_num_binary!(sub_num, -, 0.0);
 
 pub fn concat_string(vals: &[ZValue]) -> ZValue {
     let mut acc = String::new();

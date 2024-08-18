@@ -6,39 +6,40 @@ use phf::phf_map;
 use crate::{
     ast::{lex::TokType, AstError, Expr, LexTok, Tok},
     core_types::{
+        idents,
         num::{ZBool, ZFloat64},
-        str::{ZString, ZIdent},
+        str::{ZIdent, ZString},
         val::ZValue,
     },
 };
 
-pub static KEYWORDS: phf::Map<&'static str, LexTok> = phf_map! {
-    "struct" => LexTok::Struct,
-    "trait" => LexTok::Trait,
-    "impl" => LexTok::Impl,
-    "if" => LexTok::If,
-    "else" => LexTok::Else,
-    "true" => LexTok::Bool(true),
-    "false" => LexTok::Bool(false),
-    "fn" => LexTok::Fn,
-    "nil" => LexTok::Nil,
-    "and" => LexTok::And,
-    "or" => LexTok::Or,
-    "return" => LexTok::Return,
-    "super" => LexTok::Super,
-    "self" => LexTok::ThisSelf,
-    "let" => LexTok::Let,
-    "const" => LexTok::Const,
-    "loop" => LexTok::Loop,
-    "for" => LexTok::For,
-    "while" => LexTok::While,
-    "break" => LexTok::Break,
-    "match" => LexTok::Match,
-    "continue" => LexTok::Continue,
-    "print" => LexTok::Print,
-    "do" => LexTok::Do,
-    "end" => LexTok::End,
-};
+// pub static KEYWORDS: phf::Map<&'static str, LexTok> = phf_map! {
+//     "struct" => LexTok::Struct,
+//     "trait" => LexTok::Trait,
+//     "impl" => LexTok::Impl,
+//     "if" => LexTok::If,
+//     "else" => LexTok::Else,
+//     "true" => LexTok::Bool(true),
+//     "false" => LexTok::Bool(false),
+//     "fn" => LexTok::Fn,
+//     "nil" => LexTok::Nil,
+//     "and" => LexTok::And,
+//     "or" => LexTok::Or,
+//     "return" => LexTok::Return,
+//     "super" => LexTok::Super,
+//     "self" => LexTok::ThisSelf,
+//     "let" => LexTok::Let,
+//     "const" => LexTok::Const,
+//     "loop" => LexTok::Loop,
+//     "for" => LexTok::For,
+//     "while" => LexTok::While,
+//     "break" => LexTok::Break,
+//     "match" => LexTok::Match,
+//     "continue" => LexTok::Continue,
+//     "println" => LexTok::Println,
+//     "do" => LexTok::Do,
+//     "end" => LexTok::End,
+// };
 
 #[derive(Debug, Clone)]
 pub struct Parser {
@@ -54,7 +55,7 @@ impl Parser {
         };
         let mut exprs = Vec::new();
         'parse: while !p.is_eof() {
-            let ex = p.declaration().expect("Parse Error.");
+            let ex = p.declaration()?;
             exprs.push(ex);
             while p.peek().ty == TokType::NewLine {
                 if p.i == p.tokens.len() - 1 {
@@ -80,7 +81,7 @@ impl Parser {
                 | TokType::For
                 | TokType::If
                 | TokType::While
-                | TokType::Print
+                | TokType::Println
                 | TokType::Return => break,
                 _ => self.advance(1),
             }
@@ -94,21 +95,21 @@ impl Parser {
     // Option as parsing an invalid declaration just results in that declaration getting ignored.
     // we should probably do some logging or error reporting at a higher level so invalid
     // declarations can be known about and arent completely silently ignored.
-    fn declaration(&mut self) -> Option<Expr> {
-        let result = if let TokType::Let = self.peek().ty {
+    fn declaration(&mut self) -> anyhow::Result<Expr> {
+        if let TokType::Let | TokType::Var = self.peek().ty {
             self.advance(1);
             self.let_expr()
         } else {
-            self.statement()
-        };
-
-        match result {
-            anyhow::Result::Ok(stmt) => Some(stmt),
-            Err(_) => {
-                self.synchronize();
-                None
-            }
+            self.statement_expr()
         }
+
+        // match result {
+        //     anyhow::Result::Ok(stmt) => Some(stmt),
+        //     Err(_) => {
+        //         self.synchronize();
+        //         None
+        //     }
+        // }
     }
     //
     // fn let_statement(&mut self) -> anyhow::Result<Stmt> {
@@ -162,7 +163,7 @@ impl Parser {
             if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
                 let name = ZIdent::from(name);
                 self.advance(1);
-                Ok(Expr::assignment(&name, initializer.as_ref()))
+                Ok(Expr::let_definition(&name, initializer.as_ref()))
             } else {
                 bail!(
                     "{}",
@@ -192,6 +193,17 @@ impl Parser {
                 self.block().map(|ex| Expr::Block(ex))
                 // Ok(Expr::Block(self.block()?))
             }
+            // TODO: I dont like this. Make these Print* keywords into functions when
+            // I get around to implementing them.
+            TokType::Print => {
+                self.advance(1);
+                self.print_expr(PrintType::Fmt)
+            }
+
+            TokType::Println => {
+                self.advance(1);
+                self.print_expr(PrintType::Newline)
+            }
             _ => self.statement(),
         }
     }
@@ -218,22 +230,29 @@ impl Parser {
         }
     }
 
-    // fn statement_print(&mut self) -> anyhow::Result<Stmt> {
-    //     let expr = self.expression()?;
-    //     if let TokType::Semicolon = self.peek().ty {
-    //         self.advance(1);
-    //         Ok(Stmt::Print(expr))
-    //     } else {
-    //         bail!(
-    //             "{}",
-    //             AstWalkError::ParseError {
-    //                 token: self.peek().tok.clone(),
-    //                 message: "Expected ';' after value".into()
-    //             }
-    //         )
-    //     }
-    // }
-    //
+    fn print_expr(&mut self, ty: PrintType) -> anyhow::Result<Expr> {
+        let expr = self.expression()?;
+        if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
+            self.advance(1);
+            let head = match ty {
+                PrintType::Fmt => ZIdent::new(idents::PRINT),
+                PrintType::Newline => ZIdent::new(idents::PRINTLN),
+            };
+            let exprs = &[expr];
+            let e = Expr::effect(head, Some(exprs));
+            Ok(e)
+        } else {
+            bail!(
+                "{}",
+                AstError::ParseError {
+                    token: self.peek().tok.clone(),
+                    message: "Expected newline or ';' at end of print* expression.".into(),
+                    expr: Some(expr)
+                }
+            )
+        }
+    }
+
     fn statement(&mut self) -> anyhow::Result<Expr> {
         let expr = self.expression()?;
         if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
@@ -258,8 +277,8 @@ impl Parser {
             self.advance(1);
             let equals = self.prev().clone();
             let value = self.assignment()?;
-            if let Some(sym) = expr.inner_symbol() {
-                Ok(Expr::assignment(sym, Some(&value)))
+            if let Some(sym) = expr.inner_ident() {
+                Ok(Expr::assignment(sym.clone(), value.clone()))
             } else {
                 bail!(
                     "{}",
@@ -270,13 +289,6 @@ impl Parser {
                     }
                 )
             }
-            // if let Expr::Name(name) = expr {
-            //     Ok(Expr::Assignment {
-            //         name,
-            //         value: Box::new(value),
-            //     })
-            // } else {
-            // }
         } else {
             Ok(expr)
         }
@@ -292,7 +304,7 @@ impl Parser {
             match self.peek().ty {
                 TokType::Minus | TokType::Plus => {
                     self.advance(1);
-                    let operator = self.prev().clone().into_sym();
+                    let operator = self.prev().clone().into_ident();
                     let right = self.factor()?;
 
                     expr = Expr::binary_op(&expr, &operator, &right);
@@ -318,7 +330,7 @@ impl Parser {
                 | TokType::EqEq
                 | TokType::BangEq => {
                     self.advance(1);
-                    let operator = self.prev().clone().into_sym();
+                    let operator = self.prev().clone().into_ident();
                     let right = self.term()?;
                     expr = Expr::binary_op(&expr, &operator, &right);
                     // expr = Expr::Binary {
@@ -340,7 +352,7 @@ impl Parser {
             match self.peek().ty {
                 TokType::ForwardSlash | TokType::Star => {
                     self.advance(1);
-                    let operator = self.prev().clone().into_sym();
+                    let operator = self.prev().clone().into_ident();
                     let right = self.unary()?;
                     expr = Expr::binary_op(&expr, &operator, &right);
                     // expr = Expr::Binary {
@@ -359,7 +371,7 @@ impl Parser {
         match self.peek().ty {
             TokType::Bang | TokType::Minus => {
                 self.advance(1);
-                let operator = self.prev().clone().into_sym();
+                let operator = self.prev().clone().into_ident();
                 let right = self.unary()?;
                 let expr = Expr::unary_op(&operator, &right);
                 Ok(expr)
@@ -409,10 +421,10 @@ impl Parser {
                     ))
                 }
             }
-            LexTok::Symbol => {
+            LexTok::Ident => {
                 let name = self.peek().clone();
                 self.advance(1);
-                Ok(Expr::Atom(ZValue::Sym(name.into_sym())))
+                Ok(Expr::Atom(ZValue::Ident(name.into_ident())))
             }
             _ => Err(anyhow::anyhow!(
                 "Expected primary or group expression, found: {:?}",
@@ -427,7 +439,7 @@ impl Parser {
             match self.peek().ty {
                 TokType::BangEq | TokType::EqEq => {
                     self.advance(1);
-                    let operator = self.prev().clone().into_sym();
+                    let operator = self.prev().clone().into_ident();
                     let right = self.comparison()?;
                     expr = Expr::binary_op(&expr, &operator, &right);
                     // expr = Expr::Binary {
@@ -465,4 +477,10 @@ impl Parser {
     fn prev(&self) -> &Tok {
         &self.tokens[self.i - 1]
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PrintType {
+    Fmt,
+    Newline,
 }
