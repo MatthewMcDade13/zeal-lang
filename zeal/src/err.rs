@@ -58,6 +58,10 @@ pub mod lex {
 }
 
 pub mod core {
+    use crate::{
+        compiler::opcode::Opcode,
+        core_types::{str::ZIdent, val::ZValue},
+    };
 
     #[derive(Debug, thiserror::Error, Clone)]
     pub enum RuntimeError {
@@ -67,6 +71,13 @@ pub mod core {
             actual_type: &'static str,
             in_fn: Option<&'static str>,
             message: Option<String>,
+        },
+        #[error(
+            "Unknown Identifier encountered from opcode: {opcode:?}, vm constants: {constants:?}"
+        )]
+        VMUnknownIdentifier {
+            opcode: Opcode,
+            constants: Vec<ZValue>,
         },
     }
 }

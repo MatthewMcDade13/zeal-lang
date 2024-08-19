@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::bail;
 
-use crate::sys;
+use crate::{compiler::opcode::Op, sys};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -39,6 +39,10 @@ impl From<&str> for ZString {
     }
 }
 impl ZString {
+    #[inline]
+    pub fn new(string: &str) -> Self {
+        Self(Rc::from(string))
+    }
     pub fn as_str(&self) -> &str {
         self.0.as_ref()
     }
@@ -94,6 +98,10 @@ impl RuneTable {
             next: 0,
         }
     }
+    //
+    // pub fn new_core() -> Self {
+    //     let mut runes = Vec::new();
+    // }
 
     pub(crate) fn add_unchecked(&mut self, name: &str) -> ZRune {
         let id = self.next;
@@ -168,10 +176,62 @@ impl Display for ZRune {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ZIdent(ZString);
 
+impl PartialEq<str> for ZIdent {
+    fn eq(&self, other: &str) -> bool {
+        self.0.as_str() == other
+    }
+}
+
+impl Hash for ZIdent {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
+
 impl ZIdent {
+    pub fn binary_operator(&self) -> Option<Op> {
+        match self.name() {
+            idents::ADD => Some(Op::Add),
+            idents::SUB => Some(Op::Sub),
+            idents::DIV => Some(Op::Div),
+            idents::MUL => Some(Op::Mul),
+            idents::CONCAT => Some(Op::Concat),
+            idents::EQUAL => Some(Op::Eq),
+            idents::NOT_EQUAL => Some(Op::NotEq),
+            idents::LT => Some(Op::Lt),
+            idents::GT => Some(Op::Gt),
+            idents::LE => Some(Op::Le),
+            idents::GE => Some(Op::Ge),
+            _ => None,
+        }
+    }
+
+    pub fn unary_operator(&self) -> Option<Op> {
+        match self.name() {
+            idents::SUB | idents::NOT => Some(Op::Neg),
+            _ => None,
+        }
+    }
+
+    pub fn new(string: &str) -> Self {
+        Self(ZString::from(string))
+    }
+
+    pub fn is_reserved_any(&self) -> bool {
+        let s = self.0.as_str();
+        Self::is_str_reserved_any(s)
+    }
+
+    #[inline]
+    pub fn is_str_reserved_any(s: &str) -> bool {
+        idents::IDENTS.contains(s)
+    }
+
+    // pub fn is_ident(ident: )
+    #[inline]
     pub fn name(&self) -> &str {
         self.0.as_ref()
     }
@@ -198,9 +258,11 @@ impl Display for ZIdent {
 }
 
 use crate::ast::lex::Tok;
+
+use super::idents::{self, CoreIdent};
 impl From<Tok> for ZIdent {
     fn from(value: Tok) -> Self {
-        value.into_sym()
+        value.into_ident()
     }
 }
 

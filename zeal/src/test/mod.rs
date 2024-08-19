@@ -23,4 +23,14 @@ mod tests {
         Ok(())
         // let bytes = Archon::compile(&ast)?;
     }
+
+    #[test]
+    fn calc_vars_test() -> anyhow::Result<()> {
+        const PATH: &'static str = "src/test/scripts/calc_vars.zeal";
+
+        let mut vm = VM::new();
+        let v = vm.exec_source(PATH)?;
+        Ok(())
+        // let ast = Ast::from_file("src/test/scripts/calc_vars.zeal")?;
+    }
 }
