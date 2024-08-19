@@ -13,6 +13,8 @@ use crate::{
     },
 };
 
+use super::{CallExpr, ExprList};
+
 // pub static KEYWORDS: phf::Map<&'static str, LexTok> = phf_map! {
 //     "struct" => LexTok::Struct,
 //     "trait" => LexTok::Trait,
@@ -48,7 +50,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<Vec<Expr>> {
+    pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<Box<[ExprList]>> {
         let mut p = Self {
             i: 0,
             tokens: tokens.to_vec(),
@@ -64,7 +66,7 @@ impl Parser {
                 p.advance(1);
             }
         }
-        Ok(exprs)
+        Ok(exprs.into_boxed_slice())
     }
 
     /// advance cursor to the next expression
@@ -95,10 +97,10 @@ impl Parser {
     // Option as parsing an invalid declaration just results in that declaration getting ignored.
     // we should probably do some logging or error reporting at a higher level so invalid
     // declarations can be known about and arent completely silently ignored.
-    fn declaration(&mut self) -> anyhow::Result<Expr> {
+    fn declaration(&mut self) -> anyhow::Result<ExprList> {
         if let TokType::Let | TokType::Var = self.peek().ty {
             self.advance(1);
-            self.let_expr()
+            self.let_expr().map(|e| e.to_unit_list())
         } else {
             self.statement_expr()
         }
@@ -155,7 +157,7 @@ impl Parser {
             self.advance(1);
             let initializer = if let TokType::Eq = self.peek().ty {
                 self.advance(1);
-                Some(self.expression()?)
+                Some(self.statement_expr()?) // expression()?)
             } else {
                 None
             };
@@ -163,7 +165,8 @@ impl Parser {
             if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
                 let name = ZIdent::from(name);
                 self.advance(1);
-                Ok(Expr::let_definition(&name, initializer.as_ref()))
+                let init = initializer.clone();
+                Ok(Expr::let_definition(name.clone(), init))
             } else {
                 bail!(
                     "{}",
@@ -186,29 +189,31 @@ impl Parser {
         }
     }
 
-    fn statement_expr(&mut self) -> anyhow::Result<Expr> {
+    fn statement_expr(&mut self) -> anyhow::Result<ExprList> {
         match self.peek().ty {
             TokType::Do | TokType::Begin => {
                 self.advance(1);
-                self.block().map(|ex| Expr::Block(ex))
+                let bs = self.block()?;
+                Ok(bs)
                 // Ok(Expr::Block(self.block()?))
             }
             // TODO: I dont like this. Make these Print* keywords into functions when
             // I get around to implementing them.
             TokType::Print => {
                 self.advance(1);
-                self.print_expr(PrintType::Fmt)
+                self.print_expr(PrintType::Fmt).map(|e| e.to_unit_list())
             }
 
             TokType::Println => {
                 self.advance(1);
                 self.print_expr(PrintType::Newline)
+                    .map(|e| e.to_unit_list())
             }
-            _ => self.statement(),
+            _ => self.statement().map(|e| e.to_unit_list()),
         }
     }
 
-    fn block(&mut self) -> anyhow::Result<Rc<[Expr]>> {
+    fn block(&mut self) -> anyhow::Result<ExprList> {
         let mut stmt_exprs = Vec::new();
         while self.peek().ty != TokType::End && !self.is_eof() {
             let st = self.statement_expr()?;
@@ -217,12 +222,13 @@ impl Parser {
         }
         if let TokType::End = self.peek().ty {
             let se = stmt_exprs.into_boxed_slice().into();
-            Ok(se)
+            let bl = ExprList::Block(se);
+            Ok(bl)
         } else {
             bail!(
                 "{}",
                 AstError::ParseError {
-                    expr: Some(Expr::Block(stmt_exprs.into_boxed_slice().into())),
+                    expr: Some(ExprList::Block(stmt_exprs.into_boxed_slice().into())),
                     token: self.peek().tok.clone(),
                     message: "Expect 'end' after block.".into()
                 }
@@ -237,9 +243,15 @@ impl Parser {
             let head = match ty {
                 PrintType::Fmt => ZIdent::new(idents::PRINT),
                 PrintType::Newline => ZIdent::new(idents::PRINTLN),
+            }
+            .into();
+            let exprs: &[Expr] = &[expr];
+
+            let cl = CallExpr {
+                head,
+                params: Rc::from(exprs),
             };
-            let exprs = &[expr];
-            let e = Expr::effect(head, Some(exprs));
+            let e = Expr::Call(cl);
             Ok(e)
         } else {
             bail!(
@@ -247,7 +259,7 @@ impl Parser {
                 AstError::ParseError {
                     token: self.peek().tok.clone(),
                     message: "Expected newline or ';' at end of print* expression.".into(),
-                    expr: Some(expr)
+                    expr: Some(expr.to_unit_list())
                 }
             )
         }
@@ -262,7 +274,7 @@ impl Parser {
             bail!(
                 "{}",
                 AstError::ParseError {
-                    expr: Some(expr),
+                    expr: Some(ExprList::Unit(Rc::new(expr))),
                     token: self.peek().tok.clone(),
                     message: "Expected newline or ';' after expression".into()
                 }
@@ -283,7 +295,7 @@ impl Parser {
                 bail!(
                     "{}",
                     AstError::ParseError {
-                        expr: Some(expr),
+                        expr: Some(expr.to_unit_list()),
                         token: equals.tok.clone(),
                         message: "Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs".into()
                     }

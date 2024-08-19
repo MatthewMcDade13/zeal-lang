@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::bail;
 
-use crate::sys;
+use crate::{compiler::opcode::Op, sys};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -185,7 +185,37 @@ impl PartialEq<str> for ZIdent {
     }
 }
 
+impl Hash for ZIdent {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
+
 impl ZIdent {
+    pub fn binary_operator(&self) -> Option<Op> {
+        match self.name() {
+            idents::ADD => Some(Op::Add),
+            idents::SUB => Some(Op::Sub),
+            idents::DIV => Some(Op::Div),
+            idents::MUL => Some(Op::Mul),
+            idents::CONCAT => Some(Op::Concat),
+            idents::EQUAL => Some(Op::Eq),
+            idents::NOT_EQUAL => Some(Op::NotEq),
+            idents::LT => Some(Op::Lt),
+            idents::GT => Some(Op::Gt),
+            idents::LE => Some(Op::Le),
+            idents::GE => Some(Op::Ge),
+            _ => None,
+        }
+    }
+
+    pub fn unary_operator(&self) -> Option<Op> {
+        match self.name() {
+            idents::SUB | idents::NOT => Some(Op::Neg),
+            _ => None,
+        }
+    }
+
     pub fn new(string: &str) -> Self {
         Self(ZString::from(string))
     }

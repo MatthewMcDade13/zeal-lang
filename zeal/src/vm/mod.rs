@@ -10,7 +10,12 @@ use crate::{
         opcode::{Bytecode, Op, Opcode},
         Archon,
     },
-    core_types::{num::ZBool, str::RuneTable, val::ZValue},
+    core_types::{
+        num::ZBool,
+        str::{RuneTable, ZIdent},
+        val::ZValue,
+    },
+    err::core::RuntimeError,
 };
 
 pub mod stack;
@@ -59,7 +64,7 @@ pub struct VM {
     depth: usize,
     /// program counter for current running chunk. (chunk counter)
     cc: usize,
-    globals: HashMap<String, ZValue>, // runes: RuneTable,
+    globals: HashMap<ZIdent, ZValue>, // runes: RuneTable,
 }
 
 impl VM {
@@ -146,7 +151,7 @@ impl VM {
                     Op::Return => {}
                     Op::Println => {
                         let v = stack.peek_top().expect("cannot peek an empty stack!");
-                        println!("{}", v.to_string())
+                        println!("PRINT => {}", v.to_string())
                     }
 
                     Op::Print => {
@@ -206,25 +211,57 @@ impl VM {
                         stack.push(v.clone());
                     }
                     Op::Unknown => todo!(),
-                    Op::DefineGlobal => {
+
+                    // NOTE: ----- DEFINE GLOBAL -----
+                    Op::DefineGlobal8 | Op::DefineGlobal16 | Op::DefineGlobal32 => {
                         let name = read_constant(&opcode, &chunk.constants)
                             .expect("Failed to read constant global!!!");
                         if let ZValue::Ident(s) = name {
                             let val = stack.expect_pop();
-                            self.globals.insert(s.name().to_owned(), val);
+                            self.globals.insert(s.clone(), val);
                         }
                     }
-                    Op::GetGlobal => todo!(),
-                    Op::SetGlobal => todo!(),
-                    Op::DefineLocal => todo!(),
-                    Op::GetLocal => todo!(),
-                    Op::SetLocal => todo!(),
+                    Op::GetGlobal8 | Op::GetGlobal16 | Op::GetGlobal32 => {
+                        if let Some(ZValue::Ident(name)) = read_constant(&opcode, &chunk.constants)
+                        {
+                            if let Some(val) = self.globals.get(name) {
+                                stack.push(val.clone());
+                            } else {
+                                bail!(
+                                    "{}",
+                                    RuntimeError::VMUnknownIdentifier {
+                                        opcode: opcode,
+                                        constants: chunk.constants.to_owned()
+                                    }
+                                )
+                            }
+                        } else {
+                            panic!("Attempted to get Global, but its value in VM constants is not ZValue::Ident.")
+                        }
+                    }
+
+                    Op::SetGlobal8 | Op::SetGlobal16 | Op::SetGlobal32 => {
+                        todo!();
+                    }
+                    // NOTE: ----- END DEFINE GLOBAL -----
                     Op::Eq => logical_binary_op!(stack, ==),
                     Op::Gt => logical_binary_op!(stack, >),
                     Op::Lt => logical_binary_op!(stack, <),
                     Op::Ge => logical_binary_op!(stack, >),
                     Op::Le => logical_binary_op!(stack, <),
                     Op::NotEq => logical_binary_op!(stack, !=),
+
+                    // NOTE: ----- DEFINE LOCAL -----
+                    Op::DefineLocal8 | Op::DefineLocal16 | Op::DefineLocal32 => todo!(),
+                    // NOTE: ----- END DEFINE LOCAL -----
+
+                    // NOTE: ----- GET LOCAL -----
+                    Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => todo!(),
+                    // NOTE: ----- END GET LOCAL -----
+
+                    // NOTE: ----- SET LOCAL -----
+                    Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => todo!(),
+                    // NOTE: ----- END SET LOCAL -----
                 };
 
                 // Ok(opcode.offset())
@@ -275,11 +312,12 @@ impl Display for VM {
     }
 }
 
-const fn read_constant<'a>(opcode: &Opcode, constants: &'a [ZValue]) -> Option<&'a ZValue> {
+fn read_constant<'a>(opcode: &Opcode, constants: &'a [ZValue]) -> Option<&'a ZValue> {
     if let Some(param) = opcode.param {
         let id = param.to_u32() as usize;
         Some(&constants[id])
     } else {
+        println!("{:?}", opcode);
         None
     }
 }

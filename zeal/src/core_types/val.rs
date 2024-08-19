@@ -1,8 +1,11 @@
 use std::{cell::RefCell, fmt::Display, hash::Hash, ops::Add, rc::Rc};
 
+use crate::compiler::opcode::Op;
+
 use super::{
     bytes::{ZBuffer, ZByte},
     htable::ZHashTable,
+    idents,
     num::{ZBool, ZFloat64},
     str::{ZIdent, ZRune, ZString},
     vec::ZVec,
@@ -115,7 +118,46 @@ impl Hash for ZValue {
     }
 }
 
+impl From<&ZIdent> for ZValue {
+    fn from(value: &ZIdent) -> Self {
+        Self::Ident(value.clone())
+    }
+}
+
+impl From<ZIdent> for ZValue {
+    fn from(value: ZIdent) -> Self {
+        Self::Ident(value)
+    }
+}
+
 impl ZValue {
+    pub fn expect_ident(&self) -> ZIdent {
+        if let Self::Ident(ident) = self {
+            ident.clone()
+        } else {
+            panic!(
+                "Failed to unwrap ZValue as ZIdent!!! Found; {}",
+                self.type_string()
+            );
+        }
+    }
+
+    pub fn binary_operator(&self) -> Option<Op> {
+        if let Self::Ident(ident) = self {
+            ident.binary_operator()
+        } else {
+            None
+        }
+    }
+
+    pub fn unary_operator(&self) -> Option<Op> {
+        if let ZValue::Ident(ident) = self {
+            ident.unary_operator()
+        } else {
+            None
+        }
+    }
+
     pub fn empty_vec() -> Self {
         Self::Vec(ZVec::new())
     }

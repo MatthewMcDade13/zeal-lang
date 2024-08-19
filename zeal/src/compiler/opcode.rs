@@ -49,13 +49,30 @@ pub enum Op {
     Const24,
     Const32,
     Const64,
-    DefineGlobal,
-    GetGlobal,
-    SetGlobal,
+    DefineGlobal8,
+    GetGlobal8,
+    SetGlobal8,
 
-    DefineLocal,
-    GetLocal,
-    SetLocal,
+    DefineLocal8,
+    GetLocal8,
+    SetLocal8,
+
+    DefineGlobal16,
+    GetGlobal16,
+    SetGlobal16,
+
+    DefineLocal16,
+    GetLocal16,
+    SetLocal16,
+
+    DefineGlobal32,
+    GetGlobal32,
+    SetGlobal32,
+
+    DefineLocal32,
+    GetLocal32,
+    SetLocal32,
+
     Unknown,
 }
 
@@ -67,6 +84,27 @@ impl Op {
             Op::Const24 => OP24,
             Op::Const32 => OP32,
             Op::Const64 => OP64,
+            Op::DefineGlobal8
+            | Op::GetGlobal8
+            | Op::SetGlobal8
+            | Op::DefineLocal8
+            | Op::GetLocal8
+            | Op::SetLocal8 => OP8,
+
+            Op::DefineGlobal16
+            | Op::GetGlobal16
+            | Op::SetGlobal16
+            | Op::DefineLocal16
+            | Op::GetLocal16
+            | Op::SetLocal16 => OP16,
+
+            Op::DefineGlobal32
+            | Op::GetGlobal32
+            | Op::SetGlobal32
+            | Op::DefineLocal32
+            | Op::GetLocal32
+            | Op::SetLocal32 => OP32,
+
             Op::PopN => OP8,
             _ => 0,
         }

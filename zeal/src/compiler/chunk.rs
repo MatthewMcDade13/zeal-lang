@@ -157,23 +157,23 @@ impl Chunk {
         let op = match var_op {
             VarOp::Define => {
                 if is_global {
-                    Op::DefineGlobal
+                    Op::DefineGlobal8
                 } else {
-                    Op::DefineLocal
+                    Op::DefineLocal8
                 }
             }
             VarOp::Get => {
                 if is_global {
-                    Op::GetGlobal
+                    Op::GetGlobal8
                 } else {
-                    Op::GetLocal
+                    Op::GetLocal8
                 }
             }
             VarOp::Set => {
                 if is_global {
-                    Op::SetGlobal
+                    Op::SetGlobal8
                 } else {
-                    Op::SetLocal
+                    Op::SetLocal8
                 }
             }
         };
@@ -257,44 +257,56 @@ impl Chunk {
                 Op::False => "FALSE",
                 Op::Concat => "CONCAT",
                 Op::Const8 => {
-                    i += 1;
+                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST8 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const16 => {
-                    i += 1;
+                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST16 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const24 => {
-                    i += 1;
+                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST24 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const32 => {
-                    i += 1;
+                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST32 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const64 => {
-                    i += 1;
+                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST64 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Unknown => "UNKNOWN_OP",
-                Op::DefineGlobal => todo!(),
-                Op::GetGlobal => todo!(),
-                Op::SetGlobal => todo!(),
+                Op::DefineGlobal8 => todo!(),
+                Op::GetGlobal8 => todo!(),
+                Op::SetGlobal8 => todo!(),
 
-                Op::DefineLocal => todo!(),
-                Op::GetLocal => todo!(),
-                Op::SetLocal => todo!(),
+                Op::DefineLocal8 => todo!(),
+                Op::GetLocal8 => todo!(),
+                Op::SetLocal8 => todo!(),
                 Op::Eq => "EQ",
                 Op::Gt => "GT",
                 Op::Lt => "LT",
                 Op::Ge => "GE",
                 Op::Le => "LE",
                 Op::NotEq => "NEQ",
+                Op::DefineGlobal16 => todo!(),
+                Op::GetGlobal16 => todo!(),
+                Op::SetGlobal16 => todo!(),
+                Op::DefineLocal16 => todo!(),
+                Op::GetLocal16 => todo!(),
+                Op::SetLocal16 => todo!(),
+                Op::DefineGlobal32 => todo!(),
+                Op::GetGlobal32 => todo!(),
+                Op::SetGlobal32 => todo!(),
+                Op::DefineLocal32 => todo!(),
+                Op::GetLocal32 => todo!(),
+                Op::SetLocal32 => todo!(),
             };
 
             // println!("{i}");
