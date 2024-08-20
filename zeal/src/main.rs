@@ -10,7 +10,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut vm = VM::new();
     let v = vm.exec_file(PATH)?;
-    println!("{v}");
+    println!("EXEC RESULT => {v}");
     // let x = TokBuffer::read_string(s)?;
 
     // let x = Ast::from_str(SOURCE)?;

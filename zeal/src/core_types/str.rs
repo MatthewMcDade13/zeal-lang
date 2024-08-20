@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::bail;
 
-use crate::{compiler::opcode::Op, sys};
+use crate::{ast::VarType, compiler::opcode::Op, sys};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -23,7 +23,7 @@ impl Deref for ZString {
 
 impl Hash for ZString {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
+        self.0.hash(state)
     }
 }
 
@@ -187,11 +187,19 @@ impl PartialEq<str> for ZIdent {
 
 impl Hash for ZIdent {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state)
+        self.0.as_str().hash(state)
     }
 }
 
 impl ZIdent {
+    pub fn var_type(&self) -> Option<VarType> {
+        match self.name() {
+            idents::LET => Some(VarType::Let),
+            idents::VAR => Some(VarType::Var),
+            idents::CONST => Some(VarType::Const),
+            _ => None,
+        }
+    }
     pub fn binary_operator(&self) -> Option<Op> {
         match self.name() {
             idents::ADD => Some(Op::Add),

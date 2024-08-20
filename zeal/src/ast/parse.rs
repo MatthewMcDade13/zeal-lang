@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{CallExpr, ExprList};
+use super::{CallExpr, ExprList, VarType};
 
 // pub static KEYWORDS: phf::Map<&'static str, LexTok> = phf_map! {
 //     "struct" => LexTok::Struct,
@@ -98,9 +98,15 @@ impl Parser {
     // we should probably do some logging or error reporting at a higher level so invalid
     // declarations can be known about and arent completely silently ignored.
     fn declaration(&mut self) -> anyhow::Result<ExprList> {
-        if let TokType::Let | TokType::Var = self.peek().ty {
+        let ty = match self.peek().ty {
+            TokType::Let => Some(VarType::Let),
+            TokType::Var => Some(VarType::Var),
+            TokType::Const => Some(VarType::Const),
+            _ => None,
+        };
+        if let Some(t) = ty {
             self.advance(1);
-            self.let_expr().map(|e| e.to_unit_list())
+            self.let_expr(t).map(|e| e.to_unit_list())
         } else {
             self.statement_expr()
         }
@@ -151,7 +157,7 @@ impl Parser {
     //
     //
 
-    fn let_expr(&mut self) -> anyhow::Result<Expr> {
+    fn let_expr(&mut self, var_ty: VarType) -> anyhow::Result<Expr> {
         if let TokType::Ident = self.peek().ty {
             let name = self.peek().clone();
             self.advance(1);
@@ -166,14 +172,19 @@ impl Parser {
                 let name = ZIdent::from(name);
                 self.advance(1);
                 let init = initializer.clone();
-                Ok(Expr::let_definition(name.clone(), init))
+                let e = match var_ty {
+                    VarType::Var => Expr::var_definition(name, init),
+                    VarType::Let => Expr::let_definition(name, init),
+                    VarType::Const => todo!(),
+                };
+                Ok(e)
             } else {
                 bail!(
                     "{}",
                     AstError::ParseError {
                         expr: initializer,
                         token: self.peek().tok.clone(),
-                        message: "Expected ';' after let statement".into()
+                        message: "Expected ';' or newline after let statement".into()
                     }
                 );
             }
@@ -193,6 +204,9 @@ impl Parser {
         match self.peek().ty {
             TokType::Do | TokType::Begin => {
                 self.advance(1);
+                while self.peek().ty == TokType::NewLine {
+                    self.advance(1);
+                }
                 let bs = self.block()?;
                 Ok(bs)
                 // Ok(Expr::Block(self.block()?))
@@ -221,6 +235,7 @@ impl Parser {
             stmt_exprs.push(st);
         }
         if let TokType::End = self.peek().ty {
+            self.advance(1);
             let se = stmt_exprs.into_boxed_slice().into();
             let bl = ExprList::Block(se);
             Ok(bl)
@@ -417,6 +432,7 @@ impl Parser {
             }
             LexTok::String(ref s) => {
                 let s = s.clone();
+                let s = s.trim_matches('"');
                 self.advance(1);
                 Ok(Expr::Atom(ZValue::Str(ZString::from(s))))
             }

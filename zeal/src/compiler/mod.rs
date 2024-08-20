@@ -3,7 +3,7 @@ use chunk::Chunk;
 use opcode::{Op, Opcode, VarOp};
 
 use crate::{
-    ast::{Ast, Expr, ExprList},
+    ast::{Ast, Expr, ExprList, VarType},
     core_types::{idents, num::ZBool, val::ZValue},
 };
 
@@ -75,18 +75,32 @@ impl Archon {
                     ch.push_opcode(Opcode::new(op));
                 } else {
                     match head.name() {
+                        idents::ASSIGN => {
+                            let name = &cl.params[0];
+                            let ident = name
+                                .inner_ident()
+                                .expect("first param of Assignment call must be an Identifier!!!");
+                            let ty = ast.symbols.var_type(&ident);
+                            if let Some(VarType::Var) = ty {
+                                let val = &cl.params[1];
+                                Self::compile_expr(ast, ch, val)?;
+                                let _ = ch.push_variable(ident.clone(), VarOp::Set);
+                            } else {
+                                bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
+                            }
+                        }
                         idents::PRINT => {
                             let right = &cl.params[0];
                             Self::compile_expr(ast, ch, right)?;
-                            ch.push_opcode(Opcode::new(Op::Print))
+                            ch.push_opcode(Opcode::new(Op::Print));
                         }
                         idents::PRINTLN => {
                             let right = &cl.params[0];
                             Self::compile_expr(ast, ch, right)?;
-                            ch.push_opcode(Opcode::new(Op::Println))
+                            ch.push_opcode(Opcode::new(Op::Println));
                         }
                         _ => bail!("cant compile: {head}"),
-                    }
+                    };
                 }
             }
             Expr::Binding { ty, name, init } => {

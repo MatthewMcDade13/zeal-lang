@@ -58,6 +58,8 @@ pub mod lex {
 }
 
 pub mod core {
+    use std::collections::HashMap;
+
     use crate::{
         compiler::opcode::Opcode,
         core_types::{str::ZIdent, val::ZValue},
@@ -73,11 +75,13 @@ pub mod core {
             message: Option<String>,
         },
         #[error(
-            "Unknown Identifier encountered from opcode: {opcode:?}, vm constants: {constants:?}"
+            "Unknown Identifier: {name}, encountered from opcode: {opcode:?}, vm constants: {constants:?}, globals: {globals:?}"
         )]
         VMUnknownIdentifier {
+            name: ZIdent,
             opcode: Opcode,
             constants: Vec<ZValue>,
+            globals: HashMap<ZIdent, ZValue>,
         },
     }
 }

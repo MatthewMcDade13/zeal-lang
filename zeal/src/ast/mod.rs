@@ -18,32 +18,40 @@ use thiserror::Error;
 use crate::core_types::{str::ZIdent, val::ZValue};
 
 #[derive(Debug, Clone)]
-pub struct SymbolTable(HashMap<ZValue, Meta>);
+pub struct SymbolTable(HashMap<ZIdent, Meta>);
 
 impl SymbolTable {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
 
-    pub fn add_new(&mut self, ident: ZIdent) -> bool {
-        self.add(ident, Meta::new())
+    pub fn add_new(&mut self, ident: ZIdent, var_type: VarType) -> bool {
+        self.add(ident, Meta::new(var_type))
     }
     /// Adds value to symbol table, Returns true if
     /// successfully added, returns false if ident is already
     /// in symbol table
     pub fn add(&mut self, ident: ZIdent, meta: Meta) -> bool {
-        let k = ZValue::Ident(ident);
-        if !self.contains_key(&k) {
-            self.insert(k, meta);
+        let k = &ident;
+        if !self.contains_key(k) {
+            self.insert(k.clone(), meta);
             true
         } else {
             false
         }
     }
+
+    pub fn var_type(&self, name: &ZIdent) -> Option<VarType> {
+        if let Some(meta) = self.get(name) {
+            Some(meta.var_type)
+        } else {
+            None
+        }
+    }
 }
 
 impl Deref for SymbolTable {
-    type Target = HashMap<ZValue, Meta>;
+    type Target = HashMap<ZIdent, Meta>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -102,6 +110,14 @@ impl Ast {
         Pass: AstPass,
     {
         pass.pipe(self)
+    }
+
+    pub fn binding_type(&self, name: &ZIdent) -> Option<VarType> {
+        if let Some(meta) = self.symbols.get(name) {
+            Some(meta.var_type)
+        } else {
+            None
+        }
     }
 
     pub fn empty() -> Self {
@@ -175,9 +191,9 @@ impl Ast {
     //     list
     // }
 
-    fn extract_binding(expr: &Expr) -> Option<ZIdent> {
+    fn extract_binding(expr: &Expr) -> Option<(VarType, ZIdent)> {
         match expr {
-            Expr::Binding { name, .. } => Some(name.expect_ident()),
+            Expr::Binding { ty, name, .. } => Some((*ty, name.expect_ident())),
             _ => None,
         }
     }
@@ -186,8 +202,8 @@ impl Ast {
         match ast {
             ExprList::Tuple(tup) => {
                 for el in tup.iter() {
-                    if let Some(ident) = Self::extract_binding(el) {
-                        st.add_new(ident);
+                    if let Some((ty, ident)) = Self::extract_binding(el) {
+                        st.add_new(ident, ty);
                     }
                 }
             }
@@ -201,8 +217,8 @@ impl Ast {
             // st.add_new(cl.head.expect_ident());
             // }
             ExprList::Unit(ex) => match ex.as_ref() {
-                Expr::Binding { name, .. } => {
-                    let _ = st.add_new(name.expect_ident());
+                Expr::Binding { ty, name, .. } => {
+                    let _ = st.add_new(name.expect_ident(), *ty);
                 }
                 Expr::List(ex) => Self::symbols(ex, st),
                 _ => {}

@@ -151,7 +151,7 @@ impl VM {
                     Op::Return => {}
                     Op::Println => {
                         let v = stack.peek_top().expect("cannot peek an empty stack!");
-                        println!("PRINT => {}", v.to_string())
+                        println!("{}", v.to_string())
                     }
 
                     Op::Print => {
@@ -230,8 +230,10 @@ impl VM {
                                 bail!(
                                     "{}",
                                     RuntimeError::VMUnknownIdentifier {
+                                        name: name.clone(),
                                         opcode: opcode,
-                                        constants: chunk.constants.to_owned()
+                                        constants: chunk.constants.to_owned(),
+                                        globals: self.globals.clone()
                                     }
                                 )
                             }
@@ -241,7 +243,25 @@ impl VM {
                     }
 
                     Op::SetGlobal8 | Op::SetGlobal16 | Op::SetGlobal32 => {
-                        todo!();
+                        if let Some(ZValue::Ident(name)) = read_constant(&opcode, &chunk.constants)
+                        {
+                            let top = stack.peek_top().expect("Nothing in stack to peek!!!");
+
+                            if self.globals.contains_key(name) {
+                                self.globals.insert(name.clone(), top.clone());
+                            } else {
+                                bail!(
+                                    "{}",
+                                    RuntimeError::VMUnknownIdentifier {
+                                        name: name.clone(),
+                                        opcode: opcode,
+                                        constants: chunk.constants.clone(),
+                                        globals: self.globals.clone(),
+                                    }
+                                )
+                            }
+                        } else {
+                        }
                     }
                     // NOTE: ----- END DEFINE GLOBAL -----
                     Op::Eq => logical_binary_op!(stack, ==),

@@ -174,19 +174,19 @@ pub struct TypeInfo {
 
 #[derive(Debug, Clone)]
 pub struct Meta {
-    pub var_type: Option<VarType>,
+    pub var_type: VarType,
     pub type_info: TypeInfo,
-    pub val: ZIdent,
+    pub name: ZIdent,
     pub binding_for: Option<ZValue>,
 }
 impl Meta {
-    pub fn new() -> Self {
+    pub fn new(var_type: VarType) -> Self {
         Self {
-            var_type: None,
+            var_type,
             type_info: TypeInfo {
                 name: String::new(),
             },
-            val: ZIdent::new(""),
+            name: ZIdent::new(""),
             binding_for: None,
         }
     }
