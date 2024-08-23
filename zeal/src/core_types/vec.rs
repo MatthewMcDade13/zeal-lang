@@ -3,7 +3,7 @@ use std::{fmt::Display, ops::Deref, rc::Rc};
 use super::val::ZValue;
 
 #[repr(transparent)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct ZVec(Rc<[ZValue]>);
 
 impl Deref for ZVec {

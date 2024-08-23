@@ -1,18 +1,22 @@
 use std::fmt::Display;
 
+use anyhow::bail;
+
 use crate::{
+    ast::VarType,
     compiler::opcode::{OpParam, OP16, OP24, OP32, OP64, OP8},
     core_types::{
         str::{ZIdent, ZString},
         val::ZValue,
     },
+    err::core::{CompileError, RuntimeError},
     sys::copy_slice_into,
     vm::{self, VM},
 };
 
 use super::{
-    opcode::{read_raw_slice_as_bytecode, Bytecode, Op, Opcode, VarOp},
-    state::ScopeState,
+    opcode::{read_raw_slice_as_bytecode, Bytecode, Op, OpParamSize, Opcode, VarOp},
+    state::{BindScope, Scope},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -42,7 +46,7 @@ impl Iterator for ChunkIter {
 pub struct Chunk {
     pub buf: Bytecode,
     pub constants: Vec<ZValue>,
-    pub scope: ScopeState,
+    pub scope: Scope,
 }
 
 impl IntoIterator for Chunk {
@@ -67,7 +71,7 @@ impl Chunk {
         Self {
             buf: Bytecode::from(Vec::with_capacity(buf_cap)),
             constants: Vec::with_capacity(const_cap),
-            scope: ScopeState::with_capacity(Self::DEFAULT_CAPACITY),
+            scope: Scope::with_capacity(Self::DEFAULT_CAPACITY),
         }
     }
 
@@ -131,6 +135,11 @@ impl Chunk {
         }
     }
 
+    pub fn push_popn(&mut self, n: u8) {
+        let opcode = Opcode::with_param(Op::PopN, OpParam::pack(n as u64));
+        self.push_opcode(opcode);
+    }
+
     #[inline]
     pub fn push_string(&mut self, string: &str) -> usize {
         self.push_constant(ZValue::string(ZString::from(string)))
@@ -146,49 +155,104 @@ impl Chunk {
         self.push_constant(ZValue::ident_from_str(string))
     }
 
-    pub fn push_variable(&mut self, name: ZIdent, var_op: VarOp) -> usize {
-        let v = ZValue::Ident(name);
+    pub fn declare_local(&mut self, name: ZIdent) -> anyhow::Result<()> {
+        if self.scope.depth().is_local() {
+            self.scope.add_local(name);
+        } else {
+            bail!("Cant compile local binding as global!");
+        }
+        Ok(())
+    }
 
-        let id = self.constants.len();
-        self.constants.push(v);
-
+    pub fn declare_global(&mut self, name: ZIdent) -> anyhow::Result<()> {
+        let id = self.add_global(name);
         let param = OpParam::pack(id as u64);
-        let is_global = self.scope.depth() == 0;
-        let op = match var_op {
-            VarOp::Define => {
-                if is_global {
-                    Op::DefineGlobal8
-                } else {
-                    Op::DefineLocal8
-                }
-            }
-            VarOp::Get => {
-                if is_global {
-                    Op::GetGlobal8
-                } else {
-                    Op::GetLocal8
-                }
-            }
-            VarOp::Set => {
-                if is_global {
-                    Op::SetGlobal8
-                } else {
-                    Op::SetLocal8
-                }
-            }
-        };
+        let op = Op::global(OpParamSize::from_param(&param), VarOp::Declare);
 
         let op = Opcode {
             op,
             param: Some(param),
         };
         self.push_opcode(op);
-        param.to_u32() as usize
+        Ok(())
     }
+
+    pub fn push_global(&mut self, name: ZIdent, varop: VarOp) {
+        let id = self.add_global(name);
+        let param = OpParam::pack(id as u64);
+        let op = Op::global(OpParamSize::from_param(&param), varop);
+        let param = Some(param);
+        let opcode = Opcode { op, param };
+        self.push_opcode(opcode);
+    }
+
+    pub fn push_local(&mut self, name: ZIdent, varop: VarOp) -> anyhow::Result<()> {
+        let (op, id) = if let VarOp::Get | VarOp::Set = varop {
+            if let Some(local_depth) = self.scope.resolve_local(&name) {
+                let size = OpParamSize::sizeof(local_depth as u64);
+                (Op::local(size, varop), local_depth)
+            } else {
+                bail!(
+                    "{}",
+                    CompileError::UnresolvedLocal {
+                        name: name.clone(),
+                        op: Op::GetLocal8,
+                        scope_state: self.scope.clone()
+                    }
+                )
+            }
+        } else {
+            bail!("{}", CompileError::InvalidAssignment { op_ty: varop, name })
+        };
+        let param = Some(OpParam::pack(id as u64));
+        let opcode = Opcode { op, param };
+        self.push_opcode(opcode);
+        Ok(())
+    }
+
+    pub fn declare_binding(&mut self, name: ZIdent) -> anyhow::Result<()> {
+        if self.scope.depth().is_local() {
+            self.declare_local(name)
+        } else {
+            self.declare_global(name)
+        }
+    }
+
+    pub fn push_binding(&mut self, name: ZIdent, varop: VarOp) -> anyhow::Result<()> {
+        if self.scope.depth().is_local() {
+            self.push_local(name.clone(), varop)
+        } else {
+            self.push_global(name.clone(), varop);
+            Ok(())
+        }
+    }
+
+    // pub fn push_binding(&mut self, name: ZIdent, var_op: VarOp) -> anyhow::Result<()> {
+    //     match self.scope.depth() {
+    //         BindScope::Global => {
+    //             match var_op {
+    //                 VarOp::Declare => {
+    //
+    //                 }
+    //                 VarOp::Get => todo!(),
+    //                 VarOp::Set => todo!(),
+    //             }
+    //         }
+    //         BindScope::Local { depth } => todo!(),
+    //     }
+    //     // let (op, id) =
+    //     let param = OpParam::pack(id as u64);
+    //
+    //     let op = Opcode {
+    //         op,
+    //         param: Some(param),
+    //     };
+    //     self.push_opcode(op);
+    //     Ok(())
+    // }
     /// adds v to constant table, returns id of constant
     pub fn push_constant(&mut self, v: ZValue) -> usize {
-        let id = self.constants.len();
-        self.constants.push(v);
+        let id = self.add_constant(v);
         let param = OpParam::pack(id as u64);
         let op = param.as_const_op();
 
@@ -233,16 +297,13 @@ impl Chunk {
 
     pub fn debug_dissassembly(&self) -> String {
         let mut s = String::new();
-        let mut i = 0;
-        while i < self.buf.len() {
-            let opcode = self.buf.opcode_at(i).unwrap();
+        for opcode in self.iter() {
             let op = match opcode.op {
                 Op::Return => "RETURN",
                 Op::Println => "PRINTLN",
                 Op::Print => "PRINT",
                 Op::Pop => "POP",
                 Op::PopN => {
-                    i += 1;
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("POPN => {}, actual: {}", index, self.constants[index])
                 }
@@ -257,63 +318,81 @@ impl Chunk {
                 Op::False => "FALSE",
                 Op::Concat => "CONCAT",
                 Op::Const8 => {
-                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST8 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const16 => {
-                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST16 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const24 => {
-                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST24 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const32 => {
-                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST32 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Const64 => {
-                    i += opcode.op.offset();
                     let index = opcode.param.unwrap().to_u32() as usize;
                     &format!("CONST64 => {}, actual: {}", index, self.constants[index])
                 }
                 Op::Unknown => "UNKNOWN_OP",
-                Op::DefineGlobal8 => todo!(),
-                Op::GetGlobal8 => todo!(),
-                Op::SetGlobal8 => todo!(),
+                Op::DeclareGlobal8 => {
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("DEF_GLOBAL8 => {}", index)
+                }
+                Op::GetGlobal8 => {
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("GET_GLOBAL8 => {}", index)
+                }
+                Op::SetGlobal8 => {
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("SET_GLOBAL8 => {}", index)
+                }
 
-                Op::DefineLocal8 => todo!(),
-                Op::GetLocal8 => todo!(),
-                Op::SetLocal8 => todo!(),
+                Op::GetLocal8 => {
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("GET_LOCAL8 => {}", index)
+                }
+                Op::SetLocal8 => {
+                    let index = opcode.param.unwrap().to_u32() as usize;
+                    &format!("SET_LOCAL8 => {}", index)
+                }
                 Op::Eq => "EQ",
                 Op::Gt => "GT",
                 Op::Lt => "LT",
                 Op::Ge => "GE",
                 Op::Le => "LE",
                 Op::NotEq => "NEQ",
-                Op::DefineGlobal16 => todo!(),
+                Op::DeclareGlobal16 => todo!(),
                 Op::GetGlobal16 => todo!(),
                 Op::SetGlobal16 => todo!(),
-                Op::DefineLocal16 => todo!(),
                 Op::GetLocal16 => todo!(),
                 Op::SetLocal16 => todo!(),
-                Op::DefineGlobal32 => todo!(),
+                Op::DeclareGlobal32 => todo!(),
                 Op::GetGlobal32 => todo!(),
                 Op::SetGlobal32 => todo!(),
-                Op::DefineLocal32 => todo!(),
                 Op::GetLocal32 => todo!(),
                 Op::SetLocal32 => todo!(),
             };
 
             // println!("{i}");
             s.push_str(&format!("{op}\n"));
-            i += 1;
         }
         s
+    }
+
+    #[inline]
+    fn add_global(&mut self, ident: ZIdent) -> usize {
+        self.add_constant(ZValue::Ident(ident))
+    }
+
+    /// Pushes val to constant array and returns the index it was pushed to.
+    fn add_constant(&mut self, val: ZValue) -> usize {
+        let id = self.constants.len();
+        self.constants.push(val);
+        id
     }
 }
 

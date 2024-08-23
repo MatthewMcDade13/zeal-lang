@@ -10,7 +10,7 @@ use anyhow::bail;
 use crate::{ast::VarType, compiler::opcode::Op, sys};
 
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ZString(Rc<str>);
 
 impl Deref for ZString {
@@ -18,12 +18,6 @@ impl Deref for ZString {
 
     fn deref(&self) -> &Self::Target {
         self.0.as_ref()
-    }
-}
-
-impl Hash for ZString {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state)
     }
 }
 
@@ -161,7 +155,8 @@ impl Index<ZRune> for RuneTable {
 }
 
 /// Wrapper for a unique id that can be used to look up name in global Symbol (rune) table
-#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ZRune(usize);
 
 impl ZRune {
@@ -176,18 +171,12 @@ impl Display for ZRune {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ZIdent(ZString);
 
 impl PartialEq<str> for ZIdent {
     fn eq(&self, other: &str) -> bool {
         self.0.as_str() == other
-    }
-}
-
-impl Hash for ZIdent {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.as_str().hash(state)
     }
 }
 

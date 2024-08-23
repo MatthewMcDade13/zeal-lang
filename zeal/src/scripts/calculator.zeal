@@ -5,10 +5,15 @@ let y = x == 10
 println x
 println y
 
-let z = do 
-  println "inside block"
-  3
+let z = begin 
+  println "inside block!!!"
+  let yy = "local"
+  println yy
+  50
 end
+
+println z
+
 
 var s = "yoooo"
 
@@ -18,6 +23,7 @@ s = "ayyyyee"
 
 println s
 
-println z
+
+
 
 

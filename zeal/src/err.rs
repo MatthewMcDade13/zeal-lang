@@ -61,9 +61,25 @@ pub mod core {
     use std::collections::HashMap;
 
     use crate::{
-        compiler::opcode::Opcode,
+        ast::VarType,
+        compiler::{
+            opcode::{Op, Opcode, VarOp},
+            state::Scope,
+        },
         core_types::{str::ZIdent, val::ZValue},
     };
+
+    #[derive(Debug, thiserror::Error, Clone)]
+    pub enum CompileError {
+        #[error("Unresolved local identifier: {name}. Compiling Op: {op}, locals: {scope_state}")]
+        UnresolvedLocal {
+            name: ZIdent,
+            op: Op,
+            scope_state: Scope,
+        },
+        #[error("Invalid Assigment on Identifier: {name}, var_op: {op_ty} ")]
+        InvalidAssignment { op_ty: VarOp, name: ZIdent },
+    }
 
     #[derive(Debug, thiserror::Error, Clone)]
     pub enum RuntimeError {

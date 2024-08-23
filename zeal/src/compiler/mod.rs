@@ -30,9 +30,10 @@ impl Archon {
     }
 
     pub fn compile_with(ast: &Ast, ch: &mut Chunk) -> anyhow::Result<()> {
-        for expr in ast.tree.iter() {
-            Self::compile_expr_list(ast, ch, &expr)?;
-        }
+        Self::compile_expr(ast, ch, &ast.tree)?;
+        // for expr in ast.tree.iter() {
+        // Self::compile_expr_list(ast, ch, &expr)?;
+        // }
         Ok(())
     }
 
@@ -41,16 +42,17 @@ impl Archon {
             ExprList::Block(bl) => {
                 ch.scope.start_scope();
                 for e in bl.iter() {
-                    Self::compile_expr_list(ast, ch, e)?;
+                    Self::compile_expr(ast, ch, e)?;
                 }
-                ch.scope.end_scope();
+                let pops = ch.scope.end_scope();
+                ch.push_popn(pops as u8);
             }
             ExprList::Tuple(tup) => {
                 for ex in tup.iter() {
                     Self::compile_expr(ast, ch, ex)?;
                 }
             }
-            ExprList::Unit(ex) => Self::compile_expr(ast, ch, ex.as_ref())?,
+            // ExprList::Unit(ex) => Self::compile_expr(ast, ch, ex.as_ref())?,
             ExprList::Nil => Self::compile_expr(ast, ch, &Expr::Nil)?,
         };
         Ok(())
@@ -84,7 +86,7 @@ impl Archon {
                             if let Some(VarType::Var) = ty {
                                 let val = &cl.params[1];
                                 Self::compile_expr(ast, ch, val)?;
-                                let _ = ch.push_variable(ident.clone(), VarOp::Set);
+                                let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
                             } else {
                                 bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
                             }
@@ -104,13 +106,16 @@ impl Archon {
                 }
             }
             Expr::Binding { ty, name, init } => {
-                let init = if let Some(i) = init {
-                    i
-                } else {
-                    &ExprList::Nil
-                };
-                Self::compile_expr_list(ast, ch, init)?;
-                ch.push_variable(name.expect_ident(), VarOp::Define);
+                // let init = if let Some(i) = init {
+                //     i
+                // } else {
+                //     &ExprList::Nil
+                // };
+                // println!("")
+                Self::compile_expr(ast, ch, init)?;
+                let name = name.expect_ident();
+                ch.declare_binding(name.clone())?;
+
                 // if let Some(ident) = head.as_ident_varop() {
                 //     assert!(ef.len() >= 3);
                 //
@@ -168,18 +173,18 @@ impl Archon {
                 }
 
                 ZValue::Byte(_) => todo!(),
-                ZValue::Buffer(_) => todo!(),
+                // ZValue::Buffer(_) => todo!(),
                 ZValue::Str(s) => {
                     let _ = ch.push_string(s.as_str());
                 }
                 ZValue::Vec(v) => {
                     let vec = v.as_ref();
                 }
-                ZValue::Obj(_) => todo!(),
-                ZValue::MutRef(_) => todo!(),
+                // ZValue::Obj(_) => todo!(),
+                // ZValue::MutRef(_) => todo!(),
                 ZValue::Rune(_) => todo!(),
                 ZValue::Ident(ident) => {
-                    let _ = ch.push_variable(ident.clone(), VarOp::Get);
+                    ch.push_binding(ident.clone(), VarOp::Get)?;
                 }
                 ZValue::Unit => todo!(),
             },

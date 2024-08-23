@@ -1,6 +1,12 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    hash::Hash,
+    ops::{Index, IndexMut},
+};
 
 use crate::core_types::val::ZValue;
+
+use super::VMStack;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -77,35 +83,46 @@ impl StackCursor {
 }
 
 #[derive(Debug, Clone)]
-pub struct Stack<const S: usize> {
+pub struct Stack<const S: usize, T>
+where
+    T: Clone,
+{
     pub cursor: StackCursor,
-    buf: [ZValue; S],
+    buf: [T; S],
 }
 
-impl<const S: usize> Display for Stack<S> {
+impl<const S: usize, T> Display for Stack<S, T>
+where
+    T: Clone + std::fmt::Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::from("\n----------\nSTACK\n----------\n");
+
         for (n, v) in self.peek_iter().enumerate() {
             let line = format!("{n} => {v}\n");
             s.push_str(&line);
         }
-        s.push_str("\n---------- END STACK ----------\n");
+        s.push_str("\n---------- \nEND STACK\n ----------\n");
         write!(f, "{s}")
     }
 }
 
-pub type StackIter = StackPeeker;
+pub type StackIter<T> = StackPeeker<T>;
 
+/// Iterator for Stack. moves through stack from back to front (top to bottom)
 #[derive(Debug, Clone, Copy)]
-pub struct StackPeeker {
-    buf_begin: *const ZValue,
+pub struct StackPeeker<T> {
+    buf_begin: *const T,
     i: usize,
 
     buf_len: usize,
 }
 
-impl Iterator for StackPeeker {
-    type Item = ZValue;
+impl<T> Iterator for StackPeeker<T>
+where
+    T: Clone,
+{
+    type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.buf_len == 0 || self.i >= self.buf_len {
@@ -123,86 +140,20 @@ impl Iterator for StackPeeker {
     }
 }
 
-impl<const S: usize> IntoIterator for Stack<S> {
+impl<const S: usize> IntoIterator for Stack<S, ZValue> {
     type Item = ZValue;
 
-    type IntoIter = StackPeeker;
+    type IntoIter = StackPeeker<ZValue>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.peek_iter()
     }
 }
 
-impl<const S: usize> Stack<S> {
-    pub fn new() -> Self {
-        let buf: [ZValue; S] = (0..S)
-            .map(|_| ZValue::Nil)
-            .collect::<Vec<ZValue>>()
-            .try_into()
-            .unwrap();
-        Self {
-            cursor: StackCursor::empty(),
-            buf,
-        }
-    }
-
-    pub fn peek_iter(&self) -> StackPeeker {
-        let buf_begin = self.buf.as_ptr();
-        StackPeeker {
-            buf_begin,
-            i: 1,
-            buf_len: self.len(),
-        }
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.cursor.is_end()
-    }
-
-    /// Peeks stacck value offset n from top of stack
-    /// eg n = 5, peeks top - 5.
-    pub const fn peekn(&self, n: usize) -> Option<&ZValue> {
-        let c = self.cursor.offset(n);
-        if let Some(index) = c.try_as_index() {
-            Some(&self.buf[index])
-        } else {
-            None
-        }
-    }
-
-    pub fn peekn_mut(&mut self, n: isize) -> Option<&mut ZValue> {
-        let c = self.cursor.addn(n);
-        if let Some(index) = c.try_as_index() {
-            Some(&mut self.buf[index])
-        } else {
-            None
-        }
-    }
-
-    pub const fn peek_top(&self) -> Option<&ZValue> {
-        if self.is_empty() {
-            None
-        } else {
-            self.peekn(0)
-        }
-    }
-
-    // pub fn peek(&self) -> &ZValue {
-    //     let i = self.top();
-    //     self.peekn(i as isize)
-    //         .expect("Stack peek index out of range! top: {i} | STACK_MAX: {STACK_MAX}")
-    // }
-    //
-    // pub fn peek_mut(&mut self) -> &mut ZValue {
-    //     let i = self.top();
-    //     self.peekn_mut(i as isize)
-    //         .expect("Stack peek index out of range! top: {i} | STACK_MAX: {STACK_MAX}")
-    // }
-
-    pub const fn top_index(&self) -> Option<usize> {
-        self.cursor.try_as_index()
-    }
-
+impl<const S: usize, T> Stack<S, T>
+where
+    T: Clone,
+{
     pub const fn len(&self) -> usize {
         if let Some(index) = self.cursor.try_as_index() {
             index + 1
@@ -211,12 +162,57 @@ impl<const S: usize> Stack<S> {
         }
     }
 
+    pub fn peek_iter(&self) -> StackPeeker<T> {
+        let buf_begin = self.buf.as_ptr();
+        StackPeeker {
+            buf_begin,
+            i: 1,
+            buf_len: self.len(),
+        }
+    }
+
+    /// Peeks stacck value offset n from top of stack
+    /// eg n = 5, peeks top - 5.
+    pub const fn peekn(&self, n: usize) -> Option<&T> {
+        let c = self.cursor.offset(n);
+        if let Some(index) = c.try_as_index() {
+            Some(&self.buf[index])
+        } else {
+            None
+        }
+    }
+
+    pub fn peekn_mut(&mut self, n: isize) -> Option<&mut T> {
+        let c = self.cursor.addn(n);
+        if let Some(index) = c.try_as_index() {
+            Some(&mut self.buf[index])
+        } else {
+            None
+        }
+    }
+
+    pub const fn peek_top(&self) -> Option<&T> {
+        if self.is_empty() {
+            None
+        } else {
+            self.peekn(0)
+        }
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.cursor.is_end()
+    }
+
+    pub const fn top_index(&self) -> Option<usize> {
+        self.cursor.try_as_index()
+    }
+
     pub const fn max(&self) -> usize {
         S
     }
 
     /// Pushes value onto top of stack. Returns index of item that was pushed.
-    pub fn push(&mut self, val: ZValue) -> usize {
+    pub fn push(&mut self, val: T) -> usize {
         self.cursor = if self.cursor.0 < 0 {
             StackCursor::zero()
         } else {
@@ -225,15 +221,27 @@ impl<const S: usize> Stack<S> {
         let i = self.cursor.0 as usize;
 
         self.buf[i] = val;
-        // self.cursor = self.cursor.inc();
         i
     }
+}
 
-    pub fn expect_pop(&mut self) -> ZValue {
-        self.pop().expect("Cant pop stack with 0 items!!!")
+impl<const S: usize, T> Stack<S, T>
+where
+    T: Clone + Default + std::fmt::Display + std::fmt::Debug,
+{
+    pub fn new() -> Self {
+        let buf: [T; S] = (0..S)
+            .map(|_| T::default())
+            .collect::<Vec<T>>()
+            .try_into()
+            .unwrap();
+        Self {
+            cursor: StackCursor::empty(),
+            buf,
+        }
     }
 
-    pub fn pop(&mut self) -> Option<ZValue> {
+    pub fn pop(&mut self) -> Option<T> {
         if let Some(i) = self.cursor.try_as_index() {
             let v = self.buf[i].clone();
             self.cursor = self.cursor.dec();
@@ -242,5 +250,33 @@ impl<const S: usize> Stack<S> {
         } else {
             None
         }
+    }
+
+    pub fn expect_pop(&mut self) -> T {
+        if let Some(v) = self.pop() {
+            v
+        } else {
+            panic!("Can't pop stack empty stack! {self}")
+        }
+    }
+}
+
+impl<const S: usize, T> Index<usize> for Stack<S, T>
+where
+    T: Clone,
+{
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.buf[index]
+    }
+}
+
+impl<const S: usize, T> IndexMut<usize> for Stack<S, T>
+where
+    T: Clone,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.buf[index]
     }
 }

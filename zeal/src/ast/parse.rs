@@ -50,7 +50,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<Box<[ExprList]>> {
+    pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<Expr> {
         let mut p = Self {
             i: 0,
             tokens: tokens.to_vec(),
@@ -66,7 +66,8 @@ impl Parser {
                 p.advance(1);
             }
         }
-        Ok(exprs.into_boxed_slice())
+        let exprs = Expr::tuple(exprs);
+        Ok(exprs)
     }
 
     /// advance cursor to the next expression
@@ -97,7 +98,7 @@ impl Parser {
     // Option as parsing an invalid declaration just results in that declaration getting ignored.
     // we should probably do some logging or error reporting at a higher level so invalid
     // declarations can be known about and arent completely silently ignored.
-    fn declaration(&mut self) -> anyhow::Result<ExprList> {
+    fn declaration(&mut self) -> anyhow::Result<Expr> {
         let ty = match self.peek().ty {
             TokType::Let => Some(VarType::Let),
             TokType::Var => Some(VarType::Var),
@@ -106,18 +107,10 @@ impl Parser {
         };
         if let Some(t) = ty {
             self.advance(1);
-            self.let_expr(t).map(|e| e.to_unit_list())
+            self.let_expr(t)
         } else {
             self.statement_expr()
         }
-
-        // match result {
-        //     anyhow::Result::Ok(stmt) => Some(stmt),
-        //     Err(_) => {
-        //         self.synchronize();
-        //         None
-        //     }
-        // }
     }
     //
     // fn let_statement(&mut self) -> anyhow::Result<Stmt> {
@@ -182,7 +175,7 @@ impl Parser {
                 bail!(
                     "{}",
                     AstError::ParseError {
-                        expr: initializer,
+                        expr: initializer.unwrap_or_else(|| Expr::Nil),
                         token: self.peek().tok.clone(),
                         message: "Expected ';' or newline after let statement".into()
                     }
@@ -192,7 +185,7 @@ impl Parser {
             bail!(
                 "{}",
                 AstError::ParseError {
-                    expr: None,
+                    expr: Expr::Nil,
                     token: self.peek().tok.clone(),
                     message: "Expected variable name".into()
                 }
@@ -200,13 +193,11 @@ impl Parser {
         }
     }
 
-    fn statement_expr(&mut self) -> anyhow::Result<ExprList> {
+    fn statement_expr(&mut self) -> anyhow::Result<Expr> {
         match self.peek().ty {
             TokType::Do | TokType::Begin => {
                 self.advance(1);
-                while self.peek().ty == TokType::NewLine {
-                    self.advance(1);
-                }
+                self.eat_newlines();
                 let bs = self.block()?;
                 Ok(bs)
                 // Ok(Expr::Block(self.block()?))
@@ -215,19 +206,18 @@ impl Parser {
             // I get around to implementing them.
             TokType::Print => {
                 self.advance(1);
-                self.print_expr(PrintType::Fmt).map(|e| e.to_unit_list())
+                self.print_expr(PrintType::Fmt)
             }
 
             TokType::Println => {
                 self.advance(1);
                 self.print_expr(PrintType::Newline)
-                    .map(|e| e.to_unit_list())
             }
-            _ => self.statement().map(|e| e.to_unit_list()),
+            _ => self.statement(),
         }
     }
 
-    fn block(&mut self) -> anyhow::Result<ExprList> {
+    fn block(&mut self) -> anyhow::Result<Expr> {
         let mut stmt_exprs = Vec::new();
         while self.peek().ty != TokType::End && !self.is_eof() {
             let st = self.statement_expr()?;
@@ -236,14 +226,14 @@ impl Parser {
         }
         if let TokType::End = self.peek().ty {
             self.advance(1);
-            let se = stmt_exprs.into_boxed_slice().into();
-            let bl = ExprList::Block(se);
+            // let se = stmt_exprs.into_boxed_slice().into();
+            let bl = Expr::block(stmt_exprs);
             Ok(bl)
         } else {
             bail!(
                 "{}",
                 AstError::ParseError {
-                    expr: Some(ExprList::Block(stmt_exprs.into_boxed_slice().into())),
+                    expr: Expr::block(stmt_exprs),
                     token: self.peek().tok.clone(),
                     message: "Expect 'end' after block.".into()
                 }
@@ -251,7 +241,13 @@ impl Parser {
         }
     }
 
+    fn eat_newlines(&mut self) {
+        while self.peek().ty == TokType::NewLine {
+            self.advance(1);
+        }
+    }
     fn print_expr(&mut self, ty: PrintType) -> anyhow::Result<Expr> {
+        // let expr = self.statement()?;
         let expr = self.expression()?;
         if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
             self.advance(1);
@@ -260,11 +256,10 @@ impl Parser {
                 PrintType::Newline => ZIdent::new(idents::PRINTLN),
             }
             .into();
-            let exprs: &[Expr] = &[expr];
 
             let cl = CallExpr {
                 head,
-                params: Rc::from(exprs),
+                params: Rc::from([expr]),
             };
             let e = Expr::Call(cl);
             Ok(e)
@@ -274,7 +269,7 @@ impl Parser {
                 AstError::ParseError {
                     token: self.peek().tok.clone(),
                     message: "Expected newline or ';' at end of print* expression.".into(),
-                    expr: Some(expr.to_unit_list())
+                    expr: expr
                 }
             )
         }
@@ -289,7 +284,7 @@ impl Parser {
             bail!(
                 "{}",
                 AstError::ParseError {
-                    expr: Some(ExprList::Unit(Rc::new(expr))),
+                    expr: expr,
                     token: self.peek().tok.clone(),
                     message: "Expected newline or ';' after expression".into()
                 }
@@ -310,7 +305,7 @@ impl Parser {
                 bail!(
                     "{}",
                     AstError::ParseError {
-                        expr: Some(expr.to_unit_list()),
+                        expr: expr,
                         token: equals.tok.clone(),
                         message: "Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs".into()
                     }

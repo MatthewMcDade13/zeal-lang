@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     ops::{Deref, DerefMut, Index, IndexMut},
     slice,
 };
@@ -10,11 +11,24 @@ use crate::{
     sys::{array_from_raw, array_from_slice},
 };
 
+use super::state::BindScope;
+
 #[derive(Debug, Clone, Copy)]
 pub enum VarOp {
-    Define,
+    Declare,
     Get,
     Set,
+}
+
+impl Display for VarOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            VarOp::Declare => "decl",
+            VarOp::Get => "getvar",
+            VarOp::Set => "setvar,",
+        };
+        write!(f, "{s}")
+    }
 }
 
 //
@@ -49,34 +63,144 @@ pub enum Op {
     Const24,
     Const32,
     Const64,
-    DefineGlobal8,
+    DeclareGlobal8,
     GetGlobal8,
     SetGlobal8,
 
-    DefineLocal8,
     GetLocal8,
     SetLocal8,
 
-    DefineGlobal16,
+    DeclareGlobal16,
     GetGlobal16,
     SetGlobal16,
 
-    DefineLocal16,
     GetLocal16,
     SetLocal16,
 
-    DefineGlobal32,
+    DeclareGlobal32,
     GetGlobal32,
     SetGlobal32,
 
-    DefineLocal32,
     GetLocal32,
     SetLocal32,
 
     Unknown,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OpParamSize {
+    Byte = OP8 as u8,
+    Byte16 = OP16 as u8,
+    Byte24 = OP24 as u8,
+    Byte32 = OP32 as u8,
+    Byte64 = OP64 as u8,
+}
+
+impl OpParamSize {
+    pub const fn from_param(param: &OpParam) -> Self {
+        match param {
+            OpParam::Byte(_) => Self::Byte,
+            OpParam::Byte16(_) => Self::Byte16,
+            OpParam::Byte24(_) => Self::Byte24,
+            OpParam::Byte32(_) => Self::Byte32,
+            OpParam::Byte64(_) => Self::Byte64,
+        }
+    }
+
+    pub const fn sizeof(n: u64) -> Self {
+        let p = OpParam::pack(n);
+        match p {
+            OpParam::Byte(_) => Self::Byte,
+            OpParam::Byte16(_) => Self::Byte16,
+            OpParam::Byte24(_) => Self::Byte24,
+            OpParam::Byte32(_) => Self::Byte32,
+            OpParam::Byte64(_) => Self::Byte64,
+        }
+    }
+
+    pub const fn global_op(self, varop: VarOp) -> Op {
+        Op::global(self, varop)
+    }
+
+    pub const fn local_op(self, varop: VarOp) -> Op {
+        Op::local(self, varop)
+    }
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 impl Op {
+    pub const fn set_local(size: OpParamSize) -> Self {
+        match size {
+            OpParamSize::Byte => Op::SetLocal8,
+            OpParamSize::Byte16 => Op::SetLocal16,
+            OpParamSize::Byte24 => todo!(),
+            OpParamSize::Byte32 => Op::SetLocal32,
+            OpParamSize::Byte64 => todo!(),
+        }
+    }
+
+    pub const fn get_local(size: OpParamSize) -> Self {
+        match size {
+            OpParamSize::Byte => Op::GetLocal8,
+            OpParamSize::Byte16 => Op::GetLocal16,
+            OpParamSize::Byte24 => todo!(),
+            OpParamSize::Byte32 => Op::GetGlobal32,
+            OpParamSize::Byte64 => todo!(),
+        }
+    }
+
+    pub const fn set_global(size: OpParamSize) -> Self {
+        match size {
+            OpParamSize::Byte => Op::SetGlobal8,
+            OpParamSize::Byte16 => Op::SetGlobal8,
+            OpParamSize::Byte24 => todo!(),
+            OpParamSize::Byte32 => Op::SetGlobal8,
+            OpParamSize::Byte64 => todo!(),
+        }
+    }
+
+    pub const fn get_global(size: OpParamSize) -> Self {
+        match size {
+            OpParamSize::Byte => Op::GetGlobal8,
+            OpParamSize::Byte16 => Op::GetGlobal16,
+            OpParamSize::Byte24 => todo!(),
+            OpParamSize::Byte32 => Op::GetGlobal32,
+            OpParamSize::Byte64 => todo!(),
+        }
+    }
+
+    pub const fn declare_global(size: OpParamSize) -> Self {
+        match size {
+            OpParamSize::Byte => Op::DeclareGlobal8,
+            OpParamSize::Byte16 => Op::DeclareGlobal16,
+            OpParamSize::Byte24 => todo!(),
+            OpParamSize::Byte32 => Op::DeclareGlobal32,
+            OpParamSize::Byte64 => todo!(),
+        }
+    }
+
+    pub const fn global(size: OpParamSize, varop: VarOp) -> Self {
+        match varop {
+            VarOp::Declare => Self::declare_global(size),
+            VarOp::Get => Self::get_global(size),
+            VarOp::Set => Self::set_global(size),
+        }
+    }
+
+    pub const fn local(size: OpParamSize, varop: VarOp) -> Self {
+        match varop {
+            VarOp::Declare => panic!("No opcode exists for declaring a local binding!!!"),
+            VarOp::Get => Self::get_local(size),
+            VarOp::Set => Self::set_local(size),
+        }
+    }
+
     pub const fn stride(&self) -> usize {
         match self {
             Op::Const8 => OP8,
@@ -84,24 +208,21 @@ impl Op {
             Op::Const24 => OP24,
             Op::Const32 => OP32,
             Op::Const64 => OP64,
-            Op::DefineGlobal8
+            Op::DeclareGlobal8
             | Op::GetGlobal8
             | Op::SetGlobal8
-            | Op::DefineLocal8
             | Op::GetLocal8
             | Op::SetLocal8 => OP8,
 
-            Op::DefineGlobal16
+            Op::DeclareGlobal16
             | Op::GetGlobal16
             | Op::SetGlobal16
-            | Op::DefineLocal16
             | Op::GetLocal16
             | Op::SetLocal16 => OP16,
 
-            Op::DefineGlobal32
+            Op::DeclareGlobal32
             | Op::GetGlobal32
             | Op::SetGlobal32
-            | Op::DefineLocal32
             | Op::GetLocal32
             | Op::SetLocal32 => OP32,
 

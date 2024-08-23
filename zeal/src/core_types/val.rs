@@ -3,9 +3,7 @@ use std::{cell::RefCell, fmt::Display, hash::Hash, ops::Add, rc::Rc};
 use crate::compiler::opcode::Op;
 
 use super::{
-    bytes::{ZBuffer, ZByte},
-    htable::ZHashTable,
-    idents,
+    bytes::ZByte,
     num::{ZBool, ZFloat64},
     str::{ZIdent, ZRune, ZString},
     vec::ZVec,
@@ -15,18 +13,18 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct ZMutRef(Rc<RefCell<ZValue>>);
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Hash)]
 pub enum ZValue {
     #[default]
     Nil,
     Bool(ZBool),
     Number(ZFloat64),
     Byte(ZByte),
-    Buffer(ZBuffer),
+    // Buffer(ZBuffer),
     Str(ZString),
     Vec(ZVec),
-    Obj(ZHashTable),
-    MutRef(ZMutRef),
+    // Obj(ZHashTable),
+    // MutRef(ZMutRef),
     Rune(ZRune),
     Ident(ZIdent),
     // List(Rc<[Self]>),
@@ -62,7 +60,7 @@ impl PartialEq for ZValue {
                 }
             }
             ZValue::Byte(_) => todo!(),
-            ZValue::Buffer(_) => todo!(),
+            // ZValue::Buffer(_) => todo!(),
             ZValue::Str(s) => {
                 if let Self::Str(other_s) = other {
                     s == other_s
@@ -71,8 +69,8 @@ impl PartialEq for ZValue {
                 }
             }
             ZValue::Vec(_) => todo!(),
-            ZValue::Obj(_) => todo!(),
-            ZValue::MutRef(_) => todo!(),
+            // ZValue::Obj(_) => todo!(),
+            // ZValue::MutRef(_) => todo!(),
             ZValue::Rune(_) => todo!(),
             ZValue::Ident(ident) => {
                 if let Self::Ident(other_ident) = other {
@@ -98,25 +96,25 @@ impl PartialEq for ZValue {
     }
 }
 
-impl Hash for ZValue {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            ZValue::Nil => (0xDEADBEEFu64).hash(state),
-            ZValue::Bool(b) => b.hash(state),
-            ZValue::Number(n) => n.u64().hash(state),
-            ZValue::Byte(_) => todo!(),
-            ZValue::Buffer(_) => todo!(),
-            ZValue::Str(st) => st.hash(state),
-            ZValue::Vec(v) => v.hash(state),
-            ZValue::Obj(_) => todo!(),
-            ZValue::MutRef(_) => todo!(),
-            ZValue::Rune(_) => todo!(),
-            ZValue::Ident(ident) => ident.name().hash(state),
-            ZValue::Unit => 0xACAB.hash(state),
-            // ZValue::List(li) => li.hash(state),
-        }
-    }
-}
+// impl Hash for ZValue {
+//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+//         match self {
+//             ZValue::Nil => (0xDEADBEEFu64).hash(state),
+//             ZValue::Bool(b) => b.hash(state),
+//             ZValue::Number(n) => n.u64().hash(state),
+//             ZValue::Byte(_) => todo!(),
+//             ZValue::Buffer(_) => todo!(),
+//             ZValue::Str(st) => st.hash(state),
+//             ZValue::Vec(v) => v.hash(state),
+//             ZValue::Obj(_) => todo!(),
+//             ZValue::MutRef(_) => todo!(),
+//             ZValue::Rune(_) => todo!(),
+//             ZValue::Ident(ident) => ident.name().hash(state),
+//             ZValue::Unit => 0xACAB.hash(state),
+//             // ZValue::List(li) => li.hash(state),
+//         }
+//     }
+// }
 
 impl From<&ZIdent> for ZValue {
     fn from(value: &ZIdent) -> Self {
@@ -175,11 +173,11 @@ impl ZValue {
             ZValue::Bool(_) => "Bool",
             ZValue::Number(_) => "Number",
             ZValue::Byte(_) => "Byte",
-            ZValue::Buffer(_) => "Buffer",
+            // ZValue::Buffer(_) => "Buffer",
             ZValue::Str(_) => "String",
             ZValue::Vec(_) => "Vector",
-            ZValue::Obj(_) => "Object",
-            ZValue::MutRef(_) => "Ref",
+            // ZValue::Obj(_) => "Object",
+            // ZValue::MutRef(_) => "Ref",
             ZValue::Rune(_) => "Rune",
             ZValue::Ident(_) => "Symbol",
             ZValue::Unit => "()",
@@ -198,11 +196,11 @@ impl ZValue {
             ZValue::Bool(b) => b.0,
             ZValue::Number(n) => n.unwrap() == 0.0,
             ZValue::Byte(b) => *b == ZByte::new(0),
-            ZValue::Buffer(buf) => buf.len() == 0,
+            // ZValue::Buffer(buf) => buf.len() == 0,
             ZValue::Str(s) => s.len() == 0,
             ZValue::Vec(v) => v.len() == 0,
-            ZValue::Obj(_) => false,
-            ZValue::MutRef(_) => false,
+            // ZValue::Obj(_) => false,
+            // ZValue::MutRef(_) => false,
             ZValue::Rune(r) => false,
             ZValue::Ident(sym) => false,
             ZValue::Unit => true,
@@ -284,11 +282,11 @@ impl Display for ZValue {
             ZValue::Bool(ZBool(false)) => "false".into(),
             ZValue::Number(n) => n.to_string(),
             ZValue::Byte(b) => b.to_string(),
-            ZValue::Buffer(_buf) => todo!(),
+            // ZValue::Buffer(_buf) => todo!(),
             ZValue::Str(s) => format!("\"{}\"", s.to_string()),
             ZValue::Vec(v) => v.iter().map(|v| v.to_string()).collect::<String>(),
-            ZValue::Obj(_) => todo!(),
-            ZValue::MutRef(_) => todo!(),
+            // ZValue::Obj(_) => todo!(),
+            // ZValue::MutRef(_) => todo!(),
             ZValue::Rune(ri) => ri.to_string(),
             ZValue::Ident(s) => format!("#{}", s.to_string()),
             ZValue::Unit => "unit()".into(),

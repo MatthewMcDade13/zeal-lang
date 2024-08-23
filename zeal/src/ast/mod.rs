@@ -100,7 +100,7 @@ pub trait AstPass {
 
 #[derive(Debug, Clone)]
 pub struct Ast {
-    pub tree: Vec<ExprList>,
+    pub tree: Expr,
     pub symbols: SymbolTable,
 }
 
@@ -122,15 +122,14 @@ impl Ast {
 
     pub fn empty() -> Self {
         Self {
-            tree: Vec::new(),
+            tree: Expr::Nil,
             symbols: SymbolTable::new(),
         }
     }
 
     pub fn from_toks(toks: &[Tok]) -> anyhow::Result<Self> {
         let tree = Parser::parse_ast(toks)?;
-        let tree = Vec::from(tree);
-        let symbols = Self::build_symbol_table(tree.as_ref());
+        let symbols = Self::build_symbol_table(&tree);
         let s = Self { tree, symbols };
         Ok(s)
         // Ok(Self(ast))
@@ -148,47 +147,30 @@ impl Ast {
         Ok(s)
     }
 
-    pub fn concat(&self, other: &Self) -> Self {
-        let stree: &[ExprList] = self.tree.as_ref();
-        let other_tree = other.tree.as_ref();
-        let tree_res: Vec<_> = ([stree, other_tree]).concat();
-
-        let syms_res = {
-            let mut sres = self.symbols.0.clone();
-            let mut other_syms = other.symbols.clone();
-            sres.extend(other_syms.drain());
-
-            sres
-        };
-
-        Self {
-            tree: tree_res,
-            symbols: SymbolTable(syms_res),
-        }
-    }
-
-    #[inline]
-    pub fn append(&mut self, other: Self) {
-        *self = self.concat(&other);
-
-        // self.tree = ([stree, other_tree]).concat().into_boxed_slice();
-        // self.symbols =
-    }
-
-    // pub fn to_list(&self) -> Vec<ZValue> {
-    //     let mut list = Vec::new();
+    // pub fn concat(&self, other: &Self) -> Self {
+    //     let stree: &[Expr] = self.tree.as_ref();
+    //     let other_tree = other.tree.as_ref();
+    //     let tree_res: Vec<_> = ([stree, other_tree]).concat();
     //
-    //     for ast in self.0.iter() {
-    //         match ast {
-    //             Expr::Call(_) => todo!(),
-    //             Expr::Block(_) => todo!(),
-    //             Expr::List(_) => todo!(),
-    //             Expr::Atom(_) => todo!(),
-    //             Expr::Effect(_) => todo!(),
-    //         }
+    //     let syms_res = {
+    //         let mut sres = self.symbols.0.clone();
+    //         let mut other_syms = other.symbols.clone();
+    //         sres.extend(other_syms.drain());
+    //
+    //         sres
+    //     };
+    //
+    //     Self {
+    //         tree: tree_res,
+    //         symbols: SymbolTable(syms_res),
     //     }
+    // }
     //
-    //     list
+    //
+    //
+    // #[inline]
+    // pub fn append(&mut self, other: Self) {
+    //     *self = self.concat(&other);
     // }
 
     fn extract_binding(expr: &Expr) -> Option<(VarType, ZIdent)> {
@@ -197,105 +179,77 @@ impl Ast {
             _ => None,
         }
     }
-
-    fn symbols(ast: &ExprList, st: &mut SymbolTable) {
+    fn symbols(ast: &Expr, st: &mut SymbolTable) {
         match ast {
-            ExprList::Tuple(tup) => {
-                for el in tup.iter() {
-                    if let Some((ty, ident)) = Self::extract_binding(el) {
-                        st.add_new(ident, ty);
+            Expr::Binding { ty, name, .. } => {
+                let _ = st.add_new(name.expect_ident(), *ty);
+            }
+            Expr::List(ex) => match ex {
+                ExprList::Block(bl) => {
+                    for e in bl.iter() {
+                        Self::symbols(e, st);
                     }
                 }
-            }
-            ExprList::Nil => {}
-            ExprList::Block(bl) => {
-                for el in bl.iter() {
-                    Self::symbols(el, st);
+                ExprList::Tuple(tup) => {
+                    for e in tup.iter() {
+                        Self::symbols(e, st);
+                    }
                 }
-            }
-            // ExprList::Call(cl) => {
-            // st.add_new(cl.head.expect_ident());
-            // }
-            ExprList::Unit(ex) => match ex.as_ref() {
-                Expr::Binding { ty, name, .. } => {
-                    let _ = st.add_new(name.expect_ident(), *ty);
-                }
-                Expr::List(ex) => Self::symbols(ex, st),
-                _ => {}
-            },
+                // ExprList::Unit(_) => todo!(),
+                ExprList::Nil => todo!(),
+            }, //Self::symbols(ex, st),
+
+            _ => {}
         }
-        // match ast {
-        //     Expr::List(li) => match li {
-        //         ExprList::Block(bl) => {
-        //
-        //         }
-        //         ExprList::Call(cl) => {
-        //             st.add_new(cl.head.expect_ident());
-        //         }
-        //         ExprList::Unit(ex) => Self::values(ex, st),
-        //     },
-        //     Expr::Call(e) | Expr::Block(e) => {
-        //         for expr in e.iter() {
-        //             Self::values(expr, st);
-        //         }
-        //     }
-        //     Expr::Binding(e) => if let Some(Expr::Atom(ZValue::Ident(head))) = e.first() {},
-        //     Expr::Atom(a) => {
-        //         if a.is_ident() {
-        //             st.insert(a.clone(), Meta::new());
-        //         }
-        //     }
-        // }
     }
 
-    fn build_symbol_table(ast: &[ExprList]) -> SymbolTable {
+    // fn symbols(ast: &Expr, st: &mut SymbolTable) {
+    //     match ast {
+    //         ExprList::Tuple(tup) => {
+    //             for el in tup.iter() {
+    //                 if let Some((ty, ident)) = Self::extract_binding(el) {
+    //                     st.add_new(ident, ty);
+    //                 }
+    //             }
+    //         }
+    //         ExprList::Nil => {}
+    //         ExprList::Block(bl) => {
+    //             for el in bl.iter() {
+    //                 Self::symbols(el, st);
+    //             }
+    //         }
+    //         ExprList::Unit(ex) => match ex.as_ref() {
+    //             Expr::Binding { ty, name, .. } => {
+    //                 let _ = st.add_new(name.expect_ident(), *ty);
+    //             }
+    //             Expr::List(ex) => Self::symbols(ex, st),
+    //             _ => {}
+    //         },
+    //     }
+    // }
+
+    fn build_symbol_table(ast: &Expr) -> SymbolTable {
         let mut st = SymbolTable::new();
-        for expr in ast.iter() {
-            Self::symbols(expr, &mut st);
-        }
+        Self::symbols(&ast, &mut st);
         st
     }
 }
 
-// /// 1:1 to Expr tree. But as a simple s-expression representation
-// #[derive(Debug, Clone)]
-// pub enum ValueExpr {
-//     Atom(ZValue),
-//     List(Rc<[ValueExpr]>),
-// }
-//
-// impl ValueExpr {
-//     pub fn to_zval(self) -> ZValue {
-//         match self {
-//             ValueExpr::Atom(zv) => zv,
-//             ValueExpr::List(li) => {
-//                 for ve in li {}
-//             }
-//         }
-//     }
-//
-//     pub fn inner_zval(&self) -> ZValue {
-//         match self {
-//             ValueExpr::Atom(zv) => zv,
-//             ValueExpr::List(li) => {
-//                 for ve in li.iter() {
-//                     ve.inner_zval()
-//                 }
-//             }
-//         }
-//     }
-// }
-
 impl Display for Ast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut res = String::new();
-        for i in 0..self.tree.len() {
-            let n = i + 1;
-            let mut s = format!("--- AST --- \n{n} => \n");
-            let expr = self.tree.as_slice().index(i);
-            s.push_str(&format!("\t{}\nEND({n})", expr.to_string()));
-            res.push_str(&s);
+        let mut res = format!("----- AST ----- \n");
+        if let Expr::List(ExprList::Block(l)) = &self.tree {
+            for i in 0..l.len() {
+                let n = i + 1;
+                let expr = l.index(i);
+                let s = &format!("{n} {}\n", expr.to_string());
+                res.push_str(&s);
+            }
+        } else {
+            let s = &format!("{}", self.tree.to_string());
+            res.push_str(s);
         }
+        res.push_str("----- END AST -----\n");
         write!(f, "{}", res)
     }
 }
@@ -303,7 +257,7 @@ impl Display for Ast {
 #[derive(Debug, Clone)]
 pub struct CallExpr {
     pub head: ZValue,
-    pub params: Rc<[Expr]>,
+    pub params: AstList<Expr>, //Rc<ExprList>,
 }
 
 impl CallExpr {
@@ -316,12 +270,10 @@ pub type AstList<T> = Rc<[T]>;
 
 #[derive(Debug, Clone, Default)]
 pub enum ExprList {
-    Block(AstList<Self>),
+    Block(AstList<Expr>),
 
-    /// List of Exprs where the first member is always some kind of function
-    /// call or function-like call (+,-,/,*, ect.)
     Tuple(AstList<Expr>),
-    Unit(Rc<Expr>),
+    // Unit(Rc<Expr>),
     #[default]
     Nil,
 }
@@ -334,31 +286,57 @@ impl Display for ExprList {
 }
 
 impl ExprList {
-    pub fn tuple_from_exprs(exprs: &[Expr]) -> Self {
+    pub fn as_slice(&self) -> Option<&[Expr]> {
+        match self {
+            ExprList::Block(bl) => Some(bl.as_ref()),
+            ExprList::Tuple(tup) => Some(tup.as_ref()),
+            ExprList::Nil => None,
+        }
+    }
+
+    pub fn unwrap_tuple(&self) -> AstList<Expr> {
+        match self {
+            ExprList::Tuple(tup) => tup.clone(),
+            _ => panic!(
+                "Attempt to unwrap ExprList as tuple when variant is: {}",
+                self
+            ),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ExprList::Block(bl) => bl.len(),
+            ExprList::Tuple(tup) => tup.len(),
+            ExprList::Nil => 0,
+        }
+    }
+
+    pub fn tuple_from_slice(exprs: &[Expr]) -> Self {
         let mut tup = Vec::with_capacity(exprs.len());
         for ex in exprs.iter() {
             tup.push(ex.clone());
         }
         Self::Tuple(tup.into_boxed_slice().into())
     }
-    pub fn expr(e: Expr) -> Self {
-        Self::Unit(Rc::new(e))
-    }
+    // pub fn expr(e: Expr) -> Self {
+    //     Self::Unit(Rc::new(e))
+    // }
 
     pub fn tuple(vec: Vec<Expr>) -> Self {
         Self::Tuple(Rc::from(vec.into_boxed_slice()))
     }
 
-    pub fn atom(v: ZValue) -> Self {
-        Self::Unit(Rc::new(Expr::Atom(v)))
-    }
+    // pub fn atom(v: ZValue) -> Self {
+    //     Self::Unit(Rc::new(Expr::Atom(v)))
+    // }
 
     fn fmt_exprlist(el: &Self) -> String {
         match el {
             ExprList::Block(bl) => {
                 let mut s = String::from("(do");
                 for ex in bl.iter() {
-                    let expr_s = Self::fmt_exprlist(ex);
+                    let expr_s = expr_fmt(ex);
                     s.push_str(&format!(" {}", expr_s));
                 }
                 s.push_str(&format!(" end)"));
@@ -382,7 +360,7 @@ impl ExprList {
                 s.push_str(&format!("]"));
                 s
             }
-            ExprList::Unit(ex) => ex.to_string(),
+            // ExprList::Unit(ex) => ex.to_string(),
             ExprList::Nil => "nil".into(),
         }
     }
@@ -394,7 +372,7 @@ pub enum Expr {
         ty: VarType,
         /// Must be ZValue::Ident
         name: ZValue,
-        init: Option<ExprList>,
+        init: Rc<Expr>,
     },
     Call(CallExpr),
     List(ExprList),
@@ -404,37 +382,33 @@ pub enum Expr {
 }
 
 impl Expr {
-    // /// Reduces slice of Exprs into a single ZValue::Vec,
-    // /// and then wraps that in an Expr::Atom
-    // pub fn reduce_wrap(exprs: &[Expr]) -> Expr {
-    //     let v = Self::reduce_slice(exprs);
-    //     Expr::Atom(v)
-    // }
-    //
-    // /// Reduces slice of Exprs into a single ZValue::Vec,
-    // pub fn reduce_slice(exprs: &[Expr]) -> ZValue {
-    //     let mut vec = Vec::with_capacity(exprs.len());
-    //     for expr in exprs.iter() {
-    //         let a = expr.reduce_zval();
-    //         vec.push(a);
-    //     }
-    //     ZValue::Vec(ZVec::from(vec))
-    // }
-    //
-    // pub fn as_expr_list(&self) -> Option<CallList> {
-    //     match self {
-    //         Expr::Call(s) | Expr::Binding(s) | Expr::Block(s) => Some(s.clone()),
-    //         // Expr::Call(cb) => Some(cb.clone()),
-    //         // Expr::Block(bl) => Some(bl.clone()),
-    //         // Expr::Effect(ef) => Some(ef.clone()),
-    //         Expr::List(_) => None,
-    //         Expr::Atom(_) => None,
-    //     }
-    // }
+    pub fn expect_list(&self) -> ExprList {
+        match self {
+            Expr::List(el) => el.clone(),
+            _ => panic!("Attempted to unwrap: {} as Expr::List.", self),
+        }
+    }
 
-    #[inline]
-    pub fn to_unit_list(&self) -> ExprList {
-        ExprList::Unit(Rc::new(self.clone()))
+    pub fn tuple(exprs: Vec<Expr>) -> Self {
+        let e = exprs.into_boxed_slice();
+        let e = Rc::from(e);
+        Self::List(ExprList::Tuple(e))
+    }
+
+    pub fn block(exprs: Vec<Expr>) -> Self {
+        let e = exprs.into_boxed_slice();
+        let e = Rc::from(e);
+        Self::List(ExprList::Block(e))
+    }
+
+    // pub fn to_unit_list(&self) -> ExprList {
+    //     ExprList::Unit(Rc::new(self.clone()))
+    // }
+    pub const fn is_nil(&self) -> bool {
+        match self {
+            Expr::Nil => true,
+            _ => false,
+        }
     }
 
     pub const fn type_str(&self) -> &'static str {
@@ -459,36 +433,20 @@ impl Expr {
         }
     }
 
-    /// If non-Atom variant, Reduces slice of Exprs to a Single ZValue of type ZVec.
-    /// otherwise returns inner Atom ZValue.
-    // pub fn reduce_zval(&self) -> ZValue {
-    //     match self {
-    //         Expr::Call(e) | Expr::Effect(e) | Expr::Block(e) => {
-    //             let mut vec = Vec::new();
-    //             for expr in e.iter() {
-    //                 let atom = expr.reduce_zval();
-    //                 vec.push(atom.clone());
-    //             }
-    //             ZValue::Vec(ZVec::from(vec))
-    //         }
-    //
-    //         Expr::Atom(a) => a.clone(),
-    //         Expr::List(_) => todo!(),
-    //     }
-    // }
-
-    pub fn binding(ty: VarType, head: ZIdent, init: Option<ExprList>) -> Self {
+    #[inline]
+    pub fn binding(ty: VarType, head: ZIdent, init: Option<Expr>) -> Self {
         Self::Binding {
             ty,
             name: ZValue::Ident(head),
-            init,
+            init: Rc::from(init.unwrap_or_default()),
         }
     }
 
     pub fn assignment(name: ZIdent, rhs: Expr) -> Self {
         let head = ZValue::Ident(ZIdent::from("="));
         let params = [Expr::Atom(ZValue::Ident(name)), rhs];
-        let params = Rc::from(params);
+        // let params = ExprList::tuple_from_slice(&params);
+        let params = Rc::new(params);
         let cl = CallExpr { head, params };
         Self::Call(cl)
     }
@@ -523,52 +481,28 @@ impl Expr {
         }
     }
 
-    pub fn var_definition(name: ZIdent, init: Option<ExprList>) -> Self {
+    #[inline]
+    pub fn var_definition(name: ZIdent, init: Option<Expr>) -> Self {
         Self::binding(VarType::Var, name, init)
-        // let nv = Self::Atom(ZValue::Nil);
-        // let init = initializer.unwrap_or(&nv);
-        //
-        // let ast = [
-        //     Self::Atom(ZValue::Ident(ZIdent::from("var"))),
-        //     Self::Atom(ZValue::Ident(name.clone())),
-        //     init.clone(),
-        //     // Self::Atom(name.clone()),
-        //     // Self::Atom(value.clone()),
-        // ];
-        // let ast = Rc::from(ast);
-        // Self::Binding {
-        //     ty:
-        //     name: todo!(),
-        //     init: todo!(),
-        // }
     }
 
-    pub fn let_definition(name: ZIdent, init: Option<ExprList>) -> Self {
+    #[inline]
+    pub fn let_definition(name: ZIdent, init: Option<Expr>) -> Self {
         Self::binding(VarType::Let, name, init)
-        // let nv = Self::Atom(ZValue::Nil);
-        // let init = initializer.unwrap_or(&nv);
-        //
-        // let ast = [
-        //     Self::Atom(ZValue::Ident(ZIdent::from("let"))),
-        //     Self::Atom(ZValue::Ident(name.clone())),
-        //     init.clone(),
-        //     // Self::Atom(name.clone()),
-        //     // Self::Atom(value.clone()),
-        // ];
-        // let ast = Rc::from(ast);
-        // Self::Binding(ast)
     }
 
     pub fn binary_op(left: &Expr, op: &ZIdent, right: &Expr) -> Self {
-        let ast = [
+        let ast: &[Expr] = &[
             left.clone(),
             right.clone(),
             // Self::Atom(left.clone()),
             // Self::Atom(right.clone()),
         ];
+        let params = Rc::from(ast);
+        // let params = Rc::new(ExprList::tuple_from_slice(ast));
         let cl = CallExpr {
             head: ZValue::Ident(op.clone()),
-            params: Rc::from(ast),
+            params,
         };
         Self::Call(cl)
     }
@@ -581,6 +515,7 @@ impl Expr {
             // Self::Atom(right.clone()),
         ];
         let params = Rc::from(ast);
+        // let params = Rc::new(ExprList::tuple_from_slice(&ast));
         let cl = CallExpr { head, params };
         Self::Call(cl)
     }
@@ -626,39 +561,21 @@ impl Expr {
 fn expr_fmt(e: &Expr) -> String {
     match e {
         Expr::Call(ce) => {
-            let mut s = format!("({}", ce.head.expect_ident().name());
+            let mut s = format!("({} ", ce.head.expect_ident().name());
 
             for i in ce.params.iter() {
                 s.push_str(&format!("{} ", expr_fmt(i)))
             }
             format!("{})", s.trim_end())
         }
-        Expr::List(li) => {
-            li.to_string()
-            // let mut s = String::new();
-            // s.push_str("[");
-            //
-            // for i in li.iter() {
-            //     s.push_str(&format!("{} ", i.to_string()))
-            // }
-            // format!("{}]", s.trim_end())
-        }
-        // Expr::Block(bl) => {
-        //     let mut s = String::new();
-        //     s.push_str("(do\n");
-        //     for expr in bl.iter() {
-        //         s.push_str(&format!("{}\n", expr_fmt(expr)));
-        //     }
-        //     s.push_str(" end)\n");
-        //     s
-        // }
+        Expr::List(li) => li.to_string(),
         Expr::Atom(at) => at.to_string(),
         Expr::Binding { ty, name, init } => {
-            let init = if let Some(i) = init.as_ref() {
-                i.clone()
-            } else {
-                ExprList::Nil
-            };
+            // let init = init.as_ref() {
+            //     i.clone()
+            // } else {
+            //     Expr::Nil
+            // };
 
             format!("({} {name}, {})", ty.to_string(), init,)
         }
@@ -679,10 +596,10 @@ pub enum AstError {
     RuntimeError { token: LexTok, message: String },
     #[error("Type Error :: {value:?} => {message}")]
     TypeError { value: ZValue, message: String },
-    #[error("Parse Error :: {token:?} - {message} AST => {expr:?}")]
+    #[error("Parse Error :: {token:?} \n{message}\n Expr => {expr}")]
     ParseError {
         token: LexTok,
         message: String,
-        expr: Option<ExprList>,
+        expr: Expr,
     },
 }
