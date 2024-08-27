@@ -4,13 +4,14 @@ use anyhow::bail;
 use phf::phf_map;
 
 use crate::{
-    ast::{lex::TokType, AstError, Expr, LexTok, Tok},
+    ast::{lex::TokType, Expr, LexTok, Tok},
     core_types::{
         idents,
         num::{ZBool, ZFloat64},
         str::{ZIdent, ZString},
         val::ZValue,
     },
+    err::parse::ParseError,
 };
 
 use super::{CallExpr, ExprList, VarType};
@@ -57,7 +58,7 @@ impl Parser {
         };
         let mut exprs = Vec::new();
         'parse: while !p.is_eof() {
-            let ex = p.declaration()?;
+            let ex = p.expression_stmt()?;
             exprs.push(ex);
             while p.peek().ty == TokType::NewLine {
                 if p.i == p.tokens.len() - 1 {
@@ -71,25 +72,25 @@ impl Parser {
     }
 
     /// advance cursor to the next expression
-    fn synchronize(&mut self) {
-        self.advance(1);
-        while !self.is_eof() {
-            if let TokType::NewLine | TokType::Semicolon = self.prev().ty {
-                break;
-            }
-            match self.peek().ty {
-                TokType::Struct
-                | TokType::Fn
-                | TokType::Let
-                | TokType::For
-                | TokType::If
-                | TokType::While
-                | TokType::Println
-                | TokType::Return => break,
-                _ => self.advance(1),
-            }
-        }
-    }
+    // fn synchronize(&mut self) {
+    //     self.advance(1);
+    //     while !self.is_eof() {
+    //         if let TokType::NewLine | TokType::Semicolon = self.prev().ty {
+    //             break;
+    //         }
+    //         match self.peek().ty {
+    //             TokType::Struct
+    //             | TokType::Fn
+    //             | TokType::Let
+    //             | TokType::For
+    //             | TokType::If
+    //             | TokType::While
+    //             | TokType::Println
+    //             | TokType::Return => break,
+    //             _ => self.advance(1),
+    //         }
+    //     }
+    // }
 
     // fn is_expr_end(&self) -> bool {
     //     match
@@ -98,18 +99,33 @@ impl Parser {
     // Option as parsing an invalid declaration just results in that declaration getting ignored.
     // we should probably do some logging or error reporting at a higher level so invalid
     // declarations can be known about and arent completely silently ignored.
-    fn declaration(&mut self) -> anyhow::Result<Expr> {
-        let ty = match self.peek().ty {
-            TokType::Let => Some(VarType::Let),
-            TokType::Var => Some(VarType::Var),
-            TokType::Const => Some(VarType::Const),
-            _ => None,
-        };
-        if let Some(t) = ty {
-            self.advance(1);
-            self.let_expr(t)
-        } else {
-            self.statement_expr()
+    fn expression_stmt(&mut self) -> anyhow::Result<Expr> {
+        match self.peek().ty {
+            TokType::Let => {
+                self.advance(1);
+                self.bind_expr(VarType::Let)
+            }
+            TokType::Var => {
+                self.advance(1);
+                self.bind_expr(VarType::Var)
+            }
+            TokType::Const => {
+                self.advance(1);
+                self.bind_expr(VarType::Const)
+            }
+            TokType::Print => {
+                self.advance(1);
+                self.print_expr(PrintType::Fmt)
+            }
+            TokType::Println => {
+                self.advance(1);
+                self.print_expr(PrintType::Newline)
+            }
+            // TokType::NewLine | TokType::Semicolon => {
+            //     self.advance(1)
+            //     self.expression_stmt()
+            // }
+            _ => self.value_expr(),
         }
     }
     //
@@ -150,77 +166,105 @@ impl Parser {
     //
     //
 
-    fn let_expr(&mut self, var_ty: VarType) -> anyhow::Result<Expr> {
+    fn bind_expr(&mut self, var_ty: VarType) -> anyhow::Result<Expr> {
         if let TokType::Ident = self.peek().ty {
             let name = self.peek().clone();
             self.advance(1);
             let initializer = if let TokType::Eq = self.peek().ty {
                 self.advance(1);
-                Some(self.statement_expr()?) // expression()?)
-            } else {
-                None
-            };
-
-            if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
-                let name = ZIdent::from(name);
+                Some(self.value_expr()?) // expression()?)
+            } else if self.is_terminal() {
                 self.advance(1);
-                let init = initializer.clone();
-                let e = match var_ty {
-                    VarType::Var => Expr::var_definition(name, init),
-                    VarType::Let => Expr::let_definition(name, init),
-                    VarType::Const => todo!(),
-                };
-                Ok(e)
+                None
             } else {
                 bail!(
                     "{}",
-                    AstError::ParseError {
-                        expr: initializer.unwrap_or_else(|| Expr::Nil),
-                        token: self.peek().tok.clone(),
-                        message: "Expected ';' or newline after let statement".into()
-                    }
+                    ParseError::MissingTerminal {
+                        expr_ty: "let expression".into(),
+                        expr: Expr::Nil, //initializer.unwrap_or_else(|| Expr::Nil),
+                        tok: self.peek().clone(),
+                    } // AstError::ParseError {
+                      //     expr: initializer.unwrap_or_else(|| Expr::Nil),
+                      //     token: self.peek().tok.clone(),
+                      //     message: "Expected ';' or newline after let statement".into()
+                      // }
                 );
-            }
+            };
+
+            // if self.check_eat_terminals() {
+            let name = ZIdent::from(name);
+            // self.advance(1);
+            let init = initializer.clone();
+            let e = match var_ty {
+                VarType::Var => Expr::var_definition(name, init),
+                VarType::Let => Expr::let_definition(name, init),
+                VarType::Const => todo!(),
+            };
+            Ok(e)
+            // if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
+            //     let name = ZIdent::from(name);
+            //     self.advance(1);
+            //     let init = initializer.clone();
+            //     let e = match var_ty {
+            //         VarType::Var => Expr::var_definition(name, init),
+            //         VarType::Let => Expr::let_definition(name, init),
+            //         VarType::Const => todo!(),
+            //     };
+            //     Ok(e)
+            // } else {
+            //     bail!(
+            //         "{}",
+            //         AstError::ParseError {
+            //             expr: initializer.unwrap_or_else(|| Expr::Nil),
+            //             token: self.peek().tok.clone(),
+            //             message: "Expected ';' or newline after let statement".into()
+            //         }
+            //     );
+            // }
         } else {
             bail!(
                 "{}",
-                AstError::ParseError {
-                    expr: Expr::Nil,
-                    token: self.peek().tok.clone(),
-                    message: "Expected variable name".into()
-                }
+                ParseError::UnexpectedToken {
+                    expected: TokType::Ident,
+                    got: self.peek().ty
+                } // AstError::ParseError {
+                  //     expr: Expr::Nil,
+                  //     token: self.peek().tok.clone(),
+                  //     message: "Expected variable name".into()
+                  // }
             )
         }
     }
 
-    fn statement_expr(&mut self) -> anyhow::Result<Expr> {
+    fn value_expr(&mut self) -> anyhow::Result<Expr> {
         match self.peek().ty {
             TokType::Do | TokType::Begin => {
                 self.advance(1);
-                self.eat_newlines();
-                let bs = self.block()?;
+                // self.eat_terminals();
+                let bs = self.block_expr()?;
                 Ok(bs)
                 // Ok(Expr::Block(self.block()?))
             }
             // TODO: I dont like this. Make these Print* keywords into functions when
             // I get around to implementing them.
-            TokType::Print => {
-                self.advance(1);
-                self.print_expr(PrintType::Fmt)
-            }
-
-            TokType::Println => {
-                self.advance(1);
-                self.print_expr(PrintType::Newline)
-            }
-            _ => self.statement(),
+            // TokType::Print => {
+            //     self.advance(1);
+            //     self.print_expr(PrintType::Fmt)
+            // }
+            //
+            // TokType::Println => {
+            //     self.advance(1);
+            //     self.print_expr(PrintType::Newline)
+            // }
+            _ => self.expression(),
         }
     }
 
-    fn block(&mut self) -> anyhow::Result<Expr> {
+    fn block_expr(&mut self) -> anyhow::Result<Expr> {
         let mut stmt_exprs = Vec::new();
         while self.peek().ty != TokType::End && !self.is_eof() {
-            let st = self.statement_expr()?;
+            let st = self.expression_stmt()?;
+            self.eat_terminals();
 
             stmt_exprs.push(st);
         }
@@ -232,64 +276,95 @@ impl Parser {
         } else {
             bail!(
                 "{}",
-                AstError::ParseError {
+                ParseError::MissingTerminal {
+                    expr_ty: "block expression".into(),
                     expr: Expr::block(stmt_exprs),
-                    token: self.peek().tok.clone(),
-                    message: "Expect 'end' after block.".into()
-                }
+                    tok: self.peek().clone()
+                } // AstError::ParseError {
+                  //     expr: Expr::block(stmt_exprs),
+                  //     token: self.peek().tok.clone(),
+                  //     message: "Expect 'end' after block.".into()
+                  // }
             )
         }
     }
 
-    fn eat_newlines(&mut self) {
-        while self.peek().ty == TokType::NewLine {
-            self.advance(1);
-        }
-    }
     fn print_expr(&mut self, ty: PrintType) -> anyhow::Result<Expr> {
-        // let expr = self.statement()?;
         let expr = self.expression()?;
-        if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
-            self.advance(1);
-            let head = match ty {
-                PrintType::Fmt => ZIdent::new(idents::PRINT),
-                PrintType::Newline => ZIdent::new(idents::PRINTLN),
-            }
-            .into();
+        // let expr = self.expression()?;
+        // if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
+        // self.advance(1);
+        let head = match ty {
+            PrintType::Fmt => ZIdent::new(idents::PRINT),
+            PrintType::Newline => ZIdent::new(idents::PRINTLN),
+        }
+        .into();
 
-            let cl = CallExpr {
-                head,
-                params: Rc::from([expr]),
-            };
-            let e = Expr::Call(cl);
-            Ok(e)
+        let cl = CallExpr {
+            head,
+            params: Rc::from([expr]),
+        };
+        let e = Expr::Call(cl);
+        Ok(e)
+        // } else {
+        // bail!(
+        //     "{}",
+        //     AstError::ParseError {
+        //         token: self.peek().tok.clone(),
+        //         message: "Expected newline or ';' at end of print* expression.".into(),
+        //         expr: expr
+        //     }
+        // )
+        // }
+    }
+
+    fn is_terminal(&self) -> bool {
+        if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
+            true
         } else {
-            bail!(
-                "{}",
-                AstError::ParseError {
-                    token: self.peek().tok.clone(),
-                    message: "Expected newline or ';' at end of print* expression.".into(),
-                    expr: expr
-                }
-            )
+            false
         }
     }
 
-    fn statement(&mut self) -> anyhow::Result<Expr> {
-        let expr = self.expression()?;
-        if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
+    fn eat_terminals(&mut self) {
+        while self.is_terminal() {
             self.advance(1);
-            Ok(expr)
-        } else {
-            bail!(
-                "{}",
-                AstError::ParseError {
-                    expr: expr,
-                    token: self.peek().tok.clone(),
-                    message: "Expected newline or ';' after expression".into()
-                }
-            )
         }
+    }
+
+    fn check_eat_terminals(&mut self) -> bool {
+        if self.is_terminal() {
+            self.eat_terminals();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn form(&mut self) -> anyhow::Result<Expr> {
+        self.assignment()
+    }
+
+    fn expression(&mut self) -> anyhow::Result<Expr> {
+        let expr = self.form()?;
+        Ok(expr)
+        // if self.is_terminal() {
+        //     self.advance(1);
+        //     Ok(expr)
+        // } else {
+        //     bail!(
+        //         "{}",
+        //         ParseError::MissingTerminal {
+        //             expr_ty: expr.type_str().to_string(),
+        //             expr: expr,
+        //             tok: self.peek().clone(),
+        //         } // AstError::ParseError {
+        //           //     expr: expr,
+        //           //     token: self.peek().tok.clone(),
+        //           //     message: "Expected newline or ';' after expression".into()
+        //           // }
+        //     )
+        // }
     }
 
     fn assignment(&mut self) -> anyhow::Result<Expr> {
@@ -304,11 +379,11 @@ impl Parser {
             } else {
                 bail!(
                     "{}",
-                    AstError::ParseError {
-                        expr: expr,
-                        token: equals.tok.clone(),
-                        message: "Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs".into()
-                    }
+                    ParseError::InvalidAssignment // AstError::ParseError {
+                                                  //     expr: expr,
+                                                  //     token: equals.tok.clone(),
+                                                  //     message: "Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs".into()
+                                                  // }
                 )
             }
         } else {
@@ -316,9 +391,6 @@ impl Parser {
         }
     }
 
-    fn expression(&mut self) -> anyhow::Result<Expr> {
-        self.assignment()
-    }
     fn term(&mut self) -> anyhow::Result<Expr> {
         // self.expand_binary_expr(ExprRule::Factor, &[TokType::Minus, TokType::Plus])
         let mut expr = self.factor()?;
@@ -433,7 +505,7 @@ impl Parser {
             }
             LexTok::OpenParen => {
                 self.advance(1);
-                let expr = self.expression()?;
+                let expr = self.form()?;
                 if self.peek().ty == TokType::CloseParen {
                     self.advance(1);
                     Ok(expr)
@@ -449,10 +521,19 @@ impl Parser {
                 self.advance(1);
                 Ok(Expr::Atom(ZValue::Ident(name.into_ident())))
             }
-            _ => Err(anyhow::anyhow!(
-                "Expected primary or group expression, found: {:?}",
-                self.peek()
-            )),
+            LexTok::NewLine | LexTok::Semicolon => {
+                self.advance(1);
+                // Ok(Expr::Nil)
+                let expr = self.expression_stmt()?;
+                Ok(expr)
+            }
+            _ => bail!(
+                "{}",
+                ParseError::UnexpectedToken {
+                    expected: TokType::NewLine,
+                    got: self.peek().clone().ty,
+                }
+            ),
         }
     }
 

@@ -238,7 +238,7 @@ impl Ast {
 impl Display for Ast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut res = format!("----- AST ----- \n");
-        if let Expr::List(ExprList::Block(l)) = &self.tree {
+        if let Expr::List(ExprList::Block(l)) | Expr::List(ExprList::Tuple(l)) = &self.tree {
             for i in 0..l.len() {
                 let n = i + 1;
                 let expr = l.index(i);
@@ -335,9 +335,10 @@ impl ExprList {
         match el {
             ExprList::Block(bl) => {
                 let mut s = String::from("(do");
-                for ex in bl.iter() {
+                for (i, ex) in bl.iter().enumerate() {
                     let expr_s = expr_fmt(ex);
-                    s.push_str(&format!(" {}", expr_s));
+
+                    s.push_str(&format!(" {}\n{}", expr_s, "\t".repeat(i)));
                 }
                 s.push_str(&format!(" end)"));
                 s
@@ -579,7 +580,7 @@ fn expr_fmt(e: &Expr) -> String {
 
             format!("({} {name}, {})", ty.to_string(), init,)
         }
-        Expr::Nil => todo!(),
+        Expr::Nil => "nil".into(),
     }
 }
 
@@ -590,16 +591,16 @@ impl Display for Expr {
     }
 }
 
-#[derive(Error, Clone, Debug)]
-pub enum AstError {
-    #[error("Runtime Error :: {token:?} => {message}")]
-    RuntimeError { token: LexTok, message: String },
-    #[error("Type Error :: {value:?} => {message}")]
-    TypeError { value: ZValue, message: String },
-    #[error("Parse Error :: {token:?} \n{message}\n Expr => {expr}")]
-    ParseError {
-        token: LexTok,
-        message: String,
-        expr: Expr,
-    },
-}
+// #[derive(Error, Clone, Debug)]
+// pub enum AstError {
+//     #[error("Runtime Error :: {token:?} => {message}")]
+//     RuntimeError { token: LexTok, message: String },
+//     #[error("Type Error :: {value:?} => {message}")]
+//     TypeError { value: ZValue, message: String },
+//     #[error("Parse Error :: {token:?} \n{message}\n Expr => {expr}")]
+//     ParseError {
+//         token: LexTok,
+//         message: String,
+//         expr: Expr,
+//     },
+// }

@@ -1,5 +1,5 @@
 
-use std::fmt::Display;
+use std::{cmp::Ordering, fmt::Display};
 
 use crate::core_types::str::{ZIdent, ZString};
 
@@ -9,13 +9,50 @@ pub struct Scope {
     depth: BindScope,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, Ord, Hash)]
 pub enum BindScope {
     #[default]
     Global,
     Local {
         depth: usize,
     },
+}
+
+impl PartialOrd for BindScope {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+         match self {
+            BindScope::Global => match other {
+                BindScope::Global => Some(Ordering::Equal), 
+                BindScope::Local { .. } =>  {
+                    Some(Ordering::Less)
+                }, 
+            }, 
+            BindScope::Local { depth: sdepth } => match other {
+                BindScope::Global => Some(Ordering::Greater), 
+                BindScope::Local { depth: other_depth } => sdepth.partial_cmp(other_depth) 
+            } 
+            BindScope::Local {depth: 0 } => match other {
+                BindScope::Global => Some(Ordering::Greater), 
+                BindScope::Local { depth } => 0.partial_cmp(depth), 
+            }
+        }
+
+    }
+}
+
+impl PartialEq for BindScope {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            BindScope::Global => match other {
+                BindScope::Global => true, 
+                BindScope::Local { depth } => false, 
+            }, 
+            BindScope::Local { depth: sdepth } => match other {
+                BindScope::Global => false, 
+                BindScope::Local { depth: other_depth } => sdepth == other_depth 
+            } 
+        }
+    }
 }
 
 impl Display for BindScope {
@@ -64,7 +101,7 @@ impl BindScope {
         }
     }
 
-    pub const fn decn(self, n: usize) -> Self {
+    pub fn decn(self, n: usize) -> Self {
         match self {
             BindScope::Global => panic!("Cannot decrement depth for a Global Scope!!!"), 
             BindScope::Local { depth } => {
@@ -116,19 +153,34 @@ impl Scope {
     }
 
     #[inline]
-    pub fn peek_top(&self) -> Option<&Local> {
-        if self.locals.len() >= 1 {
+    pub fn peek_top(&self) -> Option<&Local> { 
 
-        let back = self.locals.len() - 1;
-            Some(&self.locals[back])
-        } else {
-            None
-        }
+        let l = self.locals.last()?;
+        Some(l)
+        // if self.locals.len() >= 1 {
+        //
+        //     let back = self.locals.len() - 1;
+        //     Some(&self.locals[back])
+        // } else {
+        //     None
+        // }
 
     }
 
     /// Looks for local and returns its index in locals vec
     pub fn resolve_local(&self, ident: &ZIdent) -> Option<usize> {
+        // let mut i= self.locals.len() as isize;
+
+        // while i >= 0 {
+        //     i -= 1;
+        //     let l = &self.locals[i as usize ];
+        //     println!("{i}: {} {} {}", l.ident.name(), ident.name(), l.ident.name() == ident.name());
+        //     if l.ident.name() == ident.name() {
+        //         return Some(i as usize);
+        //     }
+        //
+        //
+        // }
         for (i, l) in self.locals.iter().rev().enumerate() {
             if l.ident.name() == ident.name() {
                 return Some(i);
@@ -171,17 +223,28 @@ impl Scope {
             }
             _ => { 
                 let new_depth = self.depth.dec_mut();
+                match new_depth {
+                    BindScope::Global => {
 
-                let mut i = 0;
+                        let n = self.locals.len();
+                        self.locals.clear();
+                        n
+                    }
+                    BindScope::Local { depth } => {
+                        let mut i = 0;
 
-                while let Some(local) = self.peek_top() {
-                    if local.depth > new_depth {
-                        i += 1;
-                        let _ = self.locals.pop();
+                        while let Some(local) = self.peek_top() {
+                            if local.depth.unwrap() >  depth {
+                                self.locals.pop();
+                                i += 1;
+                            } else if local.depth.unwrap() == depth {
+                                break;
+                            }
+                        }
+
+                        i
                     }
                 }
-
-                i
             }
         }
     }

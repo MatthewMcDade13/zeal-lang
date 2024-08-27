@@ -12,13 +12,37 @@ pub struct ZealErr<T> {
 }
 
 pub mod parse {
+    use crate::ast::{
+        lex::{LexTok, Tok, TokType},
+        Expr,
+    };
+
     use super::{lex::LexError, ZealErr};
     pub type ParseErrInfo = ZealErr<ParseError>;
 
-    #[derive(thiserror::Error, Default, Debug, Clone, PartialEq)]
+    #[derive(thiserror::Error, Default, Debug, Clone)]
     pub enum ParseError {
-        #[error("Unknown Token: {0}")]
+        #[error("PARSE_ERR => Unknown Token: {0}")]
         InvalidToken(String),
+
+        #[error("")]
+        UnmatchedEndTag,
+
+        #[error("PARSE_ERR => Unexpected Token!! Expected: {expected:?}, Got: {got:?}")]
+        UnexpectedToken { expected: TokType, got: TokType },
+
+        #[error("PARSE_ERR => Expected newline or ';' after {expr_ty} \n\t=> Expression: {expr}\n\t=> Token: {tok}")]
+        MissingTerminal {
+            expr_ty: String,
+            expr: Expr,
+            tok: Tok,
+        },
+
+        #[error("Expected primary (parse-atom) in expression: {expr}, found: {tok}")]
+        ExpectedPrimary { expr: Expr, tok: Tok },
+
+        #[error("PARSE_ERR => Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs")]
+        InvalidAssignment,
 
         #[default]
         #[error("Unknown parse error occured.")]

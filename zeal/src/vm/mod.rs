@@ -152,12 +152,14 @@ impl VM {
                     Op::Return => {}
                     Op::Println => {
                         let v = self.stack.peek_top().expect("cannot peek an empty stack!");
-                        println!("{}", v.to_string())
+                        println!("{}", v.to_string());
+                        self.stack.expect_pop();
                     }
 
                     Op::Print => {
                         let v = self.stack.peek_top().expect("cannot peek an empty stack!");
-                        print!("{}", v.to_string())
+                        print!("{}", v.to_string());
+                        self.stack.expect_pop();
                     }
 
                     Op::Pop => {
@@ -275,6 +277,7 @@ impl VM {
                     // NOTE: ----- GET LOCAL -----
                     Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
                         if let Some(local) = self.read_local(&opcode) {
+                            let l = local.clone();
                             self.stack.push(local.clone());
                         } else {
                             bail!("Tried to get ")
@@ -330,7 +333,7 @@ impl VM {
     fn read_local(&self, opcode: &Opcode) -> Option<&ZValue> {
         if let Some(param) = opcode.param {
             let slot = param.to_u32() as usize;
-            let v = self.stack.index(slot);
+            let v = self.stack.peekn(slot)?;
             Some(v)
         } else {
             None

@@ -1,5 +1,10 @@
 use std::{
-    cell::RefCell, collections::HashMap, fmt::Write, hash::Hash, num::ParseIntError, rc::Rc,
+    cell::RefCell,
+    collections::HashMap,
+    fmt::{Display, Write},
+    hash::Hash,
+    num::ParseIntError,
+    rc::Rc,
 };
 
 // TODO :: MAKE THE FUCKING GC FIRST
@@ -28,9 +33,12 @@ impl TokBuffer {
         let mut buf = Vec::with_capacity(32);
         while let Some(t) = lex.next() {
             let t = t?;
+            let col = lex.span().start as isize;
+            let col = col - lex.extras.curr_tok as isize;
+            let col = if col < 0 { 0usize } else { col as usize };
             let line = LineInfo {
-                line: lex.extras.0,
-                col: lex.extras.1,
+                line: lex.extras.line,
+                col,
             };
             let tok = Tok::from_tok(t, lex.slice(), line);
             buf.push(tok);
@@ -54,6 +62,15 @@ impl TokBuffer {
 pub struct LineInfo {
     pub line: usize,
     pub col: usize,
+}
+
+impl Display for LineInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let line = self.line;
+        let col = self.col;
+        let s = format!("(L:{line},C:{col})");
+        write!(f, "{s}")
+    }
 }
 
 // type LexResult<T> = anyhow::Result<T, LexError>;
@@ -94,7 +111,8 @@ impl std::fmt::Display for Tok {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let tok = &self.tok;
         let lexeme = &self.lexeme;
-        let s = format!("Lexeme: {lexeme} => {tok:?}");
+        let info = self.info;
+        let s = format!("Token [ {lexeme} => {tok:?}, Lineno => {info} ]");
         f.write_str(&s)
     }
 }
@@ -265,9 +283,16 @@ impl From<&LexTok> for TokType {
     }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub struct TokInfo {
+    pub line: usize,
+    pub col: usize,
+    pub curr_tok: usize,
+}
+
 #[derive(Debug, Clone, Logos)]
 #[logos(skip r"[ \t\r\f]+")]
-#[logos(extras = (usize, usize))]
+#[logos(extras = TokInfo)]
 #[logos(error = LexError)]
 pub enum LexTok {
     #[token("begin")]
@@ -423,6 +448,8 @@ pub enum LexTok {
 }
 
 fn newline_cb(lex: &mut Lexer<LexTok>) {
-    lex.extras.0 += 1;
-    lex.extras.1 = lex.span().end;
+    lex.extras.line += 1;
+    lex.extras.curr_tok = lex.span().end;
+
+    // lex.extras.col = lex.span().start - lex.extras.curr_tok;
 }

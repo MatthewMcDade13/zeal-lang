@@ -189,17 +189,20 @@ impl Chunk {
     pub fn push_local(&mut self, name: ZIdent, varop: VarOp) -> anyhow::Result<()> {
         let (op, id) = if let VarOp::Get | VarOp::Set = varop {
             if let Some(local_depth) = self.scope.resolve_local(&name) {
+                println!("RESOLVED! {name}, {local_depth}, {:?}", self.scope.locals);
                 let size = OpParamSize::sizeof(local_depth as u64);
                 (Op::local(size, varop), local_depth)
             } else {
-                bail!(
-                    "{}",
-                    CompileError::UnresolvedLocal {
-                        name: name.clone(),
-                        op: Op::GetLocal8,
-                        scope_state: self.scope.clone()
-                    }
-                )
+                self.push_global(name, varop);
+                return Ok(());
+                // bail!(
+                //     "{}",
+                //     CompileError::UnresolvedLocal {
+                //         name: name.clone(),
+                //         op: Op::GetLocal8,
+                //         scope_state: self.scope.clone()
+                //     }
+                // )
             }
         } else {
             bail!("{}", CompileError::InvalidAssignment { op_ty: varop, name })
@@ -213,6 +216,7 @@ impl Chunk {
     pub fn declare_binding(&mut self, name: ZIdent) -> anyhow::Result<()> {
         if self.scope.depth().is_local() {
             self.declare_local(name)
+            // Ok(())
         } else {
             self.declare_global(name)
         }
@@ -220,6 +224,9 @@ impl Chunk {
 
     pub fn push_binding(&mut self, name: ZIdent, varop: VarOp) -> anyhow::Result<()> {
         if self.scope.depth().is_local() {
+            // self.declare_local(name)
+            // Ok(())
+
             self.push_local(name.clone(), varop)
         } else {
             self.push_global(name.clone(), varop);
@@ -304,8 +311,9 @@ impl Chunk {
                 Op::Print => "PRINT",
                 Op::Pop => "POP",
                 Op::PopN => {
-                    let index = opcode.param.unwrap().to_u32() as usize;
-                    &format!("POPN => {}, actual: {}", index, self.constants[index])
+                    let n = opcode.param.unwrap().to_u32() as usize;
+
+                    &format!("POPN => {n},")
                 }
                 Op::Add => "ADD",
                 Op::Sub => "SUB",

@@ -19,6 +19,8 @@ impl Archon {
         // let ast = todo!(); //ast.pipe();
         let mut ch = Chunk::default();
         Self::compile_with(ast, &mut ch)?;
+        println!("{}", ch.debug_dissassembly());
+
         Ok(ch)
         // let mut chunks = Vec::with_capacity(ast.slice().len());
         // for expr in ast.slice() {
@@ -111,7 +113,6 @@ impl Archon {
                 // } else {
                 //     &ExprList::Nil
                 // };
-                // println!("")
                 Self::compile_expr(ast, ch, init)?;
                 let name = name.expect_ident();
                 ch.declare_binding(name.clone())?;
