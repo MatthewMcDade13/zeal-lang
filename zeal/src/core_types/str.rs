@@ -7,7 +7,11 @@ use std::{
 
 use anyhow::bail;
 
-use crate::{ast::VarType, compiler::opcode::Op, sys};
+use crate::{
+    ast::{BinaryOpType, UnaryOpType, VarType},
+    compiler::opcode::Op,
+    sys,
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -189,6 +193,26 @@ impl ZIdent {
             _ => None,
         }
     }
+
+    pub fn binary_operator_type(&self) -> Option<BinaryOpType> {
+        match self.name() {
+            idents::ADD => Some(BinaryOpType::Add),
+            idents::SUB => Some(BinaryOpType::Sub),
+            idents::DIV => Some(BinaryOpType::Div),
+            idents::MUL => Some(BinaryOpType::Mul),
+            idents::CONCAT => Some(BinaryOpType::Concat),
+            idents::EQUAL => Some(BinaryOpType::Equals),
+            idents::NOT_EQUAL => Some(BinaryOpType::NotEquals),
+            idents::LT => Some(BinaryOpType::Lt),
+            idents::GT => Some(BinaryOpType::Gt),
+            idents::LE => Some(BinaryOpType::Le),
+            idents::GE => Some(BinaryOpType::Ge),
+            idents::AND => Some(BinaryOpType::And),
+            idents::OR => Some(BinaryOpType::Or),
+            _ => None,
+        }
+    }
+
     pub fn binary_operator(&self) -> Option<Op> {
         match self.name() {
             idents::ADD => Some(Op::Add),
@@ -202,6 +226,14 @@ impl ZIdent {
             idents::GT => Some(Op::Gt),
             idents::LE => Some(Op::Le),
             idents::GE => Some(Op::Ge),
+            _ => None,
+        }
+    }
+
+    pub fn unary_operator_type(&self) -> Option<UnaryOpType> {
+        match self.name() {
+            idents::SUB => Some(UnaryOpType::Negate),
+            idents::NOT => Some(UnaryOpType::Not),
             _ => None,
         }
     }

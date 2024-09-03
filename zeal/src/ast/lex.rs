@@ -5,10 +5,9 @@ use std::{
     hash::Hash,
     num::ParseIntError,
     rc::Rc,
+    usize,
 };
 
-// TODO :: MAKE THE FUCKING GC FIRST
-//
 use logos::{Lexer, Logos, Skip};
 
 use crate::{
@@ -18,6 +17,16 @@ use crate::{
     },
     err::lex::LexError,
 };
+
+/// A line of Toks that (hopefully) represent a statement/expression boundary.
+/// Splits on Newline/Semicolon/Terminal Tok
+// pub struct BufferLine {
+//     head: Tok,
+//     body:
+//     tail: Tok,
+//
+// }
+//
 
 #[derive(Debug, Clone)]
 pub struct TokBuffer(Box<[Tok]>);
@@ -43,6 +52,7 @@ impl TokBuffer {
             let tok = Tok::from_tok(t, lex.slice(), line);
             buf.push(tok);
         }
+        buf.push(Tok::eof());
         let s = Self(buf.into_boxed_slice());
         Ok(s)
     }
@@ -84,6 +94,20 @@ pub struct Tok {
 }
 
 impl Tok {
+    pub const EOF_STR: &'static str = "__EOF__";
+
+    pub fn eof() -> Self {
+        Self {
+            tok: LexTok::String(Self::EOF_STR.into()),
+            lexeme: Self::EOF_STR.into(),
+            ty: TokType::Eof,
+            info: LineInfo {
+                line: usize::MAX,
+                col: usize::MAX,
+            },
+        }
+    }
+
     fn from_tok(tok: LexTok, lexeme: &str, info: LineInfo) -> Self {
         let ty = TokType::from(&tok);
         let lexeme = lexeme.to_owned();
@@ -92,6 +116,33 @@ impl Tok {
             lexeme,
             ty,
             info,
+        }
+    }
+
+    pub const fn is_begin_expr(&self) -> bool {
+        match self.ty {
+            TokType::Begin
+            | TokType::Var
+            | TokType::Struct
+            | TokType::Trait
+            | TokType::Impl
+            | TokType::If
+            | TokType::Fn
+            | TokType::Return
+            | TokType::Let
+            | TokType::Const
+            | TokType::Loop
+            | TokType::For
+            | TokType::While
+            | TokType::Match
+            | TokType::Print
+            | TokType::Println
+            | TokType::Do
+            | TokType::Pub
+            | TokType::Ref
+            | TokType::BraceOpen
+            | TokType::OpenParen => true,
+            _ => false,
         }
     }
 
@@ -116,8 +167,11 @@ impl std::fmt::Display for Tok {
         f.write_str(&s)
     }
 }
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TokType {
+    ElseIf,
+    Then,
     Begin,
     FatArrow,
     Dot,
@@ -279,12 +333,14 @@ impl From<&LexTok> for TokType {
             LexTok::CloseParen => TokType::CloseParen,
             LexTok::DoubleColon => TokType::DoubleColon,
             LexTok::Comment => TokType::Comment,
+            LexTok::Then => TokType::Then,
+            LexTok::ElseIf => TokType::ElseIf,
         }
     }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
-pub struct TokInfo {
+pub struct LexState {
     pub line: usize,
     pub col: usize,
     pub curr_tok: usize,
@@ -292,9 +348,14 @@ pub struct TokInfo {
 
 #[derive(Debug, Clone, Logos)]
 #[logos(skip r"[ \t\r\f]+")]
-#[logos(extras = TokInfo)]
+#[logos(extras = LexState)]
 #[logos(error = LexError)]
 pub enum LexTok {
+    #[token("elif")]
+    #[token("elseif")]
+    ElseIf,
+    #[token("then")]
+    Then,
     #[token("begin")]
     Begin,
 
@@ -447,9 +508,10 @@ pub enum LexTok {
     Comment,
 }
 
-fn newline_cb(lex: &mut Lexer<LexTok>) {
+fn newline_cb(lex: &mut Lexer<LexTok>) -> Skip {
     lex.extras.line += 1;
     lex.extras.curr_tok = lex.span().end;
 
+    Skip
     // lex.extras.col = lex.span().start - lex.extras.curr_tok;
 }

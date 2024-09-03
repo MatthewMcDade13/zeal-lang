@@ -26,13 +26,13 @@ where
     dst[..n].clone_from_slice(&src[..n])
 }
 
-pub unsafe fn array_from_raw<const S: usize, T>(ptr: *const T, len: usize) -> [T; S]
+pub unsafe fn array_from_raw<const S: usize, T>(ptr: *const T) -> [T; S]
 where
     T: Default + Copy,
 {
     let mut i = 0;
     let mut result = [T::default(); S];
-    while i < len {
+    while i < S {
         let elem = ptr.add(i).as_ref().expect("null ptr deref!!!");
         result[i] = *elem;
         i += 1;
@@ -55,4 +55,8 @@ where
     let mut arr = [default_val; S];
     copy_slice_into(&mut arr, sl);
     arr
+}
+
+pub trait Packable<In: num_traits::Num, Out = Self> {
+    fn pack(n: In) -> Out;
 }

@@ -3,8 +3,9 @@ use chunk::Chunk;
 use opcode::{Op, Opcode, VarOp};
 
 use crate::{
-    ast::{Ast, Expr, ExprList, VarType},
+    ast::{Ast, BinaryOpType, Expr, ExprList, FormExpr, VarType},
     core_types::{idents, num::ZBool, val::ZValue},
+    err::core::CompileError,
 };
 
 pub mod chunk;
@@ -16,26 +17,14 @@ pub struct Archon;
 
 impl Archon {
     pub fn compile(ast: &Ast) -> anyhow::Result<Chunk> {
-        // let ast = todo!(); //ast.pipe();
         let mut ch = Chunk::default();
         Self::compile_with(ast, &mut ch)?;
-        println!("{}", ch.debug_dissassembly());
 
         Ok(ch)
-        // let mut chunks = Vec::with_capacity(ast.slice().len());
-        // for expr in ast.slice() {
-        //     let mut ch = Chunk::default();
-        //     Self::compile_expr(&mut ch, expr)?;
-        //     chunks.push(ch);
-        // }
-        // Ok(chunks)
     }
 
     pub fn compile_with(ast: &Ast, ch: &mut Chunk) -> anyhow::Result<()> {
         Self::compile_expr(ast, ch, &ast.tree)?;
-        // for expr in ast.tree.iter() {
-        // Self::compile_expr_list(ast, ch, &expr)?;
-        // }
         Ok(())
     }
 
@@ -47,7 +36,9 @@ impl Archon {
                     Self::compile_expr(ast, ch, e)?;
                 }
                 let pops = ch.scope.end_scope();
-                ch.push_popn(pops as u8);
+                if pops > 0 {
+                    ch.push_popn(pops as u8);
+                }
             }
             ExprList::Tuple(tup) => {
                 for ex in tup.iter() {
@@ -62,113 +53,181 @@ impl Archon {
 
     fn compile_expr(ast: &Ast, ch: &mut Chunk, expr: &Expr) -> anyhow::Result<()> {
         match expr {
-            Expr::Call(cl) => {
-                let head = cl.head.expect_ident();
+            Expr::Form(ce) => {
+                match ce {
+                    FormExpr::If {
+                        cond,
+                        if_body: then_body,
+                        else_body,
+                    } => {
+                        Self::compile_expr(ast, ch, cond)?;
 
-                if let Some(op) = head.binary_operator() {
-                    // NOTE: For now mathematic operators have only 2 operands. In the future
-                    // we can easily allow for a lisp style ops
-                    let left = &cl.params[0];
-                    let right = &cl.params[1];
-                    Self::compile_expr(ast, ch, left)?;
-                    Self::compile_expr(ast, ch, right)?;
-                    ch.push_opcode(Opcode::new(op));
-                } else if let Some(op) = head.unary_operator() {
-                    let operand = &cl.params[0];
-                    Self::compile_expr(ast, ch, operand)?;
-                    ch.push_opcode(Opcode::new(op));
-                } else {
-                    match head.name() {
-                        idents::ASSIGN => {
-                            let name = &cl.params[0];
-                            let ident = name
-                                .inner_ident()
-                                .expect("first param of Assignment call must be an Identifier!!!");
-                            let ty = ast.symbols.var_type(&ident);
-                            if let Some(VarType::Var) = ty {
-                                let val = &cl.params[1];
-                                Self::compile_expr(ast, ch, val)?;
-                                let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
-                            } else {
-                                bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
+                        let then_patch = ch.push_jump(Op::JumpFalse);
+                        ch.push_popn(1);
+                        Self::compile_expr_list(ast, ch, then_body)?;
+
+                        let else_jump = ch.push_jump(Op::Jump);
+                        ch.patch_jump(then_patch);
+                        ch.push_popn(1);
+
+                        // ch.patch_jump(then_patch);
+
+                        if let Some(eb) = else_body {
+                            match eb.as_ref() {
+                            // else
+                            Expr::List(ExprList::Block(bl)) => {
+                                Self::compile_expr_list(ast, ch, &ExprList::Block(bl.clone()))?;
                             }
+                            // elseif
+                            Expr::Form(FormExpr::If { .. }) => Self::compile_expr(ast, ch, eb.as_ref())?,
+                            _ => bail!("CompileError => Expected Expr::List(ExprList::Block()) | Expr::Call(CallExpr::If {{..}}) in Archon::compile_expr for else body!!! Probably missing ending else/end/elseif!!!"),
                         }
-                        idents::PRINT => {
-                            let right = &cl.params[0];
+                        }
+                        ch.patch_jump(else_jump);
+                    }
+                    FormExpr::Loop { body } => todo!(),
+                    FormExpr::While { cond, body } => todo!(),
+                    FormExpr::Each {
+                        loop_ident,
+                        iterable,
+                        num_range,
+                    } => todo!(),
+                    FormExpr::For {
+                        init,
+                        cond,
+                        inc,
+                        body,
+                    } => todo!(),
+                    FormExpr::Match {} => todo!(),
+                    FormExpr::Struct {} => todo!(),
+                    FormExpr::Impl {} => todo!(),
+                    FormExpr::Func {
+                        name,
+                        arity,
+                        body,
+                        last,
+                    } => todo!(),
+                    FormExpr::Print(pex) => {
+                        Self::compile_expr(ast, ch, pex)?;
+                        ch.push_opcode(Opcode::new(Op::Print));
+                    }
+                    FormExpr::Println(pex) => {
+                        Self::compile_expr(ast, ch, pex)?;
+                        ch.push_opcode(Opcode::new(Op::Println));
+                    }
+
+                    FormExpr::BinaryOperator {
+                        op: op,
+                        left: left,
+                        right: right,
+                    } => match op {
+                        BinaryOpType::Gt
+                        | BinaryOpType::Lt
+                        | BinaryOpType::Ge
+                        | BinaryOpType::Le
+                        | BinaryOpType::Equals
+                        | BinaryOpType::NotEquals
+                        | BinaryOpType::BitAnd
+                        | BinaryOpType::BitOr
+                        | BinaryOpType::Xor
+                        | BinaryOpType::Concat
+                        | BinaryOpType::Add
+                        | BinaryOpType::Sub
+                        | BinaryOpType::Mul
+                        | BinaryOpType::Div => {
+                            Self::compile_expr(ast, ch, left)?;
                             Self::compile_expr(ast, ch, right)?;
-                            ch.push_opcode(Opcode::new(Op::Print));
+
+                            let op = Op::from(*op);
+                            ch.push_opcode(Opcode::new(op));
                         }
-                        idents::PRINTLN => {
-                            let right = &cl.params[0];
-                            Self::compile_expr(ast, ch, right)?;
-                            ch.push_opcode(Opcode::new(Op::Println));
+
+                        BinaryOpType::And => {}
+                        BinaryOpType::Or => {}
+                    },
+
+                    FormExpr::UnaryOperator { op, scalar, .. } => {
+                        let op = Op::from(*op);
+                        Self::compile_expr(ast, ch, scalar)?;
+                        ch.push_opcode(Opcode::new(op));
+                    }
+                    FormExpr::Assign { binding, rhs } => {
+                        let ident = binding;
+
+                        let ty = ast.symbols.var_type(&ident);
+                        if let Some(VarType::Var) = ty {
+                            Self::compile_expr(ast, ch, rhs.as_ref())?;
+                            let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
+                        } else {
+                            bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
                         }
-                        _ => bail!("cant compile: {head}"),
-                    };
+                    }
+                    FormExpr::Call { head, params } => {
+                        todo!()
+                        // let head = head.expect_ident();
+                        //
+                        // if let Some(op) = head.binary_operator() {
+                        //     // NOTE: For now mathematic operators have only 2 operands. In the future
+                        //     // we can easily allow for a lisp style ops
+                        //     let left = &params[0];
+                        //     let right = &params[1];
+                        //     Self::compile_expr(ast, ch, left)?;
+                        //     Self::compile_expr(ast, ch, right)?;
+                        //     ch.push_opcode(Opcode::new(op));
+                        // } else if let Some(op) = head.unary_operator() {
+                        //     let operand = &params[0];
+                        //     Self::compile_expr(ast, ch, operand)?;
+                        //     ch.push_opcode(Opcode::new(op));
+                        // } else {
+                        //     match head.name() {
+                        //         idents::ASSIGN => {
+                        //             let name = &params[0];
+                        //             let ident = name.inner_ident().expect(
+                        //                 "first param of Assignment call must be an Identifier!!!",
+                        //             );
+                        //             let ty = ast.symbols.var_type(&ident);
+                        //             if let Some(VarType::Var) = ty {
+                        //                 let val = &params[1];
+                        //                 Self::compile_expr(ast, ch, val)?;
+                        //                 let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
+                        //             } else {
+                        //                 bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
+                        //             }
+                        //         }
+                        //         idents::PRINT => {
+                        //             let right = &params[0];
+                        //             Self::compile_expr(ast, ch, right)?;
+                        //             ch.push_opcode(Opcode::new(Op::Print));
+                        //         }
+                        //         idents::PRINTLN => {
+                        //             let right = &params[0];
+                        //             Self::compile_expr(ast, ch, right)?;
+                        //             ch.push_opcode(Opcode::new(Op::Println));
+                        //         }
+                        //         _ => bail!("cant compile: {head}"),
+                        //     };
+                        // }
+                    }
+                    _ => bail!("Unspecified error in compile_expr matching CallExpr::Std(StdForm)"),
                 }
             }
+
             Expr::Binding { ty, name, init } => {
-                // let init = if let Some(i) = init {
-                //     i
-                // } else {
-                //     &ExprList::Nil
-                // };
                 Self::compile_expr(ast, ch, init)?;
                 let name = name.expect_ident();
                 ch.declare_binding(name.clone())?;
-
-                // if let Some(ident) = head.as_ident_varop() {
-                //     assert!(ef.len() >= 3);
-                //
-                //     let name = &ef[1];
-                //     let val = &ef[2];
-                //
-                //     // only compile value,
-                //     Self::compile_expr(ast, ch, val)?;
-                //     if let Some(n) = name.inner_ident() {
-                //         match ident.name() {
-                //             idents::LET | idents::VAR => {
-                //                 ch.push_variable(n.clone(), VarOp::Define);
-                //             }
-                //             idents::ASSIGN => {
-                //                 let _ = ch.push_variable(n.clone(), VarOp::Set);
-                //             }
-                //             _ => unreachable!(),
-                //         }
-                //     } else {
-                //         bail!(
-                //         "!!!NEED ERROR TYPE!!! => Cannot declare binding with non-identifier name."
-                //     );
-                //     }
-                // } else {
-                //     // TODO: Check if this a keyword, otherwise call list as a normal function...
-                //
-                //     if let Expr::Atom(ZValue::Ident(ident)) = head {
-                //         match ident.name() {
-                //             idents::PRINT => {
-                //                 let right = &ef[1];
-                //                 Self::compile_expr(ast, ch, right)?;
-                //                 ch.push_opcode(Opcode::new(Op::Print))
-                //             }
-                //             idents::PRINTLN => {
-                //                 let right = &ef[1];
-                //                 Self::compile_expr(ast, ch, right)?;
-                //                 ch.push_opcode(Opcode::new(Op::Println))
-                //             }
-                //             _ => bail!("cant compile: {head}"),
-                //         }
-                //     }
-                // }
-                // .expect(
-                // "Uknown effect keyword. Use 'let', 'var' or '=' for variable & assignment.",
-                // );
             }
-            // Expr::List(l) => Self::compile_expr(ch, l.as_ref())?,
             Expr::List(li) => Self::compile_expr_list(ast, ch, li)?,
             Expr::Atom(a) => match a {
-                ZValue::Nil => ch.push_opcode(Opcode::new(Op::Nil)),
-                ZValue::Bool(ZBool(true)) => ch.push_opcode(Opcode::new(Op::True)),
-                ZValue::Bool(ZBool(false)) => ch.push_opcode(Opcode::new(Op::False)),
+                ZValue::Nil => {
+                    let _ = ch.push_opcode(Opcode::new(Op::Nil));
+                }
+                ZValue::Bool(ZBool(true)) => {
+                    let _ = ch.push_opcode(Opcode::new(Op::True));
+                }
+                ZValue::Bool(ZBool(false)) => {
+                    let _ = ch.push_opcode(Opcode::new(Op::False));
+                }
                 ZValue::Number(n) => {
                     let _ = ch.push_number(n.unwrap());
                 }
@@ -190,7 +249,10 @@ impl Archon {
                 ZValue::Unit => todo!(),
             },
 
-            Expr::Nil => todo!(),
+            Expr::Nil => {
+                ch.push_opcode(Opcode::new(Op::Nil));
+            }
+            _ => {}
         }
         Ok(())
     }

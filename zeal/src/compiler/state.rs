@@ -237,12 +237,12 @@ impl Scope {
                             if local.depth.unwrap() >  depth {
                                 self.locals.pop();
                                 i += 1;
-                            } else if local.depth.unwrap() == depth {
+                            } else {
                                 break;
                             }
                         }
 
-                        i
+                        i 
                     }
                 }
             }

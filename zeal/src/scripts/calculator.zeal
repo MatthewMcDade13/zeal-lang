@@ -5,15 +5,26 @@ let y = x == 10
 println x
 println y
 
+var ttt
+
+
+
+
+
+if x == 10 then
+  println "if"
+elseif x == 25 then 
+  println "elseif"
+else 
+  println "else"
+end
 
 begin 
   let x = "local"
   println x 
   begin 
     let y = "inner local"
-    println y 
-    println x
-
+    println y
   end
 end
 

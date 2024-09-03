@@ -59,11 +59,11 @@ pub const VM_STACK_MAX: usize = u16::MAX as usize;
 #[derive(Debug, Clone)]
 pub struct VM {
     stack: VMStack,
-    chunks: Vec<Chunk>,
-    /// index of current running chunk.
-    depth: usize,
+    // chunks: Vec<Chunk>,
+    chunk: Chunk,
     /// program counter for current running chunk. (chunk counter)
-    cc: usize,
+    pc: usize,
+
     globals: HashMap<ZIdent, ZValue>, // runes: RuneTable,
 }
 
@@ -73,9 +73,8 @@ impl VM {
     pub fn new() -> Self {
         Self {
             stack: Stack::new(),
-            chunks: Vec::with_capacity(8),
-            depth: 0,
-            cc: 0,
+            chunk: Chunk::default(),
+            pc: 0,
             globals: HashMap::new(),
             // runes: RuneTable::empty(),
         }
@@ -86,10 +85,7 @@ impl VM {
     }
 
     pub fn dump_chunks(&self) -> String {
-        self.chunks
-            .iter()
-            .map(|c| c.to_string())
-            .collect::<String>()
+        self.chunk.to_string()
     }
 
     pub fn dump(&self) -> String {
@@ -98,7 +94,7 @@ impl VM {
         let bcode = self.dump_chunks();
         dump.push_str(&stack);
         dump.push_str(&bcode);
-        dump.push_str(&format!("pc: {}, current depth: {}\n", self.cc, self.depth));
+        dump.push_str(&format!("pc: {}", self.pc));
         dump.push_str(" ----- DUMP END ------\n");
 
         dump
@@ -114,41 +110,36 @@ impl VM {
     /// Compiles ast into a single chunk and returns the depth (index) of the newly pushed chunk.
     pub fn compile_ast(&mut self, ast: &Ast) -> anyhow::Result<usize> {
         let new = Archon::compile(&ast)?;
-        self.chunks.push(new);
-        let depth = self.chunks.len() - 1;
+        self.chunk = new;
+        let depth = self.chunk.len() - 1;
         Ok(depth)
     }
 
     #[inline]
     pub fn chunk(&self) -> &Chunk {
-        assert!(self.depth < self.chunks.len());
-        &self.chunks[self.depth]
+        &self.chunk
     }
 
-    pub fn opcode_at(&self, index: usize, depth: usize) -> Option<Opcode> {
-        let c = self.chunks.get(depth)?;
+    pub fn opcode_at(&self, index: usize) -> Option<Opcode> {
+        let c = &self.chunk;
         c.opcode_at(index)
     }
 
-    pub fn expect_opcode_at(&self, index: usize, depth: usize) -> Opcode {
-        let c = &self.chunks[depth];
-        c.opcode_at(index).unwrap()
+    pub fn expect_opcode_at(&self, index: usize) -> Opcode {
+        self.chunk.opcode_at(index).unwrap()
     }
 
     pub fn exec_all(&mut self) -> anyhow::Result<()> {
-        for i in 0..self.chunks.len() {
-            self.depth = i;
-            self.cc = 0;
-            let _ = self.exec_chunk(i)?;
-        }
+        let _ = self.exec_chunk()?;
         Ok(())
     }
 
-    pub fn exec_chunk(&mut self, depth: usize) -> anyhow::Result<ZValue> {
-        self.cc = 0;
-        if let Some(chunk) = self.chunks.get(depth) {
-            for opcode in chunk.iter() {
-                match opcode.op {
+    pub fn exec_chunk(&mut self) -> anyhow::Result<ZValue> {
+        self.pc = 0;
+        while self.pc < self.chunk.len() {
+            if let Some(opcode) = self.chunk.opcode_at(self.pc) {
+                self.pc += opcode.offset();
+                match opcode.op() {
                     Op::Return => {}
                     Op::Println => {
                         let v = self.stack.peek_top().expect("cannot peek an empty stack!");
@@ -166,7 +157,7 @@ impl VM {
                         let _ = self.stack.expect_pop();
                     }
                     Op::PopN => {
-                        let param = opcode.param.unwrap();
+                        let param = opcode.try_param().unwrap();
                         let n = param.to_u32() as usize;
                         for _ in 0..n {
                             let _ = self.stack.expect_pop();
@@ -208,7 +199,7 @@ impl VM {
                         // let id = param.to_u32() as usize;
                         // let v = constants[id].clone();
                         // let v = self.chunk().try_read_const(opcode).unwrap();
-                        let v = read_constant(&opcode, &chunk.constants)
+                        let v = read_constant(&opcode, &self.chunk.constants)
                             .expect("Failed to read Constant!");
 
                         self.stack.push(v.clone());
@@ -217,7 +208,7 @@ impl VM {
 
                     // NOTE: ----- DEFINE GLOBAL -----
                     Op::DeclareGlobal8 | Op::DeclareGlobal16 | Op::DeclareGlobal32 => {
-                        let name = read_constant(&opcode, &chunk.constants)
+                        let name = read_constant(&opcode, &self.chunk.constants)
                             .expect("Failed to read constant global!!!");
                         if let ZValue::Ident(s) = name {
                             let val = self.stack.expect_pop();
@@ -225,7 +216,8 @@ impl VM {
                         }
                     }
                     Op::GetGlobal8 | Op::GetGlobal16 | Op::GetGlobal32 => {
-                        if let Some(ZValue::Ident(name)) = read_constant(&opcode, &chunk.constants)
+                        if let Some(ZValue::Ident(name)) =
+                            read_constant(&opcode, &self.chunk.constants)
                         {
                             if let Some(val) = self.globals.get(name) {
                                 self.stack.push(val.clone());
@@ -235,7 +227,7 @@ impl VM {
                                     RuntimeError::VMUnknownIdentifier {
                                         name: name.clone(),
                                         opcode: opcode,
-                                        constants: chunk.constants.to_owned(),
+                                        constants: self.chunk.constants.to_owned(),
                                         globals: self.globals.clone()
                                     }
                                 )
@@ -246,7 +238,8 @@ impl VM {
                     }
 
                     Op::SetGlobal8 | Op::SetGlobal16 | Op::SetGlobal32 => {
-                        if let Some(ZValue::Ident(name)) = read_constant(&opcode, &chunk.constants)
+                        if let Some(ZValue::Ident(name)) =
+                            read_constant(&opcode, &self.chunk.constants)
                         {
                             let top = self.stack.peek_top().expect("Nothing in stack to peek!!!");
 
@@ -258,7 +251,7 @@ impl VM {
                                     RuntimeError::VMUnknownIdentifier {
                                         name: name.clone(),
                                         opcode: opcode,
-                                        constants: chunk.constants.clone(),
+                                        constants: self.chunk.constants.clone(),
                                         globals: self.globals.clone(),
                                     }
                                 )
@@ -280,33 +273,48 @@ impl VM {
                             let l = local.clone();
                             self.stack.push(local.clone());
                         } else {
-                            bail!("Tried to get ")
+                            bail!("Unable to call GetLocal* to get Local")
                         }
                     }
                     // NOTE: ----- END GET LOCAL -----
 
                     // NOTE: ----- SET LOCAL -----
-                    Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => {} // NOTE: ----- END SET LOCAL -----
+                    Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => {}
+
+                    Op::JumpFalse => {
+                        if let Some(top) = self.stack.peek_top() {
+                            if top.is_falsey() {
+                                let jumpto = opcode
+                                    .try_param()
+                                    .expect("JumpFalse16 Op has no parameter!!!");
+                                self.pc = jumpto.to_u32() as usize;
+                            }
+                        }
+                    }
+
+                    Op::LongJumpFalse => todo!(),
+                    Op::Jump => {
+                        let jumpto = opcode.try_param().expect("Jump16 Op has no parameter!!!");
+                        self.pc = jumpto.to_usize();
+                    }
+                    Op::LongJump => todo!(),
+                    Op::JumpTrue => todo!(),
+                    Op::LongJumpTrue => todo!(), // NOTE: ----- END SET LOCAL -----
                 };
-
-                // Ok(opcode.offset())
-                // vm_exec_opcode(&mut self.stack, &chunk.constants, opcode)?;
             }
-
-            let top = if let Some(t) = self.stack.peek_top() {
-                t.clone()
-            } else {
-                ZValue::Nil
-            };
-            Ok(top)
-        } else {
-            bail!(
-                "Depth out of range! current_max_depth: {}, given_depth: {}",
-                self.chunks.len(),
-                depth
-            );
         }
+
+        let top = if let Some(t) = self.stack.peek_top() {
+            t.clone()
+        } else {
+            ZValue::Nil
+        };
+        Ok(top)
     }
+    // for opcode in self.chunk.iter() {
+    // Ok(opcode.offset())
+    // vm_exec_opcode(&mut self.stack, &chunk.constants, opcode)?;
+    // }
 
     // pub fn exec_chunks(&mut self, chs: &[Chunk]) -> anyhow::Result<()> {
     //     for c in chs {
@@ -321,8 +329,8 @@ impl VM {
     }
 
     pub fn exec_source(&mut self, src: &str) -> anyhow::Result<ZValue> {
-        let depth = self.compile_source(src)?;
-        self.exec_chunk(depth)
+        self.compile_source(src)?;
+        self.exec_chunk()
     }
 
     //
@@ -331,8 +339,8 @@ impl VM {
     // }
 
     fn read_local(&self, opcode: &Opcode) -> Option<&ZValue> {
-        if let Some(param) = opcode.param {
-            let slot = param.to_u32() as usize;
+        if let Some(param) = opcode.try_param() {
+            let slot = param.to_usize();
             let v = self.stack.peekn(slot)?;
             Some(v)
         } else {
@@ -349,8 +357,8 @@ impl Display for VM {
 }
 
 fn read_constant<'a>(opcode: &Opcode, constants: &'a [ZValue]) -> Option<&'a ZValue> {
-    if let Some(param) = opcode.param {
-        let id = param.to_u32() as usize;
+    if let Some(param) = opcode.try_param() {
+        let id = param.to_usize();
         Some(&constants[id])
     } else {
         None

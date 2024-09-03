@@ -255,14 +255,138 @@ impl Display for Ast {
 }
 
 #[derive(Debug, Clone)]
-pub struct CallExpr {
-    pub head: ZValue,
-    pub params: AstList<Expr>, //Rc<ExprList>,
+pub enum FormExpr {
+    /// (if cond_expr [...if_body] [...else_body])
+    If {
+        cond: Rc<Expr>,
+        if_body: ExprList,
+        else_body: Option<Rc<Expr>>,
+    },
+    /// (loop [...body])
+    Loop {
+        body: ExprList,
+    },
+
+    /// (while cond_expr [...while_body])
+    While {
+        cond: Rc<Expr>,
+        body: ExprList,
+    },
+
+    /// (each [loop_ident iterable|range?] [...each_body])
+    Each {
+        loop_ident: ZIdent,
+        iterable: Option<ZValue>,
+        num_range: Option<(i32, i32)>,
+    },
+
+    /// (for init_expr cond_expr inc_expr [...for_body])
+    For {
+        init: Rc<Expr>,
+        cond: Rc<Expr>,
+        inc: Rc<Expr>,
+        body: ExprList,
+    },
+    /// (match expr [...patterns wildcard?])
+    Match {},
+    /// (struct name [...fields])
+    Struct {},
+    /// (impl trait=self for_type [...impl_body])
+    Impl {},
+    /// (fn name [...body last])
+    Func {
+        name: ZIdent,
+        arity: u32,
+        body: ExprList,
+        last: Rc<Expr>,
+    },
+    Print(Rc<Expr>),
+    Println(Rc<Expr>),
+    BinaryOperator {
+        op: BinaryOpType,
+        left: Rc<Expr>,
+        right: Rc<Expr>,
+    },
+    UnaryOperator {
+        op: UnaryOpType,
+        scalar: Rc<Expr>,
+    },
+
+    Assign {
+        binding: ZIdent,
+        rhs: Rc<Expr>,
+    },
+
+    /// A simple call expression.
+    ///     Ex:    (add 1 2)
+    ///              ^  ^-^
+    ///              |   |
+    ///           head params
+    Call {
+        head: ZValue,
+        params: AstList<Expr>,
+    },
 }
 
-impl CallExpr {
-    pub fn arity(&self) -> usize {
-        self.params.len()
+#[derive(Debug, Clone, Copy)]
+pub enum BinaryOpType {
+    Gt,
+    Lt,
+    Ge,
+    Le,
+    And,
+    Or,
+    Equals,
+    NotEquals,
+    BitAnd,
+    BitOr,
+    Xor,
+    Concat,
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+impl Display for BinaryOpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BinaryOpType::Gt => idents::GT,
+            BinaryOpType::Lt => idents::LT,
+            BinaryOpType::Ge => idents::GE,
+            BinaryOpType::Le => idents::LE,
+            BinaryOpType::And => idents::AND,
+            BinaryOpType::Or => idents::OR,
+            BinaryOpType::Equals => idents::EQUAL,
+            BinaryOpType::NotEquals => idents::NOT_EQUAL,
+            BinaryOpType::BitAnd => todo!(),
+            BinaryOpType::BitOr => todo!(),
+            BinaryOpType::Xor => todo!(),
+            BinaryOpType::Concat => idents::CONCAT,
+            BinaryOpType::Add => idents::ADD,
+            BinaryOpType::Sub => idents::SUB,
+            BinaryOpType::Mul => idents::MUL,
+            BinaryOpType::Div => idents::DIV,
+        };
+        write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOpType {
+    Call,
+    Negate,
+    Not,
+}
+
+impl Display for UnaryOpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            UnaryOpType::Call => "(...)",
+            UnaryOpType::Negate => idents::SUB,
+            UnaryOpType::Not => idents::NOT,
+        };
+        write!(f, "{s}")
     }
 }
 
@@ -334,13 +458,13 @@ impl ExprList {
     fn fmt_exprlist(el: &Self) -> String {
         match el {
             ExprList::Block(bl) => {
-                let mut s = String::from("(do");
+                let mut s = String::from("(block\n");
                 for (i, ex) in bl.iter().enumerate() {
                     let expr_s = expr_fmt(ex);
 
                     s.push_str(&format!(" {}\n{}", expr_s, "\t".repeat(i)));
                 }
-                s.push_str(&format!(" end)"));
+                s.push_str(&format!(" blockend)"));
                 s
             }
             // ExprList::Call(cl) => {
@@ -375,7 +499,7 @@ pub enum Expr {
         name: ZValue,
         init: Rc<Expr>,
     },
-    Call(CallExpr),
+    Form(FormExpr),
     List(ExprList),
     Atom(ZValue),
     #[default]
@@ -383,6 +507,52 @@ pub enum Expr {
 }
 
 impl Expr {
+    pub const fn if_form(cond: Rc<Expr>, if_body: ExprList, else_body: Option<Rc<Expr>>) -> Self {
+        Self::Form(FormExpr::If {
+            cond,
+            if_body,
+            else_body,
+        })
+    }
+
+    pub const fn is_if_form(&self) -> bool {
+        match self {
+            Expr::Form(FormExpr::If { .. }) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn try_list(&self) -> Option<ExprList> {
+        match self {
+            Expr::List(el) => Some(el.clone()),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn expect_call(&self) -> FormExpr {
+        match self {
+            Self::Form(ce) => ce.clone(),
+            _ => panic!("Attempted to unwrap: {} as Expr::Call.", self),
+        }
+    }
+
+    #[inline]
+    pub fn expect_block(&self) -> ExprList {
+        match self {
+            Self::List(bl) => {
+                if let ExprList::Block(_) = bl {
+                    bl.clone()
+                } else {
+                    panic!("Attempted to unwrap: {} as ExprList::Block.", self)
+                }
+            }
+            _ => panic!("Attempted to unwrap: {} as ExprList::Block.", self),
+        }
+    }
+
+    #[inline]
     pub fn expect_list(&self) -> ExprList {
         match self {
             Expr::List(el) => el.clone(),
@@ -402,6 +572,12 @@ impl Expr {
         Self::List(ExprList::Block(e))
     }
 
+    #[inline]
+    pub fn block_from_slice(exprs: &[Expr]) -> Self {
+        let exs = exprs.to_vec();
+        Self::block(exs)
+    }
+
     // pub fn to_unit_list(&self) -> ExprList {
     //     ExprList::Unit(Rc::new(self.clone()))
     // }
@@ -418,7 +594,7 @@ impl Expr {
             Expr::List(_) => "List",
             Expr::Atom(_) => "Atom",
             Expr::Nil => "Nil",
-            Expr::Call(_) => "Call",
+            Expr::Form(_) => "Call",
         }
     }
 
@@ -444,12 +620,11 @@ impl Expr {
     }
 
     pub fn assignment(name: ZIdent, rhs: Expr) -> Self {
-        let head = ZValue::Ident(ZIdent::from("="));
-        let params = [Expr::Atom(ZValue::Ident(name)), rhs];
-        // let params = ExprList::tuple_from_slice(&params);
-        let params = Rc::new(params);
-        let cl = CallExpr { head, params };
-        Self::Call(cl)
+        let form = FormExpr::Assign {
+            binding: name,
+            rhs: Rc::new(rhs),
+        };
+        Self::Form(form)
     }
 
     pub fn is_ident_vardecl(&self) -> bool {
@@ -492,33 +667,34 @@ impl Expr {
         Self::binding(VarType::Let, name, init)
     }
 
-    pub fn binary_op(left: &Expr, op: &ZIdent, right: &Expr) -> Self {
-        let ast: &[Expr] = &[
-            left.clone(),
-            right.clone(),
-            // Self::Atom(left.clone()),
-            // Self::Atom(right.clone()),
-        ];
-        let params = Rc::from(ast);
-        // let params = Rc::new(ExprList::tuple_from_slice(ast));
-        let cl = CallExpr {
-            head: ZValue::Ident(op.clone()),
-            params,
-        };
-        Self::Call(cl)
+    pub fn binary_op(left: Expr, op: ZIdent, right: Expr) -> Self {
+        let op = op
+            .binary_operator_type()
+            .expect("Expected ident to be a valid binary operator. Got: {op}");
+        let left = Rc::new(left);
+        let right = Rc::new(right);
+        let form = FormExpr::BinaryOperator { op, left, right };
+        Self::Form(form)
     }
 
-    pub fn unary_op(op: &ZIdent, right: &Expr) -> Self {
-        let head = ZValue::Ident(op.clone());
-        let ast = [
-            right.clone(),
-            // Self::Atom(left.clone()),
-            // Self::Atom(right.clone()),
-        ];
-        let params = Rc::from(ast);
-        // let params = Rc::new(ExprList::tuple_from_slice(&ast));
-        let cl = CallExpr { head, params };
-        Self::Call(cl)
+    pub fn unary_op(op: ZIdent, right: Expr) -> Self {
+        let op = op
+            .unary_operator_type()
+            .expect("Expected ident to be a valid unary operator. Got: {op}");
+        let scalar = Rc::new(right);
+        let form = FormExpr::UnaryOperator { op, scalar };
+        Self::Form(form)
+        // let head = ZValue::Ident(op.clone());
+        // let ast = [
+        //     right.clone(),
+        //     // Self::Atom(left.clone()),
+        //     // Self::Atom(right.clone()),
+        // ];
+        // let params = Rc::from(ast);
+        // // let params = Rc::new(ExprList::tuple_from_slice(&ast));
+        // // let cl = CallExpr { head, params };
+        // let cl = FormExpr::native(head, params);
+        // Self::Form(cl)
     }
 
     pub const fn try_as_atom(&self) -> Option<&ZValue> {
@@ -561,14 +737,55 @@ impl Expr {
 
 fn expr_fmt(e: &Expr) -> String {
     match e {
-        Expr::Call(ce) => {
-            let mut s = format!("({} ", ce.head.expect_ident().name());
+        Expr::Form(ce) => match ce {
+            FormExpr::If {
+                cond,
+                if_body,
+                else_body,
+            } => {
+                let else_body = else_body
+                    .as_ref()
+                    .map(|e| format!("(else {}\n endif)", expr_fmt(e)))
+                    .unwrap_or("end".into());
 
-            for i in ce.params.iter() {
-                s.push_str(&format!("{} ", expr_fmt(i)))
+                format!("(if {cond} (then\n\t {if_body}\t\n {else_body}))")
             }
-            format!("{})", s.trim_end())
-        }
+            FormExpr::Loop { body } => todo!(),
+            FormExpr::While { cond, body } => todo!(),
+            FormExpr::Each {
+                loop_ident,
+                iterable,
+                num_range,
+            } => todo!(),
+            FormExpr::For {
+                init,
+                cond,
+                inc,
+                body,
+            } => todo!(),
+            FormExpr::Match {} => todo!(),
+            FormExpr::Struct {} => todo!(),
+            FormExpr::Impl {} => todo!(),
+            FormExpr::Func {
+                name,
+                arity,
+                body,
+                last,
+            } => todo!(),
+            FormExpr::Print(expr) => format!("(print {expr})"),
+            FormExpr::Println(expr) => format!("(println {expr})"),
+            FormExpr::BinaryOperator { op, left, right } => format!("({op} {left} {right})"),
+            FormExpr::Assign { binding, rhs } => format!("(#= {binding} {rhs})"),
+            FormExpr::Call { head, params } => {
+                let mut s = format!("({} ", head.expect_ident().name());
+
+                for i in params.iter() {
+                    s.push_str(&format!("{} ", expr_fmt(i)))
+                }
+                format!("{})", s.trim_end())
+            }
+            FormExpr::UnaryOperator { op, scalar } => todo!(),
+        },
         Expr::List(li) => li.to_string(),
         Expr::Atom(at) => at.to_string(),
         Expr::Binding { ty, name, init } => {
@@ -584,23 +801,19 @@ fn expr_fmt(e: &Expr) -> String {
     }
 }
 
+#[inline]
+fn fmt_single(head: &ZIdent, a: &Expr) -> String {
+    format!("({head} {a})")
+}
+
+#[inline]
+fn fmt_double(head: &ZIdent, a: &Expr, b: &Expr) -> String {
+    format!("({head} {a} {b})")
+}
+
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = expr_fmt(self);
         write!(f, "{s}")
     }
 }
-
-// #[derive(Error, Clone, Debug)]
-// pub enum AstError {
-//     #[error("Runtime Error :: {token:?} => {message}")]
-//     RuntimeError { token: LexTok, message: String },
-//     #[error("Type Error :: {value:?} => {message}")]
-//     TypeError { value: ZValue, message: String },
-//     #[error("Parse Error :: {token:?} \n{message}\n Expr => {expr}")]
-//     ParseError {
-//         token: LexTok,
-//         message: String,
-//         expr: Expr,
-//     },
-// }

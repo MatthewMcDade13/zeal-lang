@@ -1,49 +1,73 @@
 use std::rc::Rc;
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use phf::phf_map;
 
 use crate::{
-    ast::{lex::TokType, Expr, LexTok, Tok},
+    ast::{
+        lex::{LineInfo, TokType},
+        Expr, ExprList, LexTok, Tok,
+    },
     core_types::{
         idents,
         num::{ZBool, ZFloat64},
         str::{ZIdent, ZString},
         val::ZValue,
     },
-    err::parse::ParseError,
+    err::{
+        self,
+        parse::{ExprInfo, ParseErrInfo, ParseError},
+    },
 };
 
-use super::{CallExpr, ExprList, VarType};
+use super::{FormExpr, VarType};
 
-// pub static KEYWORDS: phf::Map<&'static str, LexTok> = phf_map! {
-//     "struct" => LexTok::Struct,
-//     "trait" => LexTok::Trait,
-//     "impl" => LexTok::Impl,
-//     "if" => LexTok::If,
-//     "else" => LexTok::Else,
-//     "true" => LexTok::Bool(true),
-//     "false" => LexTok::Bool(false),
-//     "fn" => LexTok::Fn,
-//     "nil" => LexTok::Nil,
-//     "and" => LexTok::And,
-//     "or" => LexTok::Or,
-//     "return" => LexTok::Return,
-//     "super" => LexTok::Super,
-//     "self" => LexTok::ThisSelf,
-//     "let" => LexTok::Let,
-//     "const" => LexTok::Const,
-//     "loop" => LexTok::Loop,
-//     "for" => LexTok::For,
-//     "while" => LexTok::While,
-//     "break" => LexTok::Break,
-//     "match" => LexTok::Match,
-//     "continue" => LexTok::Continue,
-//     "println" => LexTok::Println,
-//     "do" => LexTok::Do,
-//     "end" => LexTok::End,
-// };
+macro_rules! blocklike {
+    ($self: ident, $start_pat: pat, $end_pat: pat) => {{
+        if let $start_pat = $self.peek().ty {
+            $self.adv(1)?;
+            let mut stmt_exprs = Vec::new();
+            loop {
+                if $self.is_eof() {
+                    break Ok(Expr::block(stmt_exprs));
+                }
 
+                if let $end_pat = $self.peek().ty {
+                    break Ok(Expr::block(stmt_exprs));
+                }
+
+                let st = $self.expression_stmt()?;
+
+                stmt_exprs.push(st);
+            }
+        } else {
+            anyhow::Result::Err(anyhow!(
+                "{}",
+                ParseError::ExpectedBlock(ParseErrInfo::from($self, None))
+            ))
+
+            // bail!(
+            //     "{}",
+            //     ParseError::ExpectedBlock(ParseErrInfo::from($self, None))
+            // )
+        }
+    }};
+}
+
+impl ParseErrInfo {
+    pub fn from(p: &Parser, expr: Option<&Expr>) -> Self {
+        let expr = expr.map(|e| err::parse::ExprInfo {
+            ty: e.type_str().to_owned(),
+            string: e.to_string(),
+        });
+        Self {
+            expr,
+            prev: p.prev().clone(),
+            curr: p.peek().clone(),
+            next: None,
+        }
+    }
+}
 #[derive(Debug, Clone)]
 pub struct Parser {
     i: usize,
@@ -57,143 +81,125 @@ impl Parser {
             tokens: tokens.to_vec(),
         };
         let mut exprs = Vec::new();
-        'parse: while !p.is_eof() {
-            let ex = p.expression_stmt()?;
-            exprs.push(ex);
-            while p.peek().ty == TokType::NewLine {
-                if p.i == p.tokens.len() - 1 {
-                    break 'parse;
+        while !p.is_eof() {
+            match p.expression_stmt() {
+                Ok(ex) => exprs.push(ex),
+                Err(e) => {
+                    if let Some(ParseError::Eof) = e.downcast_ref::<ParseError>() {
+                        break;
+                    } else {
+                        let LineInfo { line, col } = p.peek().info;
+                        println!(
+                            // TODO: Make this toggleable, idk like to have the option to
+                            // abort parsing or just skip if we cant parse an expression.
+                            "Error parsing expression at (L:{},C:{},I:{}) Skipping. =>  {}",
+                            line, col, p.i, e
+                        );
+                        continue;
+                    }
                 }
-                p.advance(1);
             }
+            // let ex = p.expression_stmt()?;
+            // exprs.push(ex);
+            // while p.peek().ty == TokType::NewLine {
+            //     if p.i == p.tokens.len() - 1 {
+            //         break 'parse;
+            //     }
+            //     p.advance(1);
+            // }
         }
         let exprs = Expr::tuple(exprs);
         Ok(exprs)
     }
 
-    /// advance cursor to the next expression
-    // fn synchronize(&mut self) {
-    //     self.advance(1);
-    //     while !self.is_eof() {
-    //         if let TokType::NewLine | TokType::Semicolon = self.prev().ty {
-    //             break;
-    //         }
-    //         match self.peek().ty {
-    //             TokType::Struct
-    //             | TokType::Fn
-    //             | TokType::Let
-    //             | TokType::For
-    //             | TokType::If
-    //             | TokType::While
-    //             | TokType::Println
-    //             | TokType::Return => break,
-    //             _ => self.advance(1),
-    //         }
-    //     }
-    // }
-
-    // fn is_expr_end(&self) -> bool {
-    //     match
-    // }
-
-    // Option as parsing an invalid declaration just results in that declaration getting ignored.
-    // we should probably do some logging or error reporting at a higher level so invalid
-    // declarations can be known about and arent completely silently ignored.
+    /// top level statement in Zeal. Zeal programs are (for now, until i implement modules) the
+    /// made up of expression statement 'building blocks'.
+    /// i.e.: program ::= expression_stmt* EOF
     fn expression_stmt(&mut self) -> anyhow::Result<Expr> {
         match self.peek().ty {
             TokType::Let => {
-                self.advance(1);
+                self.adv(1)?;
                 self.bind_expr(VarType::Let)
             }
             TokType::Var => {
-                self.advance(1);
+                self.adv(1)?;
                 self.bind_expr(VarType::Var)
             }
             TokType::Const => {
-                self.advance(1);
+                self.adv(1)?;
                 self.bind_expr(VarType::Const)
             }
             TokType::Print => {
-                self.advance(1);
+                self.adv(1)?;
                 self.print_expr(PrintType::Fmt)
             }
             TokType::Println => {
-                self.advance(1);
+                self.adv(1)?;
                 self.print_expr(PrintType::Newline)
             }
-            // TokType::NewLine | TokType::Semicolon => {
-            //     self.advance(1)
-            //     self.expression_stmt()
-            // }
-            _ => self.value_expr(),
+            TokType::If => {
+                self.adv(1)?;
+                self.if_expr()
+            }
+            TokType::Eof => bail!("{}", ParseError::Eof),
+            _ => self.block_expr(),
         }
     }
-    //
-    // fn let_statement(&mut self) -> anyhow::Result<Stmt> {
-    //     if let TokType::Ident = self.peek().ty {
-    //         let name = self.peek().clone();
-    //         self.advance(1);
-    //         let initializer = if let TokType::Eq = self.peek().ty {
-    //             self.advance(1);
-    //             Some(self.expression()?)
-    //         } else {
-    //             None
-    //         };
-    //
-    //         if let TokType::Semicolon = self.peek().ty {
-    //             let name = name.tok.clone();
-    //             self.advance(1);
-    //             Ok(Stmt::Let { name, initializer })
-    //         } else {
-    //             bail!(
-    //                 "{}",
-    //                 AstWalkError::ParseError {
-    //                     token: self.peek().tok.clone(),
-    //                     message: "Expected ';' after let statement".into()
-    //                 }
-    //             )
-    //         }
-    //     } else {
-    //         bail!(
-    //             "{}",
-    //             AstWalkError::ParseError {
-    //                 token: self.peek().tok.clone(),
-    //                 message: "Expected variable name".into()
-    //             }
-    //         )
-    //     }
-    // }
-    //
-    //
+
+    fn if_expr(&mut self) -> anyhow::Result<Expr> {
+        let cond = self.expression()?;
+        let cond = Rc::new(cond);
+
+        let if_body = blocklike!(
+            self,
+            TokType::Then | TokType::Do,
+            TokType::End | TokType::Else | TokType::ElseIf
+        )?;
+
+        match self.peek().ty {
+            TokType::End => {
+                self.adv(1)?;
+                let expr = Expr::if_form(cond, if_body.expect_block(), None);
+                Ok(expr)
+            }
+            TokType::Else => {
+                let else_body = blocklike!(self, TokType::Else, TokType::End)?;
+                let else_body = Rc::new(else_body);
+                self.adv(1)?;
+                let expr = Expr::if_form(cond, if_body.expect_block(), Some(else_body));
+                Ok(expr)
+            }
+            TokType::ElseIf => {
+                self.adv(1)?;
+                let parent = if_body.expect_block();
+                let else_body = self.if_expr()?;
+                let else_body = Rc::new(else_body);
+
+                let expr = Expr::if_form(cond, parent, Some(else_body));
+                Ok(expr)
+            }
+            _ => {
+                self.adv(1)?;
+                let expr = Expr::if_form(cond, ExprList::Nil, None);
+                bail!(
+                    "{}",
+                    ParseError::UnexpectedToken(ParseErrInfo::from(self, Some(&expr)))
+                )
+            }
+        }
+    }
 
     fn bind_expr(&mut self, var_ty: VarType) -> anyhow::Result<Expr> {
         if let TokType::Ident = self.peek().ty {
             let name = self.peek().clone();
-            self.advance(1);
+            self.adv(1)?;
             let initializer = if let TokType::Eq = self.peek().ty {
-                self.advance(1);
-                Some(self.value_expr()?) // expression()?)
-            } else if self.is_terminal() {
-                self.advance(1);
-                None
+                self.adv(1)?;
+                Some(self.expression()?) // expression()?)
             } else {
-                bail!(
-                    "{}",
-                    ParseError::MissingTerminal {
-                        expr_ty: "let expression".into(),
-                        expr: Expr::Nil, //initializer.unwrap_or_else(|| Expr::Nil),
-                        tok: self.peek().clone(),
-                    } // AstError::ParseError {
-                      //     expr: initializer.unwrap_or_else(|| Expr::Nil),
-                      //     token: self.peek().tok.clone(),
-                      //     message: "Expected ';' or newline after let statement".into()
-                      // }
-                );
+                None
             };
-
-            // if self.check_eat_terminals() {
             let name = ZIdent::from(name);
-            // self.advance(1);
             let init = initializer.clone();
             let e = match var_ty {
                 VarType::Var => Expr::var_definition(name, init),
@@ -201,111 +207,107 @@ impl Parser {
                 VarType::Const => todo!(),
             };
             Ok(e)
-            // if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
-            //     let name = ZIdent::from(name);
-            //     self.advance(1);
-            //     let init = initializer.clone();
-            //     let e = match var_ty {
-            //         VarType::Var => Expr::var_definition(name, init),
-            //         VarType::Let => Expr::let_definition(name, init),
-            //         VarType::Const => todo!(),
-            //     };
-            //     Ok(e)
-            // } else {
-            //     bail!(
-            //         "{}",
-            //         AstError::ParseError {
-            //             expr: initializer.unwrap_or_else(|| Expr::Nil),
-            //             token: self.peek().tok.clone(),
-            //             message: "Expected ';' or newline after let statement".into()
-            //         }
-            //     );
-            // }
         } else {
+            let info = ParseErrInfo::from(self, None);
             bail!(
                 "{}",
-                ParseError::UnexpectedToken {
-                    expected: TokType::Ident,
-                    got: self.peek().ty
-                } // AstError::ParseError {
-                  //     expr: Expr::Nil,
-                  //     token: self.peek().tok.clone(),
-                  //     message: "Expected variable name".into()
-                  // }
+                ParseError::UnexpectedBindName {
+                    got: self.peek().clone().to_string(),
+                    info
+                }
             )
-        }
-    }
-
-    fn value_expr(&mut self) -> anyhow::Result<Expr> {
-        match self.peek().ty {
-            TokType::Do | TokType::Begin => {
-                self.advance(1);
-                // self.eat_terminals();
-                let bs = self.block_expr()?;
-                Ok(bs)
-                // Ok(Expr::Block(self.block()?))
-            }
-            // TODO: I dont like this. Make these Print* keywords into functions when
-            // I get around to implementing them.
-            // TokType::Print => {
-            //     self.advance(1);
-            //     self.print_expr(PrintType::Fmt)
-            // }
-            //
-            // TokType::Println => {
-            //     self.advance(1);
-            //     self.print_expr(PrintType::Newline)
-            // }
-            _ => self.expression(),
         }
     }
 
     fn block_expr(&mut self) -> anyhow::Result<Expr> {
-        let mut stmt_exprs = Vec::new();
-        while self.peek().ty != TokType::End && !self.is_eof() {
-            let st = self.expression_stmt()?;
-            self.eat_terminals();
-
-            stmt_exprs.push(st);
-        }
-        if let TokType::End = self.peek().ty {
-            self.advance(1);
-            // let se = stmt_exprs.into_boxed_slice().into();
-            let bl = Expr::block(stmt_exprs);
-            Ok(bl)
+        if let TokType::Do | TokType::Begin = self.peek().ty {
+            blocklike!(self, TokType::Begin | TokType::Do, TokType::End)
         } else {
-            bail!(
-                "{}",
-                ParseError::MissingTerminal {
-                    expr_ty: "block expression".into(),
-                    expr: Expr::block(stmt_exprs),
-                    tok: self.peek().clone()
-                } // AstError::ParseError {
-                  //     expr: Expr::block(stmt_exprs),
-                  //     token: self.peek().tok.clone(),
-                  //     message: "Expect 'end' after block.".into()
-                  // }
-            )
+            self.expression()
         }
+        // match self.peek().ty {
+        //     TokType::Do | TokType::Begin => {
+        //         // self.eat_terminals();
+        //         let bs = blocklike!(self, TokType::Begin | TokType::Do, TokType::End);
+        //         // self.eat_terminals();
+        //         Ok(bs)
+        //     }
+        //     _ => self.expression(),
+        // }
     }
+
+    // fn block_expr(&mut self) -> anyhow::Result<Expr> {
+    // let block = blocklike!(self, TokType::Begin | TokType::Do, TokType::End);
+    // Ok(block)
+    // let mut stmt_exprs = Vec::new();
+    // 'bl: while !self.is_eof() {
+    //     match self.peek().ty {
+    //         TokType::End | TokType::Else | TokType::ElseIf => {
+    //             self.adv(1)?;
+    //             let bl = Expr::block(stmt_exprs);
+    //             break Ok(bl);
+    //         }
+    //         _ => {
+    //             let st = self.expression_stmt()?;
+    //             stmt_exprs.push(st);
+    //         }
+    //     }
+    // }
+    //
+    // let mut stmt_exprs = Vec::new();
+    // while self.peek().ty != TokType::End && !self.is_eof() {
+    //     let st = self.expression_stmt()?;
+    //     // self.eat_terminals();
+    //
+    //     stmt_exprs.push(st);
+    // }
+    // self.adv(1)?;
+    // // if let TokType::End = self.peek().ty {
+    //
+    // // let se = stmt_exprs.into_boxed_slice().into();
+    // let bl = Expr::block(stmt_exprs);
+    // Ok(bl)
+    // } else {
+    // unreachable!();
+    // bail!(
+    //     "{}",
+    //     ParseError::MissingTerminal {
+    //         expr_ty: "block expression".into(),
+    //         expr: Expr::block(stmt_exprs),
+    //         tok: self.peek().clone()
+    //     } // AstError::ParseError {
+    //       //     expr: Expr::block(stmt_exprs),
+    //       //     token: self.peek().tok.clone(),
+    //       //     message: "Expect 'end' after block.".into()
+    //       // }
+    // )
+    // }
+    // }
 
     fn print_expr(&mut self, ty: PrintType) -> anyhow::Result<Expr> {
         let expr = self.expression()?;
-        // let expr = self.expression()?;
-        // if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
-        // self.advance(1);
-        let head = match ty {
-            PrintType::Fmt => ZIdent::new(idents::PRINT),
-            PrintType::Newline => ZIdent::new(idents::PRINTLN),
-        }
-        .into();
+        let expr = Rc::new(expr);
 
-        let cl = CallExpr {
-            head,
-            params: Rc::from([expr]),
+        let form = match ty {
+            PrintType::Fmt => FormExpr::Print(expr),
+            PrintType::Newline => FormExpr::Println(expr),
         };
-        let e = Expr::Call(cl);
-        Ok(e)
+        let fe = Expr::Form(form);
+        Ok(fe)
+
+        // let head = match ty {
+        //     PrintType::Fmt => ZIdent::new(idents::PRINT),
+        //     PrintType::Newline => ZIdent::new(idents::PRINTLN),
+        // }
+        // .into();
+        //
+        // let cl = FormExpr::native(head, Rc::from([expr]));
+        // // let cl = CallExpr {
+        // //     head,
+        // //     params: Rc::from([expr]),
+        // // };
+        // let e = Expr::Form(cl);
+        // Ok(e)
         // } else {
         // bail!(
         //     "{}",
@@ -326,53 +328,43 @@ impl Parser {
         }
     }
 
-    fn eat_terminals(&mut self) {
-        while self.is_terminal() {
-            self.advance(1);
+    fn eat_terminals(&mut self) -> anyhow::Result<()> {
+        while self.is_terminal() && !self.is_eof() {
+            self.adv(1)?;
+            // if self.try_advance(1) {
+            //     break;
+            // }
         }
+        Ok(())
     }
 
-    fn check_eat_terminals(&mut self) -> bool {
-        if self.is_terminal() {
-            self.eat_terminals();
-            true
-        } else {
-            false
+    fn logical_bitwise(&mut self) -> anyhow::Result<Expr> {
+        let mut expr = self.comparison()?;
+        loop {
+            match self.peek().ty {
+                TokType::Or | TokType::And => {
+                    self.adv(1)?;
+                    let operator = self.prev().clone().into_ident();
+                    let right = self.comparison()?;
+
+                    expr = Expr::binary_op(expr, operator, right);
+                }
+                _ => break,
+            }
         }
+        Ok(expr)
     }
 
-    fn form(&mut self) -> anyhow::Result<Expr> {
+    #[inline]
+    fn expression(&mut self) -> anyhow::Result<Expr> {
         self.assignment()
     }
 
-    fn expression(&mut self) -> anyhow::Result<Expr> {
-        let expr = self.form()?;
-        Ok(expr)
-        // if self.is_terminal() {
-        //     self.advance(1);
-        //     Ok(expr)
-        // } else {
-        //     bail!(
-        //         "{}",
-        //         ParseError::MissingTerminal {
-        //             expr_ty: expr.type_str().to_string(),
-        //             expr: expr,
-        //             tok: self.peek().clone(),
-        //         } // AstError::ParseError {
-        //           //     expr: expr,
-        //           //     token: self.peek().tok.clone(),
-        //           //     message: "Expected newline or ';' after expression".into()
-        //           // }
-        //     )
-        // }
-    }
-
     fn assignment(&mut self) -> anyhow::Result<Expr> {
-        let expr = self.equality()?;
+        let expr = self.logical_bitwise()?;
 
         if let TokType::Eq = self.peek().ty {
-            self.advance(1);
-            let equals = self.prev().clone();
+            self.adv(1)?;
             let value = self.assignment()?;
             if let Some(sym) = expr.inner_ident() {
                 Ok(Expr::assignment(sym.clone(), value.clone()))
@@ -397,11 +389,11 @@ impl Parser {
         loop {
             match self.peek().ty {
                 TokType::Minus | TokType::Plus => {
-                    self.advance(1);
+                    self.adv(1)?;
                     let operator = self.prev().clone().into_ident();
                     let right = self.factor()?;
 
-                    expr = Expr::binary_op(&expr, &operator, &right);
+                    expr = Expr::binary_op(expr, operator, right);
                     // expr = Expr::Binary {
                     //     left: Box::new(expr),
                     //     operator,
@@ -413,6 +405,7 @@ impl Parser {
         }
         Ok(expr)
     }
+
     fn comparison(&mut self) -> anyhow::Result<Expr> {
         let mut expr = self.term()?;
         loop {
@@ -423,10 +416,10 @@ impl Parser {
                 | TokType::Le
                 | TokType::EqEq
                 | TokType::BangEq => {
-                    self.advance(1);
+                    self.adv(1)?;
                     let operator = self.prev().clone().into_ident();
                     let right = self.term()?;
-                    expr = Expr::binary_op(&expr, &operator, &right);
+                    expr = Expr::binary_op(expr, operator, right);
                     // expr = Expr::Binary {
                     //     left: Box::new(expr),
                     //     operator,
@@ -445,10 +438,10 @@ impl Parser {
         loop {
             match self.peek().ty {
                 TokType::ForwardSlash | TokType::Star => {
-                    self.advance(1);
+                    self.adv(1)?;
                     let operator = self.prev().clone().into_ident();
                     let right = self.unary()?;
-                    expr = Expr::binary_op(&expr, &operator, &right);
+                    expr = Expr::binary_op(expr, operator, right);
                     // expr = Expr::Binary {
                     //     left: Box::new(expr),
                     //     operator,
@@ -461,13 +454,14 @@ impl Parser {
 
         Ok(expr)
     }
+
     fn unary(&mut self) -> anyhow::Result<Expr> {
         match self.peek().ty {
             TokType::Bang | TokType::Minus => {
-                self.advance(1);
+                self.adv(1)?;
                 let operator = self.prev().clone().into_ident();
                 let right = self.unary()?;
-                let expr = Expr::unary_op(&operator, &right);
+                let expr = Expr::unary_op(operator, right);
                 Ok(expr)
                 // Ok(Expr::Unary {
                 //     operator,
@@ -481,33 +475,33 @@ impl Parser {
     fn primary(&mut self) -> anyhow::Result<Expr> {
         match self.peek().tok {
             LexTok::Bool(false) => {
-                self.advance(1);
+                self.adv(1)?;
                 Ok(Expr::Atom(ZValue::Bool(ZBool::from(false))))
             }
             LexTok::Bool(true) => {
-                self.advance(1);
+                self.adv(1)?;
                 Ok(Expr::Atom(ZValue::Bool(ZBool::from(true))))
             }
             LexTok::Nil => {
-                self.advance(1);
+                self.adv(1)?;
                 Ok(Expr::Atom(ZValue::Nil))
             }
             LexTok::Number(ref n) => {
                 let n = *n;
-                self.advance(1);
+                self.adv(1)?;
                 Ok(Expr::Atom(ZValue::Number(ZFloat64::from(n))))
             }
             LexTok::String(ref s) => {
                 let s = s.clone();
                 let s = s.trim_matches('"');
-                self.advance(1);
+                self.adv(1)?;
                 Ok(Expr::Atom(ZValue::Str(ZString::from(s))))
             }
             LexTok::OpenParen => {
-                self.advance(1);
-                let expr = self.form()?;
+                self.adv(1)?;
+                let expr = self.expression()?;
                 if self.peek().ty == TokType::CloseParen {
-                    self.advance(1);
+                    self.adv(1)?;
                     Ok(expr)
                     // Ok(Expr::Grouping(Box::new(expr)))
                 } else {
@@ -518,22 +512,27 @@ impl Parser {
             }
             LexTok::Ident => {
                 let name = self.peek().clone();
-                self.advance(1);
+                self.adv(1)?;
                 Ok(Expr::Atom(ZValue::Ident(name.into_ident())))
             }
-            LexTok::NewLine | LexTok::Semicolon => {
-                self.advance(1);
-                // Ok(Expr::Nil)
+            // LexTok::NewLine | LexTok::Semicolon => {
+            //     self.eat_terminals();
+            //     let expr = self.expression_stmt()?;
+            //     Ok(expr)
+            // }
+            _ => {
+                self.adv(1)?;
+                self.eat_terminals()?;
+                // an error somewhere, retry.
                 let expr = self.expression_stmt()?;
+
                 Ok(expr)
+
+                // match self.expression_stmt() {
+                //     Ok(expr) => Ok(expr),
+                //     Err(_) => todo!(),
+                // }
             }
-            _ => bail!(
-                "{}",
-                ParseError::UnexpectedToken {
-                    expected: TokType::NewLine,
-                    got: self.peek().clone().ty,
-                }
-            ),
         }
     }
 
@@ -542,10 +541,10 @@ impl Parser {
         loop {
             match self.peek().ty {
                 TokType::BangEq | TokType::EqEq => {
-                    self.advance(1);
+                    self.adv(1)?;
                     let operator = self.prev().clone().into_ident();
                     let right = self.comparison()?;
-                    expr = Expr::binary_op(&expr, &operator, &right);
+                    expr = Expr::binary_op(expr, operator, right);
                     // expr = Expr::Binary {
                     //     left: Box::new(expr),
                     //     operator,
@@ -563,21 +562,38 @@ impl Parser {
         self.peek().ty == TokType::Eof
     }
 
-    fn advance(&mut self, n: usize) {
-        assert!(!self.is_eof(), "Tried to advance cursor at EOF token");
-        assert!(
-            self.i + n < self.tokens.len(),
-            "advancing cursor past end of tokens. len: {}, i: {}",
-            self.tokens.len(),
-            self.i + n
-        );
-        self.i += n;
+    /// returns true if advance is successfull, false otherwise.
+    fn adv(&mut self, n: usize) -> anyhow::Result<()> {
+        let i = self.i + n;
+        if self.is_eof() || i >= self.tokens.len() {
+            bail!("{}", ParseError::Eof)
+        } else {
+            self.i += n;
+            Ok(())
+        }
     }
 
+    // fn try_advance(&mut self, n: usize) {
+    //     let i = self.i + n;
+    //     if self.is_eof() || i >= self.tokens.len() {
+    //         return;
+    //     }
+    //     // assert!(!self.is_eof(), "Tried to advance cursor at EOF token");
+    //     // assert!(
+    //     // self.i + n < self.tokens.len(),
+    //     // "advancing cursor past end of tokens. len: {}, i: {}",
+    //     // self.tokens.len(),
+    //     // self.i + n
+    //     // );
+    //     self.i += n;
+    // }
+
+    #[inline]
     fn peek(&self) -> &Tok {
         &self.tokens[self.i]
     }
 
+    #[inline]
     fn prev(&self) -> &Tok {
         &self.tokens[self.i - 1]
     }
