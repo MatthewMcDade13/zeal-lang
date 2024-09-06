@@ -19,33 +19,19 @@ use crate::{
 };
 
 pub mod stack;
-macro_rules! logical_binary_op {
-    ($stack: expr, $op: tt) => {
-
-        {
-            let right = $stack.expect_pop().expect_float64();
-            let left = $stack.expect_pop().expect_float64();
-
-            let res = ZValue::Bool(ZBool::new(left $op right));
-            $stack.push(res);
-
-
-
-        }
-
-    };
-}
-
 macro_rules! num_binary_op {
     ($stack: expr, $op: tt) => {
 
         {
-
-
+        // TODO: Inequalities dont work... not sure why but left and right seems to
+        // get switch up somewhere. OOF
             let right = $stack.expect_pop().expect_float64();
             let left = $stack.expect_pop().expect_float64();
+            let res = left $op right;
+            let op = stringify!($op);
+            println!("Exec: {left} {op} {right} => {res}");
 
-            let res = ZValue::Number(left $op right);
+            let res = ZValue::from(res);
             $stack.push(res);
 
 
@@ -54,6 +40,25 @@ macro_rules! num_binary_op {
 
     };
 }
+
+// macro_rules! num_binary_op {
+//     ($stack: expr, $op: tt) => {
+//
+//         {
+//
+//
+//             let left = $stack.expect_pop().expect_float64();
+//             let right = $stack.expect_pop().expect_float64();
+//
+//             let res = ZValue::Number(left $op right);
+//             $stack.push(res);
+//
+//
+//
+//         }
+//
+//     };
+// }
 
 pub const VM_STACK_MAX: usize = u16::MAX as usize;
 #[derive(Debug, Clone)]
@@ -260,12 +265,12 @@ impl VM {
                         }
                     }
                     // NOTE: ----- END DEFINE GLOBAL -----
-                    Op::Eq => logical_binary_op!(self.stack, ==),
-                    Op::Gt => logical_binary_op!(self.stack, >),
-                    Op::Lt => logical_binary_op!(self.stack, <),
-                    Op::Ge => logical_binary_op!(self.stack, >),
-                    Op::Le => logical_binary_op!(self.stack, <),
-                    Op::NotEq => logical_binary_op!(self.stack, !=),
+                    Op::Eq => num_binary_op!(self.stack, ==),
+                    Op::Gt => num_binary_op!(self.stack, >),
+                    Op::Lt => num_binary_op!(self.stack, <),
+                    Op::Ge => num_binary_op!(self.stack, >=),
+                    Op::Le => num_binary_op!(self.stack, <=),
+                    Op::NotEq => num_binary_op!(self.stack, !=),
 
                     // NOTE: ----- GET LOCAL -----
                     Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {

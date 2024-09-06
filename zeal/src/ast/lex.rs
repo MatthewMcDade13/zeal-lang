@@ -170,6 +170,7 @@ impl std::fmt::Display for Tok {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TokType {
+    Each,
     ElseIf,
     Then,
     Begin,
@@ -270,12 +271,6 @@ pub enum TokType {
     CloseParen,
 }
 
-// impl From<LexTok> for TokType {
-//     fn from(value: LexTok) -> Self {
-//        let s = Self::from(&value);
-//     }
-// }
-//
 impl From<&LexTok> for TokType {
     fn from(value: &LexTok) -> Self {
         match value {
@@ -335,6 +330,11 @@ impl From<&LexTok> for TokType {
             LexTok::Comment => TokType::Comment,
             LexTok::Then => TokType::Then,
             LexTok::ElseIf => TokType::ElseIf,
+            LexTok::Each => TokType::Each,
+            LexTok::Lt => TokType::Lt,
+            LexTok::Le => TokType::Le,
+            LexTok::Gt => TokType::Gt,
+            LexTok::Ge => TokType::Ge,
         }
     }
 }
@@ -351,6 +351,8 @@ pub struct LexState {
 #[logos(extras = LexState)]
 #[logos(error = LexError)]
 pub enum LexTok {
+    #[token("each")]
+    Each,
     #[token("elif")]
     #[token("elseif")]
     ElseIf,
@@ -498,6 +500,18 @@ pub enum LexTok {
 
     #[token("nil")]
     Nil,
+
+    #[token("<")]
+    Lt,
+
+    #[token("<=")]
+    Le,
+
+    #[token(">")]
+    Gt,
+
+    #[token(">=")]
+    Ge,
 
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().unwrap(), priority = 50)]
     Number(f64),

@@ -3,9 +3,11 @@ use chunk::Chunk;
 use opcode::{Op, Opcode, VarOp};
 
 use crate::{
-    ast::{Ast, BinaryOpType, Expr, ExprList, FormExpr, VarType},
+    ast::{
+        expr::{Expr, ExprList, FormExpr, LoopExpr},
+        Ast, BinaryOpType, VarType,
+    },
     core_types::{idents, num::ZBool, val::ZValue},
-    err::core::CompileError,
 };
 
 pub mod chunk;
@@ -17,9 +19,11 @@ pub struct Archon;
 
 impl Archon {
     pub fn compile(ast: &Ast) -> anyhow::Result<Chunk> {
+        println!("{ast}");
         let mut ch = Chunk::default();
         Self::compile_with(ast, &mut ch)?;
 
+        println!("{ch}");
         Ok(ch)
     }
 
@@ -53,51 +57,68 @@ impl Archon {
 
     fn compile_expr(ast: &Ast, ch: &mut Chunk, expr: &Expr) -> anyhow::Result<()> {
         match expr {
-            Expr::Form(ce) => {
-                match ce {
-                    FormExpr::If {
-                        cond,
-                        if_body: then_body,
-                        else_body,
-                    } => {
-                        Self::compile_expr(ast, ch, cond)?;
+            Expr::Form(form) => {
+                match form {
+                    FormExpr::Cond { conds } => {
+                        let mut end_patches = Vec::new();
+                        for ce in conds.iter() {
+                            match ce.as_tup() {
+                                (&Expr::Nil, block) => {
+                                    Self::compile_expr_list(ast, ch, block)?;
+                                    for patch in end_patches.iter() {
+                                        ch.patch_jump(*patch);
+                                    }
+                                    break;
+                                }
+                                (cond, block) => {
+                                    Self::compile_expr(ast, ch, cond)?;
+                                    let cond_jump = ch.push_jump(Op::JumpFalse);
+                                    ch.push_popn(1);
+                                    Self::compile_expr_list(ast, ch, block)?;
 
-                        let then_patch = ch.push_jump(Op::JumpFalse);
-                        ch.push_popn(1);
-                        Self::compile_expr_list(ast, ch, then_body)?;
+                                    {
+                                        let end_jump = ch.push_jump(Op::Jump);
+                                        end_patches.push(end_jump);
+                                    }
 
-                        let else_jump = ch.push_jump(Op::Jump);
-                        ch.patch_jump(then_patch);
-                        ch.push_popn(1);
-
-                        // ch.patch_jump(then_patch);
-
-                        if let Some(eb) = else_body {
-                            match eb.as_ref() {
-                            // else
-                            Expr::List(ExprList::Block(bl)) => {
-                                Self::compile_expr_list(ast, ch, &ExprList::Block(bl.clone()))?;
+                                    ch.patch_jump(cond_jump);
+                                    ch.push_popn(1);
+                                }
                             }
-                            // elseif
-                            Expr::Form(FormExpr::If { .. }) => Self::compile_expr(ast, ch, eb.as_ref())?,
-                            _ => bail!("CompileError => Expected Expr::List(ExprList::Block()) | Expr::Call(CallExpr::If {{..}}) in Archon::compile_expr for else body!!! Probably missing ending else/end/elseif!!!"),
                         }
-                        }
-                        ch.patch_jump(else_jump);
+                        // Self::compile_expr(ast, ch, cond)?;
+                        //
+                        // let then_patch = ch.push_jump(Op::JumpFalse);
+                        // ch.push_popn(1);
+                        // Self::compile_expr_list(ast, ch, then_body)?;
+                        // let else_jump = ch.push_jump(Op::Jump);
+                        // ch.patch_jump(then_patch);
+                        // ch.push_popn(1);
+                        //
+                        // // ch.patch_jump(then_patch);
+                        //
+                        // if let Some(eb) = else_body {
+                        //     match eb.as_ref() {
+                        //     // else
+                        //     Expr::List(ExprList::Block(bl)) => {
+                        //         Self::compile_expr_list(ast, ch, &ExprList::Block(bl.clone()))?;
+                        //     }
+                        //     // elseif
+                        //     Expr::Form(FormExpr::Cond { .. }) => Self::compile_expr(ast, ch, eb.as_ref())?,
+                        //     _ => bail!("CompileError => Expected Expr::List(ExprList::Block()) | Expr::Call(CallExpr::If {{..}}) in Archon::compile_expr for else body!!! Probably missing ending else/end/elseif!!!"),
+                        // }
+                        // }
+                        // ch.patch_jump(else_jump);
                     }
-                    FormExpr::Loop { body } => todo!(),
-                    FormExpr::While { cond, body } => todo!(),
-                    FormExpr::Each {
-                        loop_ident,
-                        iterable,
-                        num_range,
-                    } => todo!(),
-                    FormExpr::For {
-                        init,
-                        cond,
-                        inc,
-                        body,
-                    } => todo!(),
+                    FormExpr::Loop { body, meta } => match meta {
+                        LoopExpr::Loop => todo!(),
+                        LoopExpr::While { cond } => todo!(),
+                        LoopExpr::Each {
+                            iter_ident,
+                            iterable,
+                        } => todo!(),
+                        LoopExpr::For { iter_ident, range } => todo!(),
+                    },
                     FormExpr::Match {} => todo!(),
                     FormExpr::Struct {} => todo!(),
                     FormExpr::Impl {} => todo!(),
