@@ -193,7 +193,7 @@ impl ZValue {
     pub fn is_falsey(&self) -> bool {
         match self {
             ZValue::Nil => true,
-            ZValue::Bool(b) => b.0,
+            ZValue::Bool(b) => !b.0,
             ZValue::Number(n) => n.unwrap() == 0.0,
             ZValue::Byte(b) => *b == ZByte::new(0),
             // ZValue::Buffer(buf) => buf.len() == 0,

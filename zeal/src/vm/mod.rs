@@ -4,7 +4,7 @@ use anyhow::bail;
 use stack::Stack;
 
 use crate::{
-    ast::Ast,
+    ast::{Ast, BinaryOpType},
     compiler::{
         chunk::Chunk,
         opcode::{Bytecode, Op, Opcode},
@@ -169,17 +169,17 @@ impl VM {
                         }
                     }
                     Op::Add => {
-                        num_binary_op!(self.stack, +);
+                        self.binary_op_num(BinaryOpType::Add);
                         // let right = self.stack.pop().expect_float64();
                         // let left = self.stack.pop().expect_float64();
                         // let res = ZValue::Number(left + right);
                         // self.stack.push(res);
                     }
                     Op::Sub => {
-                        num_binary_op!(self.stack, -);
+                        self.binary_op_num(BinaryOpType::Sub);
                     }
-                    Op::Div => num_binary_op!(self.stack, /),
-                    Op::Mul => num_binary_op!(self.stack, *),
+                    Op::Div => self.binary_op_num(BinaryOpType::Div),
+                    Op::Mul => self.binary_op_num(BinaryOpType::Mul),
                     Op::Neg => {
                         let val = self.stack.expect_pop().expect_float64();
                         self.stack.push(ZValue::Number(-val));
@@ -265,12 +265,12 @@ impl VM {
                         }
                     }
                     // NOTE: ----- END DEFINE GLOBAL -----
-                    Op::Eq => num_binary_op!(self.stack, ==),
-                    Op::Gt => num_binary_op!(self.stack, >),
-                    Op::Lt => num_binary_op!(self.stack, <),
-                    Op::Ge => num_binary_op!(self.stack, >=),
-                    Op::Le => num_binary_op!(self.stack, <=),
-                    Op::NotEq => num_binary_op!(self.stack, !=),
+                    Op::Eq => self.binary_op_num(BinaryOpType::Equals),
+                    Op::Gt => self.binary_op_num(BinaryOpType::Gt),
+                    Op::Lt => self.binary_op_num(BinaryOpType::Lt),
+                    Op::Ge => self.binary_op_num(BinaryOpType::Ge),
+                    Op::Le => self.binary_op_num(BinaryOpType::Le),
+                    Op::NotEq => self.binary_op_num(BinaryOpType::NotEquals),
 
                     // NOTE: ----- GET LOCAL -----
                     Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
@@ -288,10 +288,13 @@ impl VM {
 
                     Op::JumpFalse => {
                         if let Some(top) = self.stack.peek_top() {
+                            println!("JumpFalse, Top: {top}");
                             if top.is_falsey() {
                                 let jumpto = opcode
                                     .try_param()
                                     .expect("JumpFalse16 Op has no parameter!!!");
+
+                                println!("jump: {jumpto:?}");
                                 self.pc = jumpto.to_u32() as usize;
                             }
                         }
@@ -315,6 +318,33 @@ impl VM {
             ZValue::Nil
         };
         Ok(top)
+    }
+
+    fn binary_op_num(&mut self, ty: BinaryOpType) {
+        let right = self.stack.expect_pop().expect_float64();
+        let left = self.stack.expect_pop().expect_float64();
+
+        let res: ZValue = match ty {
+            BinaryOpType::Gt => (left > right).into(),
+            BinaryOpType::Lt => (left < right).into(),
+            BinaryOpType::Ge => (left >= right).into(),
+            BinaryOpType::Le => (left <= right).into(),
+            BinaryOpType::And => panic!("No opcode for And"),
+            BinaryOpType::Or => panic!("No opcode for Or"),
+            BinaryOpType::Equals => (left == right).into(),
+            BinaryOpType::NotEquals => (left != right).into(),
+            BinaryOpType::BitAnd => todo!(),
+            BinaryOpType::BitOr => todo!(),
+            BinaryOpType::Xor => todo!(),
+            BinaryOpType::Concat => todo!(),
+            BinaryOpType::Add => (left + right).into(),
+            BinaryOpType::Sub => (left - right).into(),
+            BinaryOpType::Mul => (left * right).into(),
+            BinaryOpType::Div => (left / right).into(),
+        };
+        println!("Exec: left: {left} {ty} right: {right} => {res}");
+
+        self.stack.push(res);
     }
     // for opcode in self.chunk.iter() {
     // Ok(opcode.offset())
