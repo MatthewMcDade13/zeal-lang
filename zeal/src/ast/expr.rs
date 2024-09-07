@@ -1,6 +1,10 @@
 use std::{fmt::Display, rc::Rc};
 
-use crate::core_types::{idents, str::ZIdent, val::ZValue};
+use crate::core_types::{
+    idents,
+    str::{ZIdent, ZString},
+    val::ZValue,
+};
 
 use super::{BinaryOpType, UnaryOpType, VarType};
 
@@ -25,24 +29,24 @@ pub enum LoopExpr {
 }
 
 #[derive(Debug, Clone)]
-pub enum CondForm {
-    Branch(Expr, ExprList),
-    Else(ExprList),
+pub enum WhenForm {
+    Branch(Expr, Expr),
+    Else(Expr),
     End,
     // pub body: ExprList,
 }
 
-impl From<(Expr, Expr)> for CondForm {
+impl From<(Expr, Expr)> for WhenForm {
     fn from(value: (Expr, Expr)) -> Self {
         match value {
             (Expr::Nil, Expr::Nil) => Self::End,
-            (Expr::Nil, block) => Self::Else(block.expect_block()),
-            (cond, block) => Self::Branch(cond, block.expect_block()),
+            (Expr::Nil, block) => Self::Else(block),
+            (cond, block) => Self::Branch(cond, block),
         }
     }
 }
 
-impl CondForm {
+impl WhenForm {
     pub const fn is_end(&self) -> bool {
         match self {
             Self::End => true,
@@ -51,11 +55,11 @@ impl CondForm {
     }
 
     #[inline]
-    pub fn as_tup(&self) -> (&Expr, &ExprList) {
+    pub fn as_tup(&self) -> (&Expr, &Expr) {
         match self {
-            CondForm::Branch(c, b) => (c, b),
-            CondForm::Else(b) => (&Expr::Nil, b),
-            CondForm::End => (&Expr::Nil, &ExprList::Nil),
+            WhenForm::Branch(c, b) => (c, b),
+            WhenForm::Else(b) => (&Expr::Nil, b),
+            WhenForm::End => (&Expr::Nil, &Expr::Nil),
         }
     }
 }
@@ -63,8 +67,8 @@ impl CondForm {
 #[derive(Debug, Clone)]
 pub enum FormExpr {
     /// (if cond_expr [...if_body] [...else_body])
-    Cond {
-        conds: AstList<CondForm>,
+    When {
+        conds: AstList<WhenForm>,
         // if_body: ExprList,
         // else_body: Option<Rc<Expr>>,
     },
@@ -160,6 +164,7 @@ impl ExprList {
         }
     }
 
+
     pub fn len(&self) -> usize {
         match self {
             ExprList::Block(bl) => bl.len(),
@@ -213,6 +218,26 @@ pub enum Expr {
 }
 
 impl Expr {
+    pub fn stringify<T>(item: &T) -> Self
+    where
+        T: Display,
+    {
+        let s = item.to_string();
+        Self::Atom(ZValue::string(ZString::new(&s)))
+    }
+
+    pub fn string_tuple<T>(items: &[T]) -> Self
+    where
+        T: Display,
+    {
+        let mut xs = Vec::new();
+        for i in items.iter() {
+            let x = Self::stringify(i);
+            xs.push(x);
+        }
+        Self::List(ExprList::tuple(xs))
+    }
+
     pub const fn break_form(expr: Option<Rc<Expr>>) -> Self {
         Self::Form(FormExpr::Break { expr })
     }
@@ -220,15 +245,15 @@ impl Expr {
         Self::Form(FormExpr::Loop { body, meta })
     }
 
-    pub fn cond_form(conds: Vec<CondForm>) -> Self {
+    pub fn when_form(conds: Vec<WhenForm>) -> Self {
         let conds = conds.into_boxed_slice();
         let conds = Rc::from(conds);
-        Self::Form(FormExpr::Cond { conds })
+        Self::Form(FormExpr::When { conds })
     }
 
     pub const fn is_if_form(&self) -> bool {
         match self {
-            Expr::Form(FormExpr::Cond { .. }) => true,
+            Expr::Form(FormExpr::When { .. }) => true,
             _ => false,
         }
     }
@@ -238,6 +263,24 @@ impl Expr {
         match self {
             Expr::List(el) => Some(el.clone()),
             _ => None,
+        }
+    }
+
+    /// Attempts to put self into an ExprList. If self is Expr::List,
+    /// conversion is just a cast, otherwise converts self properties into strings and then shoves
+    /// it into an ExprList::Tuple
+    pub fn into_tuple(self) -> ExprList {
+        match self {
+            Expr::Binding { ty, name, init } => {
+                let t = Expr::stringify(&ty);
+                let n = Expr::stringify(&name);
+                let i = Expr::clone(init.as_ref());
+                ExprList::Tuple([t, n, i].into())
+            }
+            Expr::Form(_) => todo!(),
+            Expr::List(_) => todo!(),
+            Expr::Atom(_) => todo!(),
+            Expr::Nil => todo!(),
         }
     }
 
@@ -450,10 +493,6 @@ mod fmt {
             format!("{s}\n")
         }
 
-        fn writeln_tab(&mut self, s: &str) -> String {
-            todo!()
-        }
-
         #[inline]
         fn inc_indent(&mut self) {
             self.indent += 1;
@@ -503,29 +542,38 @@ mod fmt {
         }
     }
 
-    fn value_block(bl: &ExprList, state: &mut State) -> String {
-        let mut bs = state.writeln("(block");
-        state.inc_indent();
-        match bl {
-            ExprList::Block(bl) => {
+    fn value_block(x: &Expr, state: &mut State) -> String {
+
+        match x {
+
+            Expr::List(ExprList::Block(bl)) => {
+
+                let mut bs = state.writeln("(block");
+                state.inc_indent();
                 for ex in bl.iter() {
                     let item = expr(ex, state);
                     let line = state.fmtln(&item);
                     bs.push_str(&line);
                 }
-            }
-            _ => panic!("Expected ExprList::Block, Got: {:?}", bl.type_id()),
-        }
-        state.dec_indent();
-        let end = state.fmtln("end)");
+
+                state.dec_indent();
+                let end = state.fmtln("end)");
         bs.push_str(&end);
         bs
+            }
+            Expr::Binding { .. } => panic!("variable bindings are not allowed on right hand of when branch if not inside a block"),
+            _ => expr(x, state),
+            
+        }
+
+
+
     }
 
     pub fn expr(e: &Expr, state: &mut State) -> String {
         match e {
             Expr::Form(ce) => match ce {
-                FormExpr::Cond { conds } => {
+                FormExpr::When { conds } => {
                     let mut cond_str = state.writeln("(cond"); // info.fmtln("(cond");
 
                     state.inc_indent();
@@ -554,16 +602,45 @@ mod fmt {
 
                     cond_str
                 }
-                FormExpr::Loop { body, meta } => match meta {
-                    LoopExpr::Loop => todo!(),
-                    LoopExpr::While { cond } => todo!(),
+                FormExpr::Loop { body: ExprList::Block(bl), meta } => match meta {
+                    LoopExpr::Loop => {
+                        let mut ls = state.fmtln("(loop");
+                        state.inc_indent();
+                        for ex in bl.iter() {
+                            let exs = expr(ex, state);
+                            let line = state.fmtln(&exs);
+                            ls.push_str(&line);
+                        }
+                        let end = state.fmtln("end)");
+                        ls.push_str(&end);
+                        
+                        ls
+                    } 
+                    LoopExpr::While { cond } => {
+                        let c = expr(cond, state);
+                        let mut ls = state.fmtln(&format!("(while {c}"));
+                        state.inc_indent();
+                        for ex in bl.iter() {
+                            let exs = expr(ex, state);
+                            let line = state.fmtln(&exs);
+                            ls.push_str(&line);
+                        }
+                        let end = state.fmtln("end)");
+                        ls.push_str(&end);
+                        
+                        ls
+
+                    }
                     LoopExpr::Each {
                         iter_ident,
                         iterable,
                     } => todo!(),
                     LoopExpr::For { iter_ident, range } => todo!(),
                 },
-                FormExpr::Match {} => todo!(),
+                FormExpr::Loop { body, .. } => { 
+                    let body = exprlist(body, state);
+                    panic!("Loop body must be of type ExprList::Block. Got: {body}");
+                }                FormExpr::Match {} => todo!(),
                 FormExpr::Struct {} => todo!(),
                 FormExpr::Impl {} => todo!(),
                 FormExpr::Func {

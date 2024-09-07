@@ -170,6 +170,7 @@ impl std::fmt::Display for Tok {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TokType {
+    When,
     Each,
     ElseIf,
     Then,
@@ -335,6 +336,7 @@ impl From<&LexTok> for TokType {
             LexTok::Le => TokType::Le,
             LexTok::Gt => TokType::Gt,
             LexTok::Ge => TokType::Ge,
+            LexTok::When => TokType::When,
         }
     }
 }
@@ -351,6 +353,8 @@ pub struct LexState {
 #[logos(extras = LexState)]
 #[logos(error = LexError)]
 pub enum LexTok {
+    #[token("when")]
+    When,
     #[token("each")]
     Each,
     #[token("elif")]

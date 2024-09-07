@@ -20,11 +20,45 @@ use crate::{
 };
 
 use super::{
-    expr::{CondForm, FormExpr, LoopExpr},
+    expr::{FormExpr, LoopExpr, WhenForm},
     VarType,
 };
 
-macro_rules! blocklike {
+/// Tries to match pattern $try_start_pat and then parses
+/// section until given $end_pat pattern is peeked.
+/// (Does not advance past tok matched by $end_pat)
+macro_rules! try_block {
+    ($self: ident, $try_start_pat: pat, $end_pat: pat) => {{
+        if let $try_start_pat = $self.peek().ty {
+            $self.adv(1)?;
+            let mut stmt_exprs = Vec::new();
+            loop {
+                if $self.is_eof() {
+                    break Some(ExprList::block(stmt_exprs));
+                }
+
+                if let $end_pat = $self.peek().ty {
+                    break Some(ExprList::block(stmt_exprs));
+                }
+
+                let st = $self.expression_stmt()?;
+
+                stmt_exprs.push(st);
+            }
+        } else {
+            None
+        }
+    }};
+}
+
+/// Same as try_block, but returns Err if initial $start_pat pattern does
+/// not match current self.peek().ty.
+///
+///
+/// Tries to match pattern $try_start_pat and then parses
+/// section until given $end_pat pattern is peeked.
+/// (Does not advance past tok matched by $end_pat)
+macro_rules! block {
     ($self: ident, $start_pat: pat, $end_pat: pat) => {{
         if let $start_pat = $self.peek().ty {
             $self.adv(1)?;
@@ -151,6 +185,10 @@ impl Parser {
                 self.adv(1)?;
                 self.print_expr(PrintType::Newline)
             }
+            TokType::When => {
+                self.adv(1)?;
+                self.when_expr()
+            }
             TokType::If => {
                 self.adv(1)?;
                 self.if_expr()
@@ -171,12 +209,12 @@ impl Parser {
             }
 
             TokType::Eof => bail!("{}", ParseError::Eof),
-            _ => self.block_expr(),
+            _ => self.place_value_block(),
         }
     }
 
     fn loop_expr(&mut self) -> anyhow::Result<Expr> {
-        let loop_body = blocklike!(self, TokType::Do | TokType::Begin, TokType::End)?;
+        let loop_body = block!(self, TokType::Do | TokType::Begin, TokType::End)?;
         self.adv(1)?;
         let expr = Expr::loop_form(loop_body, LoopExpr::Loop);
         Ok(expr)
@@ -186,7 +224,7 @@ impl Parser {
         let cond = self.expression()?;
         let cond = Rc::new(cond);
 
-        let loop_body = blocklike!(self, TokType::Do | TokType::Begin, TokType::End)?;
+        let loop_body = block!(self, TokType::Do | TokType::Begin, TokType::End)?;
         self.adv(1)?;
         let expr = Expr::loop_form(loop_body, LoopExpr::While { cond });
         Ok(expr)
@@ -202,28 +240,28 @@ impl Parser {
         //     TokType::End | TokType::Else | TokType::ElseIf
         // )?;
 
-        let mut branches = Vec::<CondForm>::new();
+        let mut branches = Vec::<WhenForm>::new();
         while !self.is_eof() {
             let cond = self.expression()?;
 
-            let body = blocklike!(
+            let body = block!(
                 self,
                 TokType::Then | TokType::Do,
                 TokType::End | TokType::Else | TokType::ElseIf
             )?;
-            branches.push(CondForm::Branch(cond, body));
+            branches.push(WhenForm::Branch(cond, body.into_expr()));
 
             match self.peek().ty {
                 TokType::End => {
                     self.adv(1)?;
-                    branches.push(CondForm::End);
+                    branches.push(WhenForm::End);
                     break;
                 }
                 TokType::Else => {
-                    let else_body = blocklike!(self, TokType::Else, TokType::End)?;
+                    let else_body = block!(self, TokType::Else, TokType::End)?;
                     self.adv(1)?;
-                    branches.push(CondForm::Else(else_body));
-                    branches.push(CondForm::End);
+                    branches.push(WhenForm::Else(else_body.into_expr()));
+                    branches.push(WhenForm::End);
 
                     break;
                 }
@@ -238,7 +276,7 @@ impl Parser {
             branches.last().unwrap().is_end(),
             "Last branch of cond (if) form must be '_' (else)"
         );
-        let form = Expr::cond_form(branches);
+        let form = Expr::when_form(branches);
         Ok(form)
     }
 
@@ -271,10 +309,49 @@ impl Parser {
             )
         }
     }
+    fn when_expr(&mut self) -> anyhow::Result<Expr> {
+        let mut branches: Vec<WhenForm> = Vec::new();
+        while self.peek().ty != TokType::End && !self.is_eof() {
+            let when_cond = self.expression()?;
+            if let TokType::FatArrow = self.peek().ty {
+                self.adv(1)?;
+                let then = self.place_value_block()?;
+                branches.push(WhenForm::Branch(when_cond, then));
+            } else {
+                bail!("Parse Error: '=>' required in when expressions in between branch left hand conditions and right hand blocks/exprs. Ex: cond_expr => block end")
+            }
+        }
+        let w = Expr::when_form(branches);
+        Ok(w)
+    }
 
-    fn block_expr(&mut self) -> anyhow::Result<Expr> {
+    /// Block expression that can be either:
+    ///
+    ///     place:
+    ///         begin
+    ///             println 50
+    ///         end
+    ///
+    ///             vs.
+    ///
+    ///     value:
+    ///     let x =  begin
+    ///         50
+    ///     end
+    ///
+    /// TODO: Implement tracking if expression is place or value.
+    ///
+    fn place_value_block(&mut self) -> anyhow::Result<Expr> {
+        if let Some(bl) = try_block!(self, TokType::Begin | TokType::Do, TokType::End) {
+            Ok(bl.into_expr())
+        } else {
+            self.expression()
+        }
+    }
+
+    fn value_block(&mut self) -> anyhow::Result<Expr> {
         if let TokType::Do | TokType::Begin = self.peek().ty {
-            let block = blocklike!(self, TokType::Begin | TokType::Do, TokType::End);
+            let block = block!(self, TokType::Begin | TokType::Do, TokType::End);
             block.map(|b| b.into_expr())
         } else {
             self.expression()

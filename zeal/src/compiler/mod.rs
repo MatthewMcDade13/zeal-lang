@@ -23,7 +23,7 @@ impl Archon {
         let mut ch = Chunk::default();
         Self::compile_with(ast, &mut ch)?;
 
-        println!("{ch}");
+        // println!("{ch}");
         Ok(ch)
     }
 
@@ -59,12 +59,12 @@ impl Archon {
         match expr {
             Expr::Form(form) => {
                 match form {
-                    FormExpr::Cond { conds } => {
+                    FormExpr::When { conds } => {
                         let mut end_patches = Vec::new();
                         for ce in conds.iter() {
                             match ce.as_tup() {
                                 (&Expr::Nil, block) => {
-                                    Self::compile_expr_list(ast, ch, block)?;
+                                    Self::compile_expr(ast, ch, block)?;
                                     for patch in end_patches.iter() {
                                         ch.patch_jump(*patch);
                                     }
@@ -74,7 +74,7 @@ impl Archon {
                                     Self::compile_expr(ast, ch, cond)?;
                                     let cond_jump = ch.push_jump(Op::JumpFalse);
                                     ch.push_popn(1);
-                                    Self::compile_expr_list(ast, ch, block)?;
+                                    Self::compile_expr(ast, ch, block)?;
 
                                     {
                                         let end_jump = ch.push_jump(Op::Jump);
