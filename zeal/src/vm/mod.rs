@@ -7,14 +7,10 @@ use crate::{
     ast::{Ast, BinaryOpType},
     compiler::{
         chunk::Chunk,
-        opcode::{Bytecode, Op, Opcode},
+        opcode::{Op, Opcode},
         Archon,
     },
-    core_types::{
-        num::ZBool,
-        str::{RuneTable, ZIdent},
-        val::ZValue,
-    },
+    core_types::{str::ZIdent, val::ZValue},
     err::core::RuntimeError,
 };
 
@@ -29,7 +25,6 @@ macro_rules! num_binary_op {
             let left = $stack.expect_pop().expect_float64();
             let res = left $op right;
             let op = stringify!($op);
-            println!("Exec: {left} {op} {right} => {res}");
 
             let res = ZValue::from(res);
             $stack.push(res);
@@ -40,25 +35,6 @@ macro_rules! num_binary_op {
 
     };
 }
-
-// macro_rules! num_binary_op {
-//     ($stack: expr, $op: tt) => {
-//
-//         {
-//
-//
-//             let left = $stack.expect_pop().expect_float64();
-//             let right = $stack.expect_pop().expect_float64();
-//
-//             let res = ZValue::Number(left $op right);
-//             $stack.push(res);
-//
-//
-//
-//         }
-//
-//     };
-// }
 
 pub const VM_STACK_MAX: usize = u16::MAX as usize;
 #[derive(Debug, Clone)]
@@ -148,13 +124,13 @@ impl VM {
                     Op::Return => {}
                     Op::Println => {
                         let v = self.stack.peek_top().expect("cannot peek an empty stack!");
-                        println!("{}", v.to_string());
+                        println!("{v}");
                         self.stack.expect_pop();
                     }
 
                     Op::Print => {
                         let v = self.stack.peek_top().expect("cannot peek an empty stack!");
-                        print!("{}", v.to_string());
+                        print!("{v}");
                         self.stack.expect_pop();
                     }
 
@@ -186,7 +162,7 @@ impl VM {
                     }
                     Op::Not => {
                         let val = self.stack.expect_pop();
-                        let res = if val.is_truthy() { false } else { true };
+                        let res = !val.is_truthy();
                         self.stack.push(ZValue::bool(res));
                     }
                     Op::Nil => {
@@ -231,7 +207,7 @@ impl VM {
                                     "{}",
                                     RuntimeError::VMUnknownIdentifier {
                                         name: name.clone(),
-                                        opcode: opcode,
+                                        opcode,
                                         constants: self.chunk.constants.to_owned(),
                                         globals: self.globals.clone()
                                     }
@@ -255,13 +231,12 @@ impl VM {
                                     "{}",
                                     RuntimeError::VMUnknownIdentifier {
                                         name: name.clone(),
-                                        opcode: opcode,
+                                        opcode,
                                         constants: self.chunk.constants.clone(),
                                         globals: self.globals.clone(),
                                     }
                                 )
                             }
-                        } else {
                         }
                     }
                     // NOTE: ----- END DEFINE GLOBAL -----
@@ -350,7 +325,6 @@ impl VM {
             BinaryOpType::Mul => (left * right).into(),
             BinaryOpType::Div => (left / right).into(),
         };
-        println!("Exec: left: {left} {ty} right: {right} => {res}");
 
         self.stack.push(res);
     }

@@ -364,7 +364,6 @@ impl Parser {
 
             } else {
                 let when_cond = self.expression()?;
-                println!("when: {when_cond}");
                 ensure!(
                     matches!(self.peek().ty, TokType::FatArrow),
                         "Parse Error: '=>' required in when expressions in between branch left hand conditions and right hand blocks/exprs. Ex: cond_expr => block end",

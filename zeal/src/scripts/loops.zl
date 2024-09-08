@@ -2,7 +2,6 @@
 
 var x = 0
 while x <= 50 do 
-  println x
   x = x + 1
 end
 
