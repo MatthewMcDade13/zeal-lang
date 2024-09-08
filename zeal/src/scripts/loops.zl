@@ -6,7 +6,32 @@ while x <= 50 do
   x = x + 1
 end
 
+let num = 5 * (5 + 3 / 4) * 5
+
+when 
+  num >= 35 => "num is bigger than 35",
+  num < 34 and num >= 20 => "num is smaller than 34",
+  else => "else" 
+end
+
   
+
+
+var i = 0
+
+while i <= 100 do
+  when 
+    i / 3 == 0 => "Fizz",
+    i / 5 == 0 => "Buzz",
+    i / 3 == 0 and i / 3 == 0 => "FizzBuzz",
+    else => "Ignore"
+  end
+  i = i + 1
+end
+
+
+
+
 
 
 

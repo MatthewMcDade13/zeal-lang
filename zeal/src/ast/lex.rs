@@ -337,6 +337,7 @@ impl From<&LexTok> for TokType {
             LexTok::Gt => TokType::Gt,
             LexTok::Ge => TokType::Ge,
             LexTok::When => TokType::When,
+            LexTok::FatArrow => TokType::FatArrow,
         }
     }
 }
@@ -516,6 +517,9 @@ pub enum LexTok {
 
     #[token(">=")]
     Ge,
+
+    #[token("=>")]
+    FatArrow,
 
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().unwrap(), priority = 50)]
     Number(f64),

@@ -24,6 +24,35 @@ use super::{
     VarType,
 };
 
+macro_rules! loop_block {
+    ($self: ident, $start_pat: pat, $end_pat: pat) => {{
+        if let $start_pat = $self.peek().ty {
+            $self.adv(1)?;
+            let mut stmt_exprs = Vec::new();
+            loop {
+                if $self.is_eof() {
+                    break Ok(ExprList::block(stmt_exprs));
+                }
+
+                if let $end_pat = $self.peek().ty {
+                    break Ok(ExprList::block(stmt_exprs));
+                }
+
+                let st = $self.expression_stmt()?;
+                
+                
+
+                stmt_exprs.push(st);
+            }
+        } else {
+            anyhow::Result::Err(anyhow!(
+                "{}",
+                ParseError::ExpectedBlock(ParseErrInfo::from($self, None))
+            ))
+        }
+    }};
+}
+
 /// Tries to match pattern $try_start_pat and then parses
 /// section until given $end_pat pattern is peeked.
 /// (Does not advance past tok matched by $end_pat)
@@ -185,6 +214,7 @@ impl Parser {
                 self.adv(1)?;
                 self.print_expr(PrintType::Newline)
             }
+            
             TokType::When => {
                 self.adv(1)?;
                 self.when_expr()
@@ -206,6 +236,13 @@ impl Parser {
             }
             TokType::For => {
                 todo!()
+            }
+            // TODO: For now break statements do not take an optional 'return' expression (similar
+            // to rust break). We need to implement later. for now im not too bothered lol.
+            TokType::Break => {
+                self.adv(1)?;
+                let e = Expr::break_form(None);
+                Ok(e)
             }
 
             TokType::Eof => bail!("{}", ParseError::Eof),
@@ -312,15 +349,38 @@ impl Parser {
     fn when_expr(&mut self) -> anyhow::Result<Expr> {
         let mut branches: Vec<WhenForm> = Vec::new();
         while self.peek().ty != TokType::End && !self.is_eof() {
-            let when_cond = self.expression()?;
-            if let TokType::FatArrow = self.peek().ty {
+            if matches!(self.peek().ty, TokType::Else) {
+              
+                self.adv(1)?;
+                ensure!(
+                    matches!(self.peek().ty, TokType::FatArrow),
+                    "Expected '=>' after 'else' in when expression"
+                );
                 self.adv(1)?;
                 let then = self.place_value_block()?;
-                branches.push(WhenForm::Branch(when_cond, then));
+                branches.push(WhenForm::Else(then));
+                branches.push(WhenForm::End);
+                break;
+
             } else {
-                bail!("Parse Error: '=>' required in when expressions in between branch left hand conditions and right hand blocks/exprs. Ex: cond_expr => block end")
+                let when_cond = self.expression()?;
+                println!("when: {when_cond}");
+                ensure!(
+                    matches!(self.peek().ty, TokType::FatArrow),
+                        "Parse Error: '=>' required in when expressions in between branch left hand conditions and right hand blocks/exprs. Ex: cond_expr => block end",
+                    
+                );
+                self.adv(1)?;
+                let then = self.place_value_block()?;
+                if !then.is_block() {
+                    // require trailing comma if then branch is anything but a block.
+                    ensure!(self.peek().ty == TokType::Comma,"require trailing comma if then branch is anything but a block.");
+                     self.adv(1)?;
+                }
+                branches.push(WhenForm::Branch(when_cond, then));
             }
         }
+        self.adv(1)?;
         let w = Expr::when_form(branches);
         Ok(w)
     }
@@ -411,6 +471,7 @@ impl Parser {
         let expr = self.logical_bitwise()?;
 
         if let TokType::Eq = self.peek().ty {
+           
             self.adv(1)?;
             let value = self.assignment()?;
             if let Some(sym) = expr.inner_ident() {

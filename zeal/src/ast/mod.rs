@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::Index;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 
 use crate::core_types::str::ZIdent;
 
@@ -37,12 +38,14 @@ impl SymbolTable {
         }
     }
 
-    pub fn var_type(&self, name: &ZIdent) -> Option<VarType> {
-        if let Some(meta) = self.get(name) {
-            Some(meta.var_type)
-        } else {
-            None
-        }
+    pub fn var_type(&self, name: ZIdent) -> Option<VarType> {
+        self.get(&name).map(|meta| meta.var_type)
+    }
+}
+
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -100,6 +103,15 @@ pub struct Ast {
     pub symbols: SymbolTable,
 }
 
+impl FromStr for Ast {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let buf = TokBuffer::read_string(s)?;
+        let s = Self::from_toks(buf.slice())?;
+        Ok(s)
+    }
+}
 impl Ast {
     pub fn pipe<Pass>(self, pass: &mut Pass) -> anyhow::Result<Self>
     where
@@ -109,11 +121,7 @@ impl Ast {
     }
 
     pub fn binding_type(&self, name: &ZIdent) -> Option<VarType> {
-        if let Some(meta) = self.symbols.get(name) {
-            Some(meta.var_type)
-        } else {
-            None
-        }
+        self.symbols.get(name).map(|meta| meta.var_type)
     }
 
     pub fn empty() -> Self {
@@ -131,11 +139,11 @@ impl Ast {
         // Ok(Self(ast))
     }
 
-    pub fn from_str(str: &str) -> anyhow::Result<Self> {
-        let buf = TokBuffer::read_string(str)?;
-        let s = Self::from_toks(buf.slice())?;
-        Ok(s)
-    }
+    // pub fn from_str(str: &str) -> anyhow::Result<Self> {
+    //     let buf = TokBuffer::read_string(str)?;
+    //     let s = Self::from_toks(buf.slice())?;
+    //     Ok(s)
+    // }
 
     pub fn from_file(path: &str) -> anyhow::Result<Self> {
         let buf = TokBuffer::read_file(path)?;

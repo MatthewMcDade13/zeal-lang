@@ -1,6 +1,6 @@
 use anyhow::bail;
 use chunk::Chunk;
-use opcode::{Op, Opcode, VarOp};
+use opcode::{Op, OpParam, Opcode, VarOp};
 
 use crate::{
     ast::{
@@ -19,16 +19,38 @@ pub struct Archon;
 
 impl Archon {
     pub fn compile(ast: &Ast) -> anyhow::Result<Chunk> {
-        println!("{ast}");
+        // println!("{ast}");
         let mut ch = Chunk::default();
         Self::compile_with(ast, &mut ch)?;
 
-        // println!("{ch}");
+        println!("{ch}");
         Ok(ch)
     }
 
     pub fn compile_with(ast: &Ast, ch: &mut Chunk) -> anyhow::Result<()> {
         Self::compile_expr(ast, ch, &ast.tree)?;
+        Ok(())
+    }
+
+    fn compile_logical_op(
+        ast: &Ast,
+        ch: &mut Chunk,
+        operator: (BinaryOpType, &Expr, &Expr),
+    ) -> anyhow::Result<()> {
+        let (ty, left, right) = operator;
+        let op = match ty {
+            BinaryOpType::And => Op::JumpFalse,
+            BinaryOpType::Or => Op::JumpTrue,
+            _ => bail!(
+                "compile_logical_op: Tried to compile logical operator but was given type: {ty}"
+            ),
+        };
+
+        Self::compile_expr(ast, ch, left)?;
+        let jump = ch.push_jump(op);
+        ch.push_popn(1);
+        Self::compile_expr(ast, ch, right)?;
+        ch.patch_jump(jump);
         Ok(())
     }
 
@@ -110,15 +132,73 @@ impl Archon {
                         // }
                         // ch.patch_jump(else_jump);
                     }
-                    FormExpr::Loop { body, meta } => match meta {
-                        LoopExpr::Loop => todo!(),
-                        LoopExpr::While { cond } => todo!(),
-                        LoopExpr::Each {
-                            iter_ident,
-                            iterable,
-                        } => todo!(),
-                        LoopExpr::For { iter_ident, range } => todo!(),
-                    },
+                    FormExpr::Loop {
+                        body: ExprList::Block(bl),
+                        meta,
+                    } => {
+                        let mut breaks = Vec::new();
+                        match meta {
+                            LoopExpr::Loop => {
+                                ch.scope.start_scope();
+                                let top = ch.len() - 1;
+                                for ex in bl.iter() {
+                                    if matches!(ex, Expr::Form(FormExpr::Break { .. })) {
+                                        let jump = ch.push_jump(Op::Jump);
+                                        breaks.push(jump);
+                                    } else {
+                                        Self::compile_expr(ast, ch, ex)?;
+                                    }
+                                }
+                                let jump_op = Opcode::WithParam {
+                                    op: Op::Jump,
+                                    param: OpParam::byte16(top as u16),
+                                };
+                                ch.push_opcode(jump_op);
+                                let pops = ch.scope.end_scope();
+                                for b in breaks {
+                                    ch.patch_jump(b);
+                                }
+                                if pops > 0 {
+                                    ch.push_popn(pops as u8);
+                                }
+                            }
+                            LoopExpr::While { cond } => {
+                                ch.scope.start_scope();
+                                let top = ch.len() - 1;
+                                for ex in bl.iter() {
+                                    if matches!(ex, Expr::Form(FormExpr::Break { .. })) {
+                                        let jump = ch.push_jump(Op::Jump);
+                                        breaks.push(jump);
+                                    } else {
+                                        Self::compile_expr(ast, ch, ex)?;
+                                    }
+                                }
+                                Self::compile_expr(ast, ch, cond)?;
+                                let jump_op = Opcode::WithParam {
+                                    op: Op::JumpTrue,
+                                    param: OpParam::byte16(top as u16),
+                                };
+                                ch.push_opcode(jump_op);
+                                let pops = ch.scope.end_scope();
+                                for b in breaks {
+                                    ch.patch_jump(b);
+                                }
+                                if pops > 0 {
+                                    ch.push_popn(pops as u8);
+                                }
+                            }
+                            LoopExpr::Each {
+                                iter_ident,
+                                iterable,
+                            } => todo!(),
+                            LoopExpr::For { iter_ident, range } => todo!(),
+                        }
+                    }
+                    FormExpr::Loop { .. } => {
+                        bail!(
+                            "expected block after loop construct ('loop', 'while', 'each', 'for')"
+                        )
+                    }
                     FormExpr::Match {} => todo!(),
                     FormExpr::Struct {} => todo!(),
                     FormExpr::Impl {} => todo!(),
@@ -163,8 +243,9 @@ impl Archon {
                             ch.push_opcode(Opcode::new(op));
                         }
 
-                        BinaryOpType::And => {}
-                        BinaryOpType::Or => {}
+                        BinaryOpType::And | BinaryOpType::Or => {
+                            Self::compile_logical_op(ast, ch, (*op, left, right))?
+                        }
                     },
 
                     FormExpr::UnaryOperator { op, scalar, .. } => {
@@ -175,10 +256,10 @@ impl Archon {
                     FormExpr::Assign { binding, rhs } => {
                         let ident = binding;
 
-                        let ty = ast.symbols.var_type(&ident);
+                        let ty = ast.symbols.var_type(ident.clone());
                         if let Some(VarType::Var) = ty {
                             Self::compile_expr(ast, ch, rhs.as_ref())?;
-                            let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
+                            ch.push_binding(ident.clone(), VarOp::Set)?;
                         } else {
                             bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
                         }
@@ -198,7 +279,6 @@ impl Archon {
                         // } else if let Some(op) = head.unary_operator() {
                         //     let operand = &params[0];
                         //     Self::compile_expr(ast, ch, operand)?;
-                        //     ch.push_opcode(Opcode::new(op));
                         // } else {
                         //     match head.name() {
                         //         idents::ASSIGN => {
@@ -273,7 +353,6 @@ impl Archon {
             Expr::Nil => {
                 ch.push_opcode(Opcode::new(Op::Nil));
             }
-            _ => {}
         }
         Ok(())
     }

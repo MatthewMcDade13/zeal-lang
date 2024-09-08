@@ -10,12 +10,12 @@ fn main() -> anyhow::Result<()> {
                                                            //
 
     // let ast = TokBuffer::read_file(PATH)?;
-    let ast = Ast::from_file(PATH)?;
-    println!("{ast}");
+    // let ast = Ast::from_file(PATH)?;
+    // println!("{ast}");
 
-    // let mut vm = VM::new();
-    // let v = vm.exec_file(PATH)?;
-    // println!("EXEC RESULT => {v}");
+    let mut vm = VM::new();
+    let v = vm.exec_file(PATH)?;
+    println!("EXEC RESULT => {v}");
     // let x = TokBuffer::read_string(s)?;
 
     // let x = Ast::from_str(SOURCE)?;

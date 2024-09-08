@@ -218,6 +218,11 @@ pub enum Expr {
 }
 
 impl Expr {
+
+    pub const fn is_block(&self) -> bool {
+        matches!(self, Self::List(ExprList::Block(_)))
+    } 
+
     pub fn stringify<T>(item: &T) -> Self
     where
         T: Display,
@@ -574,7 +579,7 @@ mod fmt {
         match e {
             Expr::Form(ce) => match ce {
                 FormExpr::When { conds } => {
-                    let mut cond_str = state.writeln("(cond"); // info.fmtln("(cond");
+                    let mut cond_str = state.writeln("(when"); // info.fmtln("(cond");
 
                     state.inc_indent();
 
@@ -582,7 +587,7 @@ mod fmt {
                         match cond.as_tup() {
                             (Expr::Nil, block) => {
                                 let block_s = value_block(block, state);
-                                let s = state.fmtln(&format!("_ => {block_s}"));
+                                let s = state.fmtln(&format!("else => {block_s}"));
                                 cond_str.push_str(&s);
                                 break;
                             }
@@ -598,7 +603,7 @@ mod fmt {
                     }
 
                     state.dec_indent();
-                    cond_str.push_str(&state.fmtln(&format!("end)")));
+                    cond_str.push_str(&state.fmtln("end)"));
 
                     cond_str
                 }
@@ -698,7 +703,6 @@ mod fmt {
 }
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        println!("matching: {:?}", self);
         let mut state = fmt::State { indent: 0, line: 1 };
         let s = fmt::expr(self, &mut state);
 

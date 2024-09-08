@@ -13,7 +13,7 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct ZMutRef(Rc<RefCell<ZValue>>);
 
-#[derive(Default, Debug, Clone, Hash)]
+#[derive(Default, Debug, Clone)]
 pub enum ZValue {
     #[default]
     Nil,
@@ -33,18 +33,18 @@ pub enum ZValue {
     Unit,
 }
 
+impl Hash for ZValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
+
 impl Eq for ZValue {}
 
 impl PartialEq for ZValue {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            ZValue::Nil => {
-                if let ZValue::Nil = other {
-                    true
-                } else {
-                    false
-                }
-            }
+            ZValue::Nil => matches!(other, ZValue::Nil),
             ZValue::Bool(sb) => {
                 if let Self::Bool(other_bool) = other {
                     sb == other_bool
@@ -80,11 +80,7 @@ impl PartialEq for ZValue {
                 }
             }
             ZValue::Unit => {
-                if let Self::Unit = other {
-                    true
-                } else {
-                    false
-                }
+                matches!(other, Self::Unit)
             } // ZValue::List(li) => {
               //     if let Self::List(other_li) = other {
               //         li == other_li
@@ -160,11 +156,7 @@ impl ZValue {
         Self::Vec(ZVec::new())
     }
     pub const fn is_ident(&self) -> bool {
-        if let Self::Ident(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Ident(_))
     }
 
     pub const fn type_string(&self) -> &'static str {

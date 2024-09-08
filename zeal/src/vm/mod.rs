@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, ops::Index};
+use std::{collections::HashMap, fmt::Display, ops::Index, str::FromStr};
 
 use anyhow::bail;
 use stack::Stack;
@@ -288,13 +288,11 @@ impl VM {
 
                     Op::JumpFalse => {
                         if let Some(top) = self.stack.peek_top() {
-                            println!("JumpFalse, Top: {top}");
                             if top.is_falsey() {
                                 let jumpto = opcode
                                     .try_param()
                                     .expect("JumpFalse16 Op has no parameter!!!");
 
-                                println!("jump: {jumpto:?}");
                                 self.pc = jumpto.to_u32() as usize;
                             }
                         }
@@ -306,7 +304,17 @@ impl VM {
                         self.pc = jumpto.to_usize();
                     }
                     Op::LongJump => todo!(),
-                    Op::JumpTrue => todo!(),
+                    Op::JumpTrue => {
+                        if let Some(top) = self.stack.peek_top() {
+                            if top.is_truthy() {
+                                let jumpto = opcode
+                                    .try_param()
+                                    .expect("JumpTrue16 Op has no parameter!!!");
+
+                                self.pc = jumpto.to_u32() as usize;
+                            }
+                        }
+                    }
                     Op::LongJumpTrue => todo!(), // NOTE: ----- END SET LOCAL -----
                 };
             }
