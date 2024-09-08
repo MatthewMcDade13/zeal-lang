@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use crate::{
         ast::Ast,
         compiler::{opcode::Op, Archon},

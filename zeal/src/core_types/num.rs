@@ -1,7 +1,10 @@
 use std::{
+    fmt::Display,
     hash::Hasher,
     ops::{Add, Deref, DerefMut, Div, Mul, Neg, Sub},
 };
+
+use super::val::ZValue;
 
 #[repr(transparent)]
 #[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd)]
@@ -13,15 +16,22 @@ impl ZFloat64 {
     }
 }
 
-impl Eq for ZFloat64 {}
-
-impl Ord for ZFloat64 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let s = self.0 as u64;
-        let other = other.0 as u64;
-        s.cmp(&other)
+impl Display for ZFloat64 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
+
+// impl Ord for ZFloat64 {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         let s = self.0 as u64;
+//         let other = other.0 as u64;
+//
+//         let tmp = s.cmp(&other);
+//         println!("float cmp: {s} {other} => {tmp:?}");
+//         tmp
+//     }
+// }
 
 impl std::hash::Hash for ZFloat64 {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -144,12 +154,24 @@ impl DerefMut for ZFloat64 {
     }
 }
 
+impl From<ZFloat64> for ZValue {
+    fn from(value: ZFloat64) -> Self {
+        Self::Number(value)
+    }
+}
+
 #[repr(transparent)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct ZBool(pub(crate) bool);
 impl From<bool> for ZBool {
     fn from(value: bool) -> Self {
         Self(value)
+    }
+}
+
+impl From<bool> for ZValue {
+    fn from(value: bool) -> Self {
+        Self::bool(value)
     }
 }
 

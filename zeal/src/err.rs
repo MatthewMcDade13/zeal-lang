@@ -15,8 +15,8 @@ pub mod parse {
     use std::fmt::Display;
 
     use crate::ast::{
+        expr::Expr,
         lex::{LexTok, LineInfo, Tok, TokType},
-        Expr,
     };
 
     #[derive(Default, Debug, Clone)]

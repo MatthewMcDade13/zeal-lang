@@ -1,51 +1,32 @@
-use std::{collections::HashMap, fmt::Display, ops::Index};
+use std::{collections::HashMap, fmt::Display, ops::Index, str::FromStr};
 
 use anyhow::bail;
 use stack::Stack;
 
 use crate::{
-    ast::Ast,
+    ast::{Ast, BinaryOpType},
     compiler::{
         chunk::Chunk,
-        opcode::{Bytecode, Op, Opcode},
+        opcode::{Op, Opcode},
         Archon,
     },
-    core_types::{
-        num::ZBool,
-        str::{RuneTable, ZIdent},
-        val::ZValue,
-    },
+    core_types::{str::ZIdent, val::ZValue},
     err::core::RuntimeError,
 };
 
 pub mod stack;
-macro_rules! logical_binary_op {
-    ($stack: expr, $op: tt) => {
-
-        {
-            let right = $stack.expect_pop().expect_float64();
-            let left = $stack.expect_pop().expect_float64();
-
-            let res = ZValue::Bool(ZBool::new(left $op right));
-            $stack.push(res);
-
-
-
-        }
-
-    };
-}
-
 macro_rules! num_binary_op {
     ($stack: expr, $op: tt) => {
 
         {
-
-
+        // TODO: Inequalities dont work... not sure why but left and right seems to
+        // get switch up somewhere. OOF
             let right = $stack.expect_pop().expect_float64();
             let left = $stack.expect_pop().expect_float64();
+            let res = left $op right;
+            let op = stringify!($op);
 
-            let res = ZValue::Number(left $op right);
+            let res = ZValue::from(res);
             $stack.push(res);
 
 
@@ -143,13 +124,13 @@ impl VM {
                     Op::Return => {}
                     Op::Println => {
                         let v = self.stack.peek_top().expect("cannot peek an empty stack!");
-                        println!("{}", v.to_string());
+                        println!("{v}");
                         self.stack.expect_pop();
                     }
 
                     Op::Print => {
                         let v = self.stack.peek_top().expect("cannot peek an empty stack!");
-                        print!("{}", v.to_string());
+                        print!("{v}");
                         self.stack.expect_pop();
                     }
 
@@ -164,24 +145,24 @@ impl VM {
                         }
                     }
                     Op::Add => {
-                        num_binary_op!(self.stack, +);
+                        self.binary_op_num(BinaryOpType::Add);
                         // let right = self.stack.pop().expect_float64();
                         // let left = self.stack.pop().expect_float64();
                         // let res = ZValue::Number(left + right);
                         // self.stack.push(res);
                     }
                     Op::Sub => {
-                        num_binary_op!(self.stack, -);
+                        self.binary_op_num(BinaryOpType::Sub);
                     }
-                    Op::Div => num_binary_op!(self.stack, /),
-                    Op::Mul => num_binary_op!(self.stack, *),
+                    Op::Div => self.binary_op_num(BinaryOpType::Div),
+                    Op::Mul => self.binary_op_num(BinaryOpType::Mul),
                     Op::Neg => {
                         let val = self.stack.expect_pop().expect_float64();
                         self.stack.push(ZValue::Number(-val));
                     }
                     Op::Not => {
                         let val = self.stack.expect_pop();
-                        let res = if val.is_truthy() { false } else { true };
+                        let res = !val.is_truthy();
                         self.stack.push(ZValue::bool(res));
                     }
                     Op::Nil => {
@@ -226,7 +207,7 @@ impl VM {
                                     "{}",
                                     RuntimeError::VMUnknownIdentifier {
                                         name: name.clone(),
-                                        opcode: opcode,
+                                        opcode,
                                         constants: self.chunk.constants.to_owned(),
                                         globals: self.globals.clone()
                                     }
@@ -250,22 +231,21 @@ impl VM {
                                     "{}",
                                     RuntimeError::VMUnknownIdentifier {
                                         name: name.clone(),
-                                        opcode: opcode,
+                                        opcode,
                                         constants: self.chunk.constants.clone(),
                                         globals: self.globals.clone(),
                                     }
                                 )
                             }
-                        } else {
                         }
                     }
                     // NOTE: ----- END DEFINE GLOBAL -----
-                    Op::Eq => logical_binary_op!(self.stack, ==),
-                    Op::Gt => logical_binary_op!(self.stack, >),
-                    Op::Lt => logical_binary_op!(self.stack, <),
-                    Op::Ge => logical_binary_op!(self.stack, >),
-                    Op::Le => logical_binary_op!(self.stack, <),
-                    Op::NotEq => logical_binary_op!(self.stack, !=),
+                    Op::Eq => self.binary_op_num(BinaryOpType::Equals),
+                    Op::Gt => self.binary_op_num(BinaryOpType::Gt),
+                    Op::Lt => self.binary_op_num(BinaryOpType::Lt),
+                    Op::Ge => self.binary_op_num(BinaryOpType::Ge),
+                    Op::Le => self.binary_op_num(BinaryOpType::Le),
+                    Op::NotEq => self.binary_op_num(BinaryOpType::NotEquals),
 
                     // NOTE: ----- GET LOCAL -----
                     Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
@@ -287,6 +267,7 @@ impl VM {
                                 let jumpto = opcode
                                     .try_param()
                                     .expect("JumpFalse16 Op has no parameter!!!");
+
                                 self.pc = jumpto.to_u32() as usize;
                             }
                         }
@@ -298,7 +279,17 @@ impl VM {
                         self.pc = jumpto.to_usize();
                     }
                     Op::LongJump => todo!(),
-                    Op::JumpTrue => todo!(),
+                    Op::JumpTrue => {
+                        if let Some(top) = self.stack.peek_top() {
+                            if top.is_truthy() {
+                                let jumpto = opcode
+                                    .try_param()
+                                    .expect("JumpTrue16 Op has no parameter!!!");
+
+                                self.pc = jumpto.to_u32() as usize;
+                            }
+                        }
+                    }
                     Op::LongJumpTrue => todo!(), // NOTE: ----- END SET LOCAL -----
                 };
             }
@@ -310,6 +301,32 @@ impl VM {
             ZValue::Nil
         };
         Ok(top)
+    }
+
+    fn binary_op_num(&mut self, ty: BinaryOpType) {
+        let right = self.stack.expect_pop().expect_float64();
+        let left = self.stack.expect_pop().expect_float64();
+
+        let res: ZValue = match ty {
+            BinaryOpType::Gt => (left > right).into(),
+            BinaryOpType::Lt => (left < right).into(),
+            BinaryOpType::Ge => (left >= right).into(),
+            BinaryOpType::Le => (left <= right).into(),
+            BinaryOpType::And => panic!("No opcode for And"),
+            BinaryOpType::Or => panic!("No opcode for Or"),
+            BinaryOpType::Equals => (left == right).into(),
+            BinaryOpType::NotEquals => (left != right).into(),
+            BinaryOpType::BitAnd => todo!(),
+            BinaryOpType::BitOr => todo!(),
+            BinaryOpType::Xor => todo!(),
+            BinaryOpType::Concat => todo!(),
+            BinaryOpType::Add => (left + right).into(),
+            BinaryOpType::Sub => (left - right).into(),
+            BinaryOpType::Mul => (left * right).into(),
+            BinaryOpType::Div => (left / right).into(),
+        };
+
+        self.stack.push(res);
     }
     // for opcode in self.chunk.iter() {
     // Ok(opcode.offset())

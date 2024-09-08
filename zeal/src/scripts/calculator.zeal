@@ -1,6 +1,6 @@
 let x = 5 * 5
 
-let y = x == 10
+let y = x == 25
 
 println x
 println y
@@ -8,10 +8,7 @@ println y
 var ttt
 
 
-
-
-
-if x == 10 then
+if x <= 10 then
   println "if"
 elseif x == 25 then 
   println "elseif"

@@ -9,7 +9,7 @@ pub struct Scope {
     depth: BindScope,
 }
 
-#[derive(Debug, Default, Clone, Copy, Eq, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq)]
 pub enum BindScope {
     #[default]
     Global,
@@ -17,6 +17,7 @@ pub enum BindScope {
         depth: usize,
     },
 }
+
 
 impl PartialOrd for BindScope {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

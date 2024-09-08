@@ -1,11 +1,13 @@
 use anyhow::bail;
 use chunk::Chunk;
-use opcode::{Op, Opcode, VarOp};
+use opcode::{Op, OpParam, Opcode, VarOp};
 
 use crate::{
-    ast::{Ast, BinaryOpType, Expr, ExprList, FormExpr, VarType},
+    ast::{
+        expr::{Expr, ExprList, FormExpr, LoopExpr, WhenForm},
+        Ast, BinaryOpType, VarType,
+    },
     core_types::{idents, num::ZBool, val::ZValue},
-    err::core::CompileError,
 };
 
 pub mod chunk;
@@ -17,23 +19,46 @@ pub struct Archon;
 
 impl Archon {
     pub fn compile(ast: &Ast) -> anyhow::Result<Chunk> {
+        // println!("{ast}");
         let mut ch = Chunk::default();
         Self::compile_with(ast, &mut ch)?;
 
+        println!("{ch}");
         Ok(ch)
     }
 
     pub fn compile_with(ast: &Ast, ch: &mut Chunk) -> anyhow::Result<()> {
-        Self::compile_expr(ast, ch, &ast.tree)?;
+        Self::compile_expr(ch, &ast.tree)?;
         Ok(())
     }
 
-    fn compile_expr_list(ast: &Ast, ch: &mut Chunk, el: &ExprList) -> anyhow::Result<()> {
+    fn compile_logical_op(
+        ch: &mut Chunk,
+        operator: (BinaryOpType, &Expr, &Expr),
+    ) -> anyhow::Result<()> {
+        let (ty, left, right) = operator;
+        let op = match ty {
+            BinaryOpType::And => Op::JumpFalse,
+            BinaryOpType::Or => Op::JumpTrue,
+            _ => bail!(
+                "compile_logical_op: Tried to compile logical operator but was given type: {ty}"
+            ),
+        };
+
+        Self::compile_expr(ch, left)?;
+        let jump = ch.push_jump(op);
+        ch.push_popn(1);
+        Self::compile_expr(ch, right)?;
+        ch.patch_jump(jump);
+        Ok(())
+    }
+
+    fn compile_expr_list(ch: &mut Chunk, el: &ExprList) -> anyhow::Result<()> {
         match el {
             ExprList::Block(bl) => {
                 ch.scope.start_scope();
                 for e in bl.iter() {
-                    Self::compile_expr(ast, ch, e)?;
+                    Self::compile_expr(ch, e)?;
                 }
                 let pops = ch.scope.end_scope();
                 if pops > 0 {
@@ -42,62 +67,138 @@ impl Archon {
             }
             ExprList::Tuple(tup) => {
                 for ex in tup.iter() {
-                    Self::compile_expr(ast, ch, ex)?;
+                    Self::compile_expr(ch, ex)?;
                 }
             }
-            // ExprList::Unit(ex) => Self::compile_expr(ast, ch, ex.as_ref())?,
-            ExprList::Nil => Self::compile_expr(ast, ch, &Expr::Nil)?,
+            // ExprList::Unit(ex) => Self::compile_expr( ch, ex.as_ref())?,
+            ExprList::Nil => Self::compile_expr(ch, &Expr::Nil)?,
         };
         Ok(())
     }
 
-    fn compile_expr(ast: &Ast, ch: &mut Chunk, expr: &Expr) -> anyhow::Result<()> {
+    fn compile_expr(ch: &mut Chunk, expr: &Expr) -> anyhow::Result<()> {
         match expr {
-            Expr::Form(ce) => {
-                match ce {
-                    FormExpr::If {
-                        cond,
-                        if_body: then_body,
-                        else_body,
-                    } => {
-                        Self::compile_expr(ast, ch, cond)?;
+            Expr::Form(form) => {
+                match form {
+                    FormExpr::When { conds } => {
+                        let mut end_patches = Vec::new();
+                        for ce in conds.iter() {
+                            match ce {
+                                WhenForm::Branch(cond, block) => {
+                                    Self::compile_expr(ch, cond)?;
+                                    let cond_jump = ch.push_jump(Op::JumpFalse);
+                                    ch.push_popn(1);
+                                    Self::compile_expr(ch, block)?;
 
-                        let then_patch = ch.push_jump(Op::JumpFalse);
-                        ch.push_popn(1);
-                        Self::compile_expr_list(ast, ch, then_body)?;
+                                    {
+                                        let end_jump = ch.push_jump(Op::Jump);
+                                        end_patches.push(end_jump);
+                                    }
 
-                        let else_jump = ch.push_jump(Op::Jump);
-                        ch.patch_jump(then_patch);
-                        ch.push_popn(1);
-
-                        // ch.patch_jump(then_patch);
-
-                        if let Some(eb) = else_body {
-                            match eb.as_ref() {
-                            // else
-                            Expr::List(ExprList::Block(bl)) => {
-                                Self::compile_expr_list(ast, ch, &ExprList::Block(bl.clone()))?;
+                                    ch.patch_jump(cond_jump);
+                                    ch.push_popn(1);
+                                }
+                                WhenForm::Else(block) => {
+                                    Self::compile_expr(ch, block)?;
+                                    for patch in end_patches.iter() {
+                                        ch.patch_jump(*patch);
+                                    }
+                                    break;
+                                }
+                                WhenForm::End => break,
                             }
-                            // elseif
-                            Expr::Form(FormExpr::If { .. }) => Self::compile_expr(ast, ch, eb.as_ref())?,
-                            _ => bail!("CompileError => Expected Expr::List(ExprList::Block()) | Expr::Call(CallExpr::If {{..}}) in Archon::compile_expr for else body!!! Probably missing ending else/end/elseif!!!"),
                         }
-                        }
-                        ch.patch_jump(else_jump);
+                        // Self::compile_expr( ch, cond)?;
+                        //
+                        // let then_patch = ch.push_jump(Op::JumpFalse);
+                        // ch.push_popn(1);
+                        // Self::compile_expr_list( ch, then_body)?;
+                        // let else_jump = ch.push_jump(Op::Jump);
+                        // ch.patch_jump(then_patch);
+                        // ch.push_popn(1);
+                        //
+                        // // ch.patch_jump(then_patch);
+                        //
+                        // if let Some(eb) = else_body {
+                        //     match eb.as_ref() {
+                        //     // else
+                        //     Expr::List(ExprList::Block(bl)) => {
+                        //         Self::compile_expr_list( ch, &ExprList::Block(bl.clone()))?;
+                        //     }
+                        //     // elseif
+                        //     Expr::Form(FormExpr::Cond { .. }) => Self::compile_expr( ch, eb.as_ref())?,
+                        //     _ => bail!("CompileError => Expected Expr::List(ExprList::Block()) | Expr::Call(CallExpr::If {{..}}) in Archon::compile_expr for else body!!! Probably missing ending else/end/elseif!!!"),
+                        // }
+                        // }
+                        // ch.patch_jump(else_jump);
                     }
-                    FormExpr::Loop { body } => todo!(),
-                    FormExpr::While { cond, body } => todo!(),
-                    FormExpr::Each {
-                        loop_ident,
-                        iterable,
-                        num_range,
-                    } => todo!(),
-                    FormExpr::For {
-                        init,
-                        cond,
-                        inc,
-                        body,
-                    } => todo!(),
+                    FormExpr::Loop {
+                        body: ExprList::Block(bl),
+                        meta,
+                    } => {
+                        let mut breaks = Vec::new();
+                        match meta {
+                            LoopExpr::Loop => {
+                                ch.scope.start_scope();
+                                let top = ch.len() - 1;
+                                for ex in bl.iter() {
+                                    if matches!(ex, Expr::Form(FormExpr::Break { .. })) {
+                                        let jump = ch.push_jump(Op::Jump);
+                                        breaks.push(jump);
+                                    } else {
+                                        Self::compile_expr(ch, ex)?;
+                                    }
+                                }
+                                let jump_op = Opcode::WithParam {
+                                    op: Op::Jump,
+                                    param: OpParam::byte16(top as u16),
+                                };
+                                ch.push_opcode(jump_op);
+                                let pops = ch.scope.end_scope();
+                                for b in breaks {
+                                    ch.patch_jump(b);
+                                }
+                                if pops > 0 {
+                                    ch.push_popn(pops as u8);
+                                }
+                            }
+                            LoopExpr::While { cond } => {
+                                ch.scope.start_scope();
+                                let top = ch.len();
+                                for ex in bl.iter() {
+                                    if matches!(ex, Expr::Form(FormExpr::Break { .. })) {
+                                        let jump = ch.push_jump(Op::Jump);
+                                        breaks.push(jump);
+                                    } else {
+                                        Self::compile_expr(ch, ex)?;
+                                    }
+                                }
+                                Self::compile_expr(ch, cond)?;
+                                let jump_op = Opcode::WithParam {
+                                    op: Op::JumpTrue,
+                                    param: OpParam::byte16(top as u16),
+                                };
+                                ch.push_opcode(jump_op);
+                                let pops = ch.scope.end_scope();
+                                for b in breaks {
+                                    ch.patch_jump(b);
+                                }
+                                if pops > 0 {
+                                    ch.push_popn(pops as u8);
+                                }
+                            }
+                            LoopExpr::Each {
+                                iter_ident,
+                                iterable,
+                            } => todo!(),
+                            LoopExpr::For { iter_ident, range } => todo!(),
+                        }
+                    }
+                    FormExpr::Loop { .. } => {
+                        bail!(
+                            "expected block after loop construct ('loop', 'while', 'each', 'for')"
+                        )
+                    }
                     FormExpr::Match {} => todo!(),
                     FormExpr::Struct {} => todo!(),
                     FormExpr::Impl {} => todo!(),
@@ -108,11 +209,11 @@ impl Archon {
                         last,
                     } => todo!(),
                     FormExpr::Print(pex) => {
-                        Self::compile_expr(ast, ch, pex)?;
+                        Self::compile_expr(ch, pex)?;
                         ch.push_opcode(Opcode::new(Op::Print));
                     }
                     FormExpr::Println(pex) => {
-                        Self::compile_expr(ast, ch, pex)?;
+                        Self::compile_expr(ch, pex)?;
                         ch.push_opcode(Opcode::new(Op::Println));
                     }
 
@@ -135,32 +236,38 @@ impl Archon {
                         | BinaryOpType::Sub
                         | BinaryOpType::Mul
                         | BinaryOpType::Div => {
-                            Self::compile_expr(ast, ch, left)?;
-                            Self::compile_expr(ast, ch, right)?;
+                            Self::compile_expr(ch, left)?;
+                            Self::compile_expr(ch, right)?;
 
                             let op = Op::from(*op);
                             ch.push_opcode(Opcode::new(op));
                         }
 
-                        BinaryOpType::And => {}
-                        BinaryOpType::Or => {}
+                        BinaryOpType::And | BinaryOpType::Or => {
+                            Self::compile_logical_op(ch, (*op, left, right))?
+                        }
                     },
 
                     FormExpr::UnaryOperator { op, scalar, .. } => {
                         let op = Op::from(*op);
-                        Self::compile_expr(ast, ch, scalar)?;
+                        Self::compile_expr(ch, scalar)?;
                         ch.push_opcode(Opcode::new(op));
                     }
                     FormExpr::Assign { binding, rhs } => {
                         let ident = binding;
 
-                        let ty = ast.symbols.var_type(&ident);
-                        if let Some(VarType::Var) = ty {
-                            Self::compile_expr(ast, ch, rhs.as_ref())?;
-                            let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
-                        } else {
-                            bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
-                        }
+                        // TODO: Dont remove comments beneath these two lines,
+                        // im moving the symbol table into the AST nodes, but in case that
+                        // never happens, this can be the source of future bugs
+                        Self::compile_expr(ch, rhs.as_ref())?;
+                        ch.push_binding(ident.clone(), VarOp::Set)?;
+                        // let ty = ast.symbols.var_type(ident.clone());
+                        // if let Some(VarType::Var) = ty {
+                        //     Self::compile_expr(ch, rhs.as_ref())?;
+                        //     ch.push_binding(ident.clone(), VarOp::Set)?;
+                        // } else {
+                        //     bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
+                        // }
                     }
                     FormExpr::Call { head, params } => {
                         todo!()
@@ -171,13 +278,12 @@ impl Archon {
                         //     // we can easily allow for a lisp style ops
                         //     let left = &params[0];
                         //     let right = &params[1];
-                        //     Self::compile_expr(ast, ch, left)?;
-                        //     Self::compile_expr(ast, ch, right)?;
+                        //     Self::compile_expr( ch, left)?;
+                        //     Self::compile_expr( ch, right)?;
                         //     ch.push_opcode(Opcode::new(op));
                         // } else if let Some(op) = head.unary_operator() {
                         //     let operand = &params[0];
-                        //     Self::compile_expr(ast, ch, operand)?;
-                        //     ch.push_opcode(Opcode::new(op));
+                        //     Self::compile_expr( ch, operand)?;
                         // } else {
                         //     match head.name() {
                         //         idents::ASSIGN => {
@@ -188,7 +294,7 @@ impl Archon {
                         //             let ty = ast.symbols.var_type(&ident);
                         //             if let Some(VarType::Var) = ty {
                         //                 let val = &params[1];
-                        //                 Self::compile_expr(ast, ch, val)?;
+                        //                 Self::compile_expr( ch, val)?;
                         //                 let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
                         //             } else {
                         //                 bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
@@ -196,12 +302,12 @@ impl Archon {
                         //         }
                         //         idents::PRINT => {
                         //             let right = &params[0];
-                        //             Self::compile_expr(ast, ch, right)?;
+                        //             Self::compile_expr( ch, right)?;
                         //             ch.push_opcode(Opcode::new(Op::Print));
                         //         }
                         //         idents::PRINTLN => {
                         //             let right = &params[0];
-                        //             Self::compile_expr(ast, ch, right)?;
+                        //             Self::compile_expr( ch, right)?;
                         //             ch.push_opcode(Opcode::new(Op::Println));
                         //         }
                         //         _ => bail!("cant compile: {head}"),
@@ -213,11 +319,11 @@ impl Archon {
             }
 
             Expr::Binding { ty, name, init } => {
-                Self::compile_expr(ast, ch, init)?;
+                Self::compile_expr(ch, init.as_ref())?;
                 let name = name.expect_ident();
                 ch.declare_binding(name.clone())?;
             }
-            Expr::List(li) => Self::compile_expr_list(ast, ch, li)?,
+            Expr::List(li) => Self::compile_expr_list(ch, li)?,
             Expr::Atom(a) => match a {
                 ZValue::Nil => {
                     let _ = ch.push_opcode(Opcode::new(Op::Nil));
@@ -252,7 +358,6 @@ impl Archon {
             Expr::Nil => {
                 ch.push_opcode(Opcode::new(Op::Nil));
             }
-            _ => {}
         }
         Ok(())
     }
