@@ -48,17 +48,18 @@ pub mod parse {
             let (expr, expr_ty) = if let Some(ex) = &self.expr {
                 (ex.string.as_str(), ex.ty.as_str())
             } else {
-                ("n/a".into(), "n/a".into())
+                ("n/a", "n/a")
             };
 
             let prev = &self.prev;
+            let curr = &self.curr;
             let next = if let Some(n) = &self.next {
                 n.to_string()
             } else {
                 "None".into()
             };
 
-            write!(f, "At => (L:{line}|C:{col})\n\t-> While parsing expression: {expr}\n\t -> of type: {expr_ty}.\n\t-> Prev: {prev}\n\t -> Next: {next}")
+            write!(f, "At => (L:{line}|C:{col})\n\t-> While parsing expression: {expr}\n\t -> of type: {expr_ty}.\n\t-> Current: {curr}\n\t-> Prev: {prev}\n\t-> Next: {next}")
         }
     }
 

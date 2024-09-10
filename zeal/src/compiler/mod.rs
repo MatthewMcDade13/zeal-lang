@@ -19,7 +19,7 @@ pub struct Archon;
 
 impl Archon {
     pub fn compile(ast: &Ast) -> anyhow::Result<Chunk> {
-        // println!("{ast}");
+        println!("{ast}");
         let mut ch = Chunk::default();
         Self::compile_with(ast, &mut ch)?;
 
@@ -99,15 +99,17 @@ impl Archon {
                                     ch.push_popn(1);
                                 }
                                 WhenForm::Else(block) => {
+                                    println!("Compiling Else BLock: {block}, {}", block.type_str());
                                     Self::compile_expr(ch, block)?;
-                                    for patch in end_patches.iter() {
-                                        ch.patch_jump(*patch);
-                                    }
                                     break;
                                 }
                                 WhenForm::End => break,
                             }
                         }
+                        for patch in end_patches.iter() {
+                            ch.patch_jump(*patch);
+                        }
+
                         // Self::compile_expr( ch, cond)?;
                         //
                         // let then_patch = ch.push_jump(Op::JumpFalse);
@@ -140,7 +142,7 @@ impl Archon {
                         match meta {
                             LoopExpr::Loop => {
                                 ch.scope.start_scope();
-                                let top = ch.len() - 1;
+                                let top = ch.len();
                                 for ex in bl.iter() {
                                     if matches!(ex, Expr::Form(FormExpr::Break { .. })) {
                                         let jump = ch.push_jump(Op::Jump);

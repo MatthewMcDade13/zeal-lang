@@ -176,6 +176,8 @@ pub enum TokType {
     Then,
     Begin,
     FatArrow,
+    ArrowLeft,
+    ArrowRight,
     Dot,
     Semicolon,
     Bang,
@@ -338,6 +340,8 @@ impl From<&LexTok> for TokType {
             LexTok::Ge => TokType::Ge,
             LexTok::When => TokType::When,
             LexTok::FatArrow => TokType::FatArrow,
+            LexTok::ArrowRight => TokType::ArrowRight,
+            LexTok::ArrowLeft => TokType::ArrowLeft,
         }
     }
 }
@@ -517,6 +521,12 @@ pub enum LexTok {
 
     #[token(">=")]
     Ge,
+
+    #[token("->")]
+    ArrowRight,
+
+    #[token("<-")]
+    ArrowLeft,
 
     #[token("=>")]
     FatArrow,

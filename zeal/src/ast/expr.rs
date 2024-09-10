@@ -146,6 +146,15 @@ impl Display for ExprList {
 }
 
 impl ExprList {
+    /// converts Self::Block | Self::Tuple with exactly 1 element to its single elements Expr Type
+    pub fn try_unwrap_single(&self) -> Option<Expr> {
+        match self {
+            ExprList::Block(bl) if bl.len() == 1 => Some(bl[0].clone()), 
+            ExprList::Tuple(tup) if tup.len() == 1 => Some(tup[0].clone()), 
+            ExprList::Nil => None, 
+            _ => None
+        }
+    }
     pub fn as_slice(&self) -> Option<&[Expr]> {
         match self {
             ExprList::Block(bl) => Some(bl.as_ref()),
@@ -184,10 +193,12 @@ impl ExprList {
     /// Clones self into a new Expr::List
     #[inline]
     pub fn as_expr(&self) -> Expr {
-        self.clone().into_expr()
+        self.clone().into_expr_list()
     }
 
-    pub const fn into_expr(self) -> Expr {
+    /// "Upgrades" ExprList to a Expr::List.
+    /// self.into_expr_list() == Expr::List(self)
+    pub const fn into_expr_list(self) -> Expr {
         Expr::List(self)
     }
 
@@ -347,7 +358,13 @@ impl Expr {
     pub const fn type_str(&self) -> &'static str {
         match self {
             Expr::Binding { .. } => "Binding",
-            Expr::List(_) => "List",
+            Expr::List(le) => {
+                match le {
+                    ExprList::Block(_) => "List::Block", 
+                    ExprList::Tuple(_) => "List::Tuple", 
+                    ExprList::Nil => "List::Nil"
+                }
+            } 
             Expr::Atom(_) => "Atom",
             Expr::Nil => "Nil",
             Expr::Form(_) => "Call",

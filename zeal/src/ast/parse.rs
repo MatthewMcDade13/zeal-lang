@@ -39,8 +39,6 @@ macro_rules! loop_block {
                 }
 
                 let st = $self.expression_stmt()?;
-                
-                
 
                 stmt_exprs.push(st);
             }
@@ -108,10 +106,27 @@ macro_rules! block {
         } else {
             anyhow::Result::Err(anyhow!(
                 "{}",
-                ParseError::ExpectedBlock(ParseErrInfo::from($self, None))
+                ParseError::ExpectedBlock(ParseErrInfo {
+                    expr: None,
+                    prev: $self.peek_prev().clone(),
+                    curr: $self.peek().clone(),
+                    next: $self.peek_next().map(|t| t.clone()),
+                })
             ))
         }
     }};
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum BlockType {
+    /// ''->' to '',''
+    WhenBranch,
+    WhenElse,
+    // 'do' to 'end'
+    #[default]
+    Do,
+    /// 'begin' to 'end'
+    Begin,
 }
 
 impl ParseErrInfo {
@@ -122,7 +137,7 @@ impl ParseErrInfo {
         });
         Self {
             expr,
-            prev: p.prev().clone(),
+            prev: p.peek_prev().clone(),
             curr: p.peek().clone(),
             next: None,
         }
@@ -214,7 +229,7 @@ impl Parser {
                 self.adv(1)?;
                 self.print_expr(PrintType::Newline)
             }
-            
+
             TokType::When => {
                 self.adv(1)?;
                 self.when_expr()
@@ -246,7 +261,7 @@ impl Parser {
             }
 
             TokType::Eof => bail!("{}", ParseError::Eof),
-            _ => self.place_value_block(),
+            _ => self.place_value_block(BlockType::default()),
         }
     }
 
@@ -286,7 +301,7 @@ impl Parser {
                 TokType::Then | TokType::Do,
                 TokType::End | TokType::Else | TokType::ElseIf
             )?;
-            branches.push(WhenForm::Branch(cond, body.into_expr()));
+            branches.push(WhenForm::Branch(cond, body.into_expr_list()));
 
             match self.peek().ty {
                 TokType::End => {
@@ -297,7 +312,7 @@ impl Parser {
                 TokType::Else => {
                     let else_body = block!(self, TokType::Else, TokType::End)?;
                     self.adv(1)?;
-                    branches.push(WhenForm::Else(else_body.into_expr()));
+                    branches.push(WhenForm::Else(else_body.into_expr_list()));
                     branches.push(WhenForm::End);
 
                     break;
@@ -348,40 +363,64 @@ impl Parser {
     }
     fn when_expr(&mut self) -> anyhow::Result<Expr> {
         let mut branches: Vec<WhenForm> = Vec::new();
-        while self.peek().ty != TokType::End && !self.is_eof() {
+        while !self.is_eof() && !matches!(self.peek().ty, TokType::End) {
             if matches!(self.peek().ty, TokType::Else) {
-              
                 self.adv(1)?;
-                ensure!(
-                    matches!(self.peek().ty, TokType::FatArrow),
-                    "Expected '=>' after 'else' in when expression"
-                );
-                self.adv(1)?;
-                let then = self.place_value_block()?;
-                branches.push(WhenForm::Else(then));
-                branches.push(WhenForm::End);
-                break;
 
+                let otherwise = self.place_value_block(BlockType::WhenElse)?; //block!(self, TokType::ArrowRight, TokType::End | TokType::Comma)?;
+
+                branches.push(WhenForm::Else(otherwise));
+                println!("Matched Else: {:?}", self.peek().ty);
+                break;
             } else {
-                let when_cond = self.expression()?;
-                ensure!(
-                    matches!(self.peek().ty, TokType::FatArrow),
-                        "Parse Error: '=>' required in when expressions in between branch left hand conditions and right hand blocks/exprs. Ex: cond_expr => block end",
-                    
-                );
-                self.adv(1)?;
-                let then = self.place_value_block()?;
-                if !then.is_block() {
-                    // require trailing comma if then branch is anything but a block.
-                    ensure!(self.peek().ty == TokType::Comma,"require trailing comma if then branch is anything but a block.");
-                     self.adv(1)?;
-                }
-                branches.push(WhenForm::Branch(when_cond, then));
+                let cond = self.expression()?;
+                let then = self.place_value_block(BlockType::WhenBranch)?;
+                branches.push(WhenForm::Branch(cond, then));
             }
+            // self.adv(1)?;
+            // branches.push(WhenForm::Branch(cond,, then.into_expr()));
         }
-        self.adv(1)?;
-        let w = Expr::when_form(branches);
-        Ok(w)
+        println!("End of when");
+        branches.push(WhenForm::End);
+        let when = Expr::when_form(branches);
+        Ok(when)
+        // while self.peek().ty != TokType::End && !self.is_eof() {
+        //     if matches!(self.peek().ty, TokType::Else) {
+        //
+        //         self.adv(1)?;
+        //         ensure!(
+        //             matches!(self.peek().ty, TokType::FatArrow),
+        //             "Expected '=>' after 'else' in when expression"); self.adv(1)?; let then = self.place_value_block()?;
+        //         // // self.adv(1)?;
+        //         // // if !then.is_block() {
+        //         //
+        //         //     // ensure!(self.peek().ty == TokType::Comma,"require trailing comma if then branch is anything but a block.");
+        //         //      // self.adv(1)?;
+        //         // // }
+        //         branches.push(WhenForm::Else(then));
+        //         branches.push(WhenForm::End);
+        //
+        //     } else {
+        //         let when_cond = self.expression()?;
+        //         ensure!(
+        //             matches!(self.peek().ty, TokType::FatArrow),
+        //                 "Parse Error: '=>' required in when expressions in between branch left hand conditions and right hand blocks/exprs. Ex: cond_expr => block end",
+        //
+        //         );
+        //         self.adv(1)?;
+        //         let then = self.place_value_block()?;
+        //
+        //         if !then.is_block() {
+        //             // require trailing comma if then branch is anything but a block.
+        //             ensure!(self.peek().ty == TokType::Comma,"require trailing comma if then branch is anything but a block.");
+        //              self.adv(1)?;
+        //         }
+        //         branches.push(WhenForm::Branch(when_cond, then));
+        //     }
+        // }
+
+        // let w = Expr::when_form(branches);
+        // Ok(w)
     }
 
     /// Block expression that can be either:
@@ -398,11 +437,42 @@ impl Parser {
     ///         50
     ///     end
     ///
+    ///  DOES NOT CALL self.adv(1)?;
+    ///
     /// TODO: Implement tracking if expression is place or value.
     ///
-    fn place_value_block(&mut self) -> anyhow::Result<Expr> {
-        if let Some(bl) = try_block!(self, TokType::Begin | TokType::Do, TokType::End) {
-            Ok(bl.into_expr())
+    fn place_value_block(&mut self, ty: BlockType) -> anyhow::Result<Expr> {
+        let bl = match ty {
+            BlockType::WhenBranch => {
+                try_block!(self, TokType::ArrowRight, TokType::Comma)
+            }
+            BlockType::WhenElse => {
+                let otherwise =
+                    try_block!(self, TokType::ArrowRight, TokType::End | TokType::Comma);
+                if matches!(self.peek().ty, TokType::Comma) {
+                    //ignore trailing comma
+                    self.adv(1)?;
+                }
+
+                ensure!(
+                    matches!(self.peek().ty, TokType::End),
+                    "Mismatched end token for when expression."
+                );
+
+                otherwise
+            }
+            BlockType::Do | BlockType::Begin => {
+                try_block!(self, TokType::Begin | TokType::Do, TokType::End)
+            }
+        };
+
+        if let Some(bl) = bl {
+            self.adv(1)?;
+            if let Some(se) = bl.try_unwrap_single() {
+                Ok(se)
+            } else {
+                Ok(bl.into_expr_list())
+            }
         } else {
             self.expression()
         }
@@ -411,7 +481,7 @@ impl Parser {
     fn value_block(&mut self) -> anyhow::Result<Expr> {
         if let TokType::Do | TokType::Begin = self.peek().ty {
             let block = block!(self, TokType::Begin | TokType::Do, TokType::End);
-            block.map(|b| b.into_expr())
+            block.map(|b| b.into_expr_list())
         } else {
             self.expression()
         }
@@ -430,11 +500,7 @@ impl Parser {
     }
 
     fn is_terminal(&self) -> bool {
-        if let TokType::Semicolon | TokType::NewLine = self.peek().ty {
-            true
-        } else {
-            false
-        }
+        matches!(self.peek().ty, TokType::Semicolon | TokType::NewLine)
     }
 
     fn eat_terminals(&mut self) -> anyhow::Result<()> {
@@ -450,8 +516,8 @@ impl Parser {
             match self.peek().ty {
                 TokType::Or | TokType::And => {
                     self.adv(1)?;
-                    let operator = self.prev().clone().into_ident();
-                    let right = self.comparison()?;
+                    let operator = self.peek_prev().clone().into_ident();
+                    let right = self.logical_bitwise()?;
 
                     expr = Expr::binary_op(expr, operator, right);
                 }
@@ -470,7 +536,6 @@ impl Parser {
         let expr = self.logical_bitwise()?;
 
         if let TokType::Eq = self.peek().ty {
-           
             self.adv(1)?;
             let value = self.assignment()?;
             if let Some(sym) = expr.inner_ident() {
@@ -489,7 +554,7 @@ impl Parser {
             match self.peek().ty {
                 TokType::Minus | TokType::Plus => {
                     self.adv(1)?;
-                    let operator = self.prev().clone().into_ident();
+                    let operator = self.peek_prev().clone().into_ident();
                     let right = self.factor()?;
 
                     expr = Expr::binary_op(expr, operator, right);
@@ -511,7 +576,7 @@ impl Parser {
                 | TokType::EqEq
                 | TokType::BangEq => {
                     self.adv(1)?;
-                    let operator = self.prev().clone().into_ident();
+                    let operator = self.peek_prev().clone().into_ident();
                     let right = self.term()?;
                     expr = Expr::binary_op(expr, operator, right);
                 }
@@ -528,7 +593,7 @@ impl Parser {
             match self.peek().ty {
                 TokType::ForwardSlash | TokType::Star => {
                     self.adv(1)?;
-                    let operator = self.prev().clone().into_ident();
+                    let operator = self.peek_prev().clone().into_ident();
                     let right = self.unary()?;
                     expr = Expr::binary_op(expr, operator, right);
                 }
@@ -543,7 +608,7 @@ impl Parser {
         match self.peek().ty {
             TokType::Bang | TokType::Minus => {
                 self.adv(1)?;
-                let operator = self.prev().clone().into_ident();
+                let operator = self.peek_prev().clone().into_ident();
                 let right = self.unary()?;
                 let expr = Expr::unary_op(operator, right);
                 Ok(expr)
@@ -579,7 +644,7 @@ impl Parser {
             }
             LexTok::OpenParen => {
                 self.adv(1)?;
-                let expr = self.expression()?;
+                let expr = self.expression_stmt()?;
                 if self.peek().ty == TokType::CloseParen {
                     self.adv(1)?;
                     Ok(expr)
@@ -611,7 +676,7 @@ impl Parser {
             match self.peek().ty {
                 TokType::BangEq | TokType::EqEq => {
                     self.adv(1)?;
-                    let operator = self.prev().clone().into_ident();
+                    let operator = self.peek_prev().clone().into_ident();
                     let right = self.comparison()?;
                     expr = Expr::binary_op(expr, operator, right);
                 }
@@ -637,13 +702,22 @@ impl Parser {
         }
     }
 
+    fn peek_next(&self) -> Option<&Tok> {
+        let i = self.i + 1;
+        if i >= self.tokens.len() {
+            None
+        } else {
+            Some(&self.tokens[i])
+        }
+    }
+
     #[inline]
     fn peek(&self) -> &Tok {
         &self.tokens[self.i]
     }
 
     #[inline]
-    fn prev(&self) -> &Tok {
+    fn peek_prev(&self) -> &Tok {
         &self.tokens[self.i - 1]
     }
 }
