@@ -261,6 +261,15 @@ where
     }
 }
 
+impl<const S: usize, T> Default for Stack<S, T>
+where
+    T: Clone + Default + std::fmt::Display + std::fmt::Debug,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const S: usize, T> Index<usize> for Stack<S, T>
 where
     T: Clone,

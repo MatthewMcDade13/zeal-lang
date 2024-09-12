@@ -46,8 +46,10 @@ impl ZString {
     }
 }
 
-pub const MAX_RUNE_LEN: usize = 64;
+pub const MAX_RUNE_LEN: usize = 24;
 pub const RUNE_BUF_EMPTY: [u8; MAX_RUNE_LEN] = [0u8; MAX_RUNE_LEN];
+
+pub enum _RuneName {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuneName([u8; MAX_RUNE_LEN]);

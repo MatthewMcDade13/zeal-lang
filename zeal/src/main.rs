@@ -4,7 +4,7 @@ use zeal::{
     vm::VM,
 };
 
-const PATH: &'static str = "./src/scripts/loops.zl";
+const PATH: &'static str = "./src/scripts/calculator.zl";
 fn main() -> anyhow::Result<()> {
     const SOURCE: &'static str = "4 * 3 + 10 / 5 - 6\n\n"; //\nlet x = 5 + 5 + (5 * 3)\n\n";
                                                            //

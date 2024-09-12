@@ -354,7 +354,6 @@ impl Archon {
                 ZValue::Ident(ident) => {
                     ch.push_binding(ident.clone(), VarOp::Get)?;
                 }
-                ZValue::Unit => todo!(),
             },
 
             Expr::Nil => {

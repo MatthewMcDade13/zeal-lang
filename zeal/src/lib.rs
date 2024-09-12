@@ -1,3 +1,5 @@
+#![feature(const_nonnull_new)]
+
 pub mod ast;
 pub mod compiler;
 pub mod core_types;

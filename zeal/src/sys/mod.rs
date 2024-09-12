@@ -1,3 +1,6 @@
+pub mod mem;
+pub mod string;
+
 pub fn append_byte_slice(dst: &mut Vec<u8>, src: &[u8]) {
     let i = dst.len() - 1;
     let end = i + src.len();

@@ -8,7 +8,10 @@ use super::{
     str::{ZIdent, ZRune, ZString},
     vec::ZVec,
 };
-
+// NOTE: Use A Dynamic Slab Allocator for the VM Stack
+// so we can put primiatiives (eh: numbers, small strings, bytes, ect) as well as
+// Immutable User defined structs on the VM Stack. Also implement a dynamic byte vec(iah) for user
+// defined structs, so member access can be a quick and dead simple index/pointer offset (+ transmute)
 #[repr(transparent)]
 #[derive(Debug, Clone)]
 pub struct ZMutRef(Rc<RefCell<ZValue>>);
@@ -23,6 +26,7 @@ pub enum ZValue {
     // Buffer(ZBuffer),
     Str(ZString),
     Vec(ZVec),
+
     // Obj(ZHashTable),
     // MutRef(ZMutRef),
     Rune(ZRune),
@@ -30,7 +34,7 @@ pub enum ZValue {
     // List(Rc<[Self]>),
 
     // No-op / whitespace placeholder (for parsing)
-    Unit,
+    // Unit,
 }
 
 impl Hash for ZValue {
@@ -78,11 +82,7 @@ impl PartialEq for ZValue {
                 } else {
                     false
                 }
-            }
-            ZValue::Unit => {
-                matches!(other, Self::Unit)
-            } // ZValue::List(li) => {
-              //     if let Self::List(other_li) = other {
+            } //     if let Self::List(other_li) = other {
               //         li == other_li
               //     } else {
               //         false
@@ -172,7 +172,6 @@ impl ZValue {
             // ZValue::MutRef(_) => "Ref",
             ZValue::Rune(_) => "Rune",
             ZValue::Ident(_) => "Symbol",
-            ZValue::Unit => "()",
             // ZValue::List(_) => "AstList",
         }
     }
@@ -195,7 +194,6 @@ impl ZValue {
             // ZValue::MutRef(_) => false,
             ZValue::Rune(r) => false,
             ZValue::Ident(sym) => false,
-            ZValue::Unit => true,
             // ZValue::List(li) => li.len() == 0,
         }
     }
@@ -281,7 +279,6 @@ impl Display for ZValue {
             // ZValue::MutRef(_) => todo!(),
             ZValue::Rune(ri) => ri.to_string(),
             ZValue::Ident(s) => format!("#{}", s.to_string()),
-            ZValue::Unit => "unit()".into(),
             // ZValue::List(_) => todo!(),
         };
         write!(f, "{}", s)

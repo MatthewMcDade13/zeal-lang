@@ -15,7 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0.82"
-bytemuck = { version = "1.16.0", features = ["min_const_generics", "derive", "bytemuck_derive", "const_zeroed"] }
+bytemuck = { version = "1.16.0", features = ["min_const_generics", "derive", "bytemuck_derive", "const_zeroed", "align_offset", "must_cast", "unsound_ptr_pod_impl", "zeroable_atomics", "zeroable_maybe_uninit"] }
 clap = "4.5.4"
 log = "0.4.22"
 logos = "0.14.0"
