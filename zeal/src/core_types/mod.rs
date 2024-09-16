@@ -1,9 +1,12 @@
 pub mod bytes;
+pub mod func;
 pub mod htable;
 pub mod num;
 pub mod str;
 pub mod val;
 pub mod vec;
+
+use std::mem::MaybeUninit;
 
 use phf::phf_map;
 use str::ZIdent;
@@ -64,7 +67,7 @@ pub mod idents {
         Call,
     }
 
-    pub const IDENTS: phf::Set<&'static str> = phf_set! {
+    pub const IDENTS: phf::Set<&str> = phf_set! {
         "=",
         "==",
         "<",
@@ -111,60 +114,60 @@ pub mod idents {
     };
 
     // TODO: Change these into a const fn that matches on CoreIdent enum.
-    pub const LE: &'static str = "<=";
-    pub const LT: &'static str = "<";
-    pub const GE: &'static str = ">=";
-    pub const GT: &'static str = ">";
-    pub const NOT: &'static str = "!";
-    pub const NOT_EQUAL: &'static str = "!=";
+    pub const LE: &str = "<=";
+    pub const LT: &str = "<";
+    pub const GE: &str = ">=";
+    pub const GT: &str = ">";
+    pub const NOT: &str = "!";
+    pub const NOT_EQUAL: &str = "!=";
 
-    pub const AST_SETVAR: &'static str = "setvar";
-    pub const VAR: &'static str = "var";
+    pub const AST_SETVAR: &str = "setvar";
+    pub const VAR: &str = "var";
 
-    pub const EQUAL: &'static str = "==";
-    pub const ASSIGN: &'static str = "=";
-    pub const ADD: &'static str = "+";
-    pub const SUB: &'static str = "-";
-    pub const DIV: &'static str = "/";
-    pub const MUL: &'static str = "*";
-    pub const CONCAT: &'static str = "++";
+    pub const EQUAL: &str = "==";
+    pub const ASSIGN: &str = "=";
+    pub const ADD: &str = "+";
+    pub const SUB: &str = "-";
+    pub const DIV: &str = "/";
+    pub const MUL: &str = "*";
+    pub const CONCAT: &str = "++";
 
-    pub const STRUCT: &'static str = "struct";
-    pub const TRAIT: &'static str = "trait";
-    pub const IMPL: &'static str = "impl";
-    pub const IF: &'static str = "if";
-    pub const THEN: &'static str = "then";
-    pub const ELSEIF: &'static str = "elseif";
-    pub const BEGIN: &'static str = "begin";
-    pub const ELSE: &'static str = "else";
-    pub const TRUE: &'static str = "true";
-    pub const FALSE: &'static str = "false";
+    pub const STRUCT: &str = "struct";
+    pub const TRAIT: &str = "trait";
+    pub const IMPL: &str = "impl";
+    pub const IF: &str = "if";
+    pub const THEN: &str = "then";
+    pub const ELSEIF: &str = "elseif";
+    pub const BEGIN: &str = "begin";
+    pub const ELSE: &str = "else";
+    pub const TRUE: &str = "true";
+    pub const FALSE: &str = "false";
 
-    pub const FN: &'static str = "fn";
-    pub const NIL: &'static str = "nil";
-    pub const AND: &'static str = "and";
-    pub const OR: &'static str = "or";
-    pub const RETURN: &'static str = "return";
+    pub const FN: &str = "fn";
+    pub const NIL: &str = "nil";
+    pub const AND: &str = "and";
+    pub const OR: &str = "or";
+    pub const RETURN: &str = "return";
 
-    pub const SUPER: &'static str = "super";
-    pub const SELF: &'static str = "self";
-    pub const LET: &'static str = "let";
-    pub const CONST: &'static str = "const";
-    pub const LOOP: &'static str = "loop";
-    pub const FOR: &'static str = "for";
-    pub const WHILE: &'static str = "while";
+    pub const SUPER: &str = "super";
+    pub const SELF: &str = "self";
+    pub const LET: &str = "let";
+    pub const CONST: &str = "const";
+    pub const LOOP: &str = "loop";
+    pub const FOR: &str = "for";
+    pub const WHILE: &str = "while";
 
-    pub const BREAK: &'static str = "break";
-    pub const MATCH: &'static str = "match";
-    pub const CONTINUE: &'static str = "continue";
-    pub const PRINTLN: &'static str = "println";
-    pub const PRINT: &'static str = "print";
-    pub const DO: &'static str = "do";
-    pub const END: &'static str = "end";
-    pub const USE: &'static str = "use";
+    pub const BREAK: &str = "break";
+    pub const MATCH: &str = "match";
+    pub const CONTINUE: &str = "continue";
+    pub const PRINTLN: &str = "println";
+    pub const PRINT: &str = "print";
+    pub const DO: &str = "do";
+    pub const END: &str = "end";
+    pub const USE: &str = "use";
 
     /// allows 'lisp style' function application. ex: call add 1 2
-    pub const CALL: &'static str = "call";
+    pub const CALL: &str = "call";
 }
 
 #[derive(Debug, Clone)]

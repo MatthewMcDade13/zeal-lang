@@ -5,7 +5,6 @@ pub mod compiler;
 pub mod core_types;
 pub mod err;
 pub mod interp;
-pub mod mem;
 pub mod sys;
 mod test;
 pub mod vm;

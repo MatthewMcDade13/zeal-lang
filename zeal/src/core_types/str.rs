@@ -1,11 +1,11 @@
 use std::{
     fmt::Display,
-    hash::Hash,
+    hash::{DefaultHasher, Hash, Hasher},
     ops::{Deref, Index},
     rc::Rc,
 };
 
-use anyhow::bail;
+use anyhow::{bail, ensure};
 
 use crate::{
     ast::{BinaryOpType, UnaryOpType, VarType},
@@ -38,9 +38,15 @@ impl From<&str> for ZString {
 }
 impl ZString {
     #[inline]
+    pub fn empty() -> Self {
+        Self(Rc::from(""))
+    }
+
+    #[inline]
     pub fn new(string: &str) -> Self {
         Self(Rc::from(string))
     }
+
     pub fn as_str(&self) -> &str {
         self.0.as_ref()
     }
@@ -49,34 +55,54 @@ impl ZString {
 pub const MAX_RUNE_LEN: usize = 24;
 pub const RUNE_BUF_EMPTY: [u8; MAX_RUNE_LEN] = [0u8; MAX_RUNE_LEN];
 
-pub enum _RuneName {}
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RuneName {
+    uid: u64,
+    buf: [u8; MAX_RUNE_LEN],
+}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuneName([u8; MAX_RUNE_LEN]);
 impl RuneName {
     pub const fn empty() -> Self {
-        Self(RUNE_BUF_EMPTY)
+        Self {
+            uid: 0,
+            buf: RUNE_BUF_EMPTY,
+        }
     }
 
     pub fn new(name: &str) -> anyhow::Result<Self> {
-        if name.len() <= MAX_RUNE_LEN {
-            let buf = Self::new_unchecked(name);
-            Ok(buf)
-        } else {
-            bail!("Rune length is too long! Max characters is {MAX_RUNE_LEN}")
-        }
+        ensure!(
+            name.len() <= MAX_RUNE_LEN,
+            "Rune length is too long! Max characters is {MAX_RUNE_LEN}"
+        );
+
+        let buf = Self::new_unchecked(name);
+        Ok(buf)
     }
 
     pub fn new_unchecked(name: &str) -> Self {
         let mut buf = [0u8; MAX_RUNE_LEN];
         let name_bytes = name.as_bytes();
         sys::copy_slice_into(&mut buf, name_bytes);
-        Self(buf)
+
+        let uid = hash_name(name);
+        Self { uid, buf }
+    }
+
+    pub const fn hash_eq(&self, other: &Self) -> bool {
+        self.uid == other.uid
     }
 
     pub fn str(&self) -> &str {
-        std::str::from_utf8(self.0.as_ref()).expect("Error Reading byte slice as utf8 &str")
+        std::str::from_utf8(self.buf.as_ref()).expect("Error Reading byte slice as utf8 &str")
     }
+}
+
+#[inline]
+pub fn hash_name(name: &str) -> u64 {
+    let mut dh = DefaultHasher::new();
+    name.hash(&mut dh);
+    dh.finish()
 }
 
 impl Default for RuneName {
@@ -94,7 +120,7 @@ pub struct RuneTable {
 impl RuneTable {
     pub fn empty() -> Self {
         Self {
-            runes: Vec::with_capacity(16),
+            runes: Vec::with_capacity(8),
             next: 0,
         }
     }
@@ -142,9 +168,13 @@ impl RuneTable {
     }
 
     /// Looks for rune by given name
+    /// compares hash of name to hash on each runename, until a match is found
+    /// TODO: See if comparing hashes is actually faster or
+    /// is linear search the peaque game
     fn lookup_name(&self, name: &str) -> Option<(&RuneName, usize)> {
+        let uid = hash_name(name);
         for (i, rn) in self.runes.iter().enumerate() {
-            if name == rn.str() {
+            if uid == rn.uid {
                 return Some((rn, i));
             }
         }
@@ -187,8 +217,13 @@ impl PartialEq<str> for ZIdent {
 }
 
 impl ZIdent {
+    #[inline]
+    pub fn empty() -> Self {
+        Self(ZString::empty())
+    }
+
     pub fn var_type(&self) -> Option<VarType> {
-        match self.name() {
+        match self.string() {
             idents::LET => Some(VarType::Let),
             idents::VAR => Some(VarType::Var),
             idents::CONST => Some(VarType::Const),
@@ -197,7 +232,7 @@ impl ZIdent {
     }
 
     pub fn binary_operator_type(&self) -> Option<BinaryOpType> {
-        match self.name() {
+        match self.string() {
             idents::ADD => Some(BinaryOpType::Add),
             idents::SUB => Some(BinaryOpType::Sub),
             idents::DIV => Some(BinaryOpType::Div),
@@ -216,7 +251,7 @@ impl ZIdent {
     }
 
     pub fn binary_operator(&self) -> Option<Op> {
-        match self.name() {
+        match self.string() {
             idents::ADD => Some(Op::Add),
             idents::SUB => Some(Op::Sub),
             idents::DIV => Some(Op::Div),
@@ -233,7 +268,7 @@ impl ZIdent {
     }
 
     pub fn unary_operator_type(&self) -> Option<UnaryOpType> {
-        match self.name() {
+        match self.string() {
             idents::SUB => Some(UnaryOpType::Negate),
             idents::NOT => Some(UnaryOpType::Not),
             _ => None,
@@ -241,7 +276,7 @@ impl ZIdent {
     }
 
     pub fn unary_operator(&self) -> Option<Op> {
-        match self.name() {
+        match self.string() {
             idents::SUB | idents::NOT => Some(Op::Neg),
             _ => None,
         }
@@ -263,7 +298,7 @@ impl ZIdent {
 
     // pub fn is_ident(ident: )
     #[inline]
-    pub fn name(&self) -> &str {
+    pub fn string(&self) -> &str {
         self.0.as_ref()
     }
 

@@ -64,8 +64,60 @@ impl WhenForm {
     }
 }
 
+
+
+// #[derive(Default, Debug, Clone, Copy)]
+// pub enum Namespace {
+//     #[default]
+//     Script, 
+//     Module, 
+//     Function, 
+//     Impl 
+// }
+//
+// #[derive(Debug, Clone)]
+// pub struct FuncForm {
+//     pub name: ZIdent,
+//     pub args: Option<AstList<ZIdent>>, 
+//     pub body: ExprList,
+//     pub namespace: Namespace,
+// }
+
+#[derive(Debug, Clone)]
+pub enum FuncForm {
+    Module { body: ExprList },
+    Function { name: ZIdent, args: Option<AstList<ZIdent>>, body: ExprList, },
+}
+
+impl FuncForm {
+    #[inline]
+    pub fn arity(&self) -> usize {
+        if let Self::Function { args: Some(args), .. }  = self {
+            args.len()
+        } else {
+            0
+        }
+    } 
+
+    pub const fn namespace(&self) -> Namespace {
+        match self {
+            Self::Module { .. } => Namespace::Module,
+            Self::Function { .. } => Namespace::Function,
+        }
+    }
+
+    pub const fn body(&self) -> &ExprList {
+        match self {
+            FuncForm::Module { body } => body, 
+            FuncForm::Function { body, .. } => body, 
+        }
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub enum FormExpr {
+    Func(FuncForm),
     /// (if cond_expr [...if_body] [...else_body])
     When {
         conds: AstList<WhenForm>,
@@ -91,12 +143,6 @@ pub enum FormExpr {
     /// (impl trait=self for_type [...impl_body])
     Impl {},
     /// (fn name [...body last])
-    Func {
-        name: ZIdent,
-        arity: u32,
-        body: ExprList,
-        last: Rc<Expr>,
-    },
     Print(Rc<Expr>),
     Println(Rc<Expr>),
     BinaryOperator {
@@ -120,7 +166,8 @@ pub enum FormExpr {
     ///              |   |
     ///           head params
     Call {
-        head: ZValue,
+        lhs: Rc<Expr>,
+        // head: ZValue,
         params: AstList<Expr>,
     },
 }
@@ -182,6 +229,11 @@ impl ExprList {
         }
     }
 
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn tuple_from_slice(exprs: &[Expr]) -> Self {
         let mut tup = Vec::with_capacity(exprs.len());
         for ex in exprs.iter() {
@@ -228,7 +280,21 @@ pub enum Expr {
     Nil,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Namespace {
+    Module,
+    Function
+}
+
 impl Expr {
+
+    pub fn func_form(name: ZIdent, args: Option<AstList<ZIdent>>, body: ExprList) -> Self {
+        // NOTE: This is never a module type as during parse-time there is no concept 
+        // of modules, scope or 'top-level' constructs.
+        let ff = FuncForm::Function { name, args, body }; 
+        Self::Form(FormExpr::Func(ff))
+
+    }
 
     pub const fn is_block(&self) -> bool {
         matches!(self, Self::List(ExprList::Block(_)))
@@ -268,10 +334,7 @@ impl Expr {
     }
 
     pub const fn is_if_form(&self) -> bool {
-        match self {
-            Expr::Form(FormExpr::When { .. }) => true,
-            _ => false,
-        }
+        matches!(self, Expr::Form(FormExpr::When { .. }))
     }
 
     #[inline]
@@ -410,7 +473,7 @@ impl Expr {
 
     pub fn as_ident_varop(&self) -> Option<ZIdent> {
         let ident = self.inner_ident()?;
-        match ident.name() {
+        match ident.string() {
             idents::LET | idents::VAR | idents::ASSIGN => Some(ident.clone()),
             _ => None,
         }
@@ -425,16 +488,16 @@ impl Expr {
         }
     }
 
-    #[inline]
-    pub fn var_definition(name: ZIdent, init: Option<Expr>) -> Self {
-        Self::binding(VarType::Var, name, init)
-    }
-
-    #[inline]
-    pub fn let_definition(name: ZIdent, init: Option<Expr>) -> Self {
-        Self::binding(VarType::Let, name, init)
-    }
-
+    // #[inline]
+    // pub fn var_definition(name: ZIdent, init: Option<Expr>) -> Self {
+    //     Self::binding(VarType::Var, name, init)
+    // }
+    //
+    // #[inline]
+    // pub fn let_definition(name: ZIdent, init: Option<Expr>) -> Self {
+    //     Self::binding(VarType::Let, name, init)
+    // }
+    //
     pub fn binary_op(left: Expr, op: ZIdent, right: Expr) -> Self {
         let op = op
             .binary_operator_type()
@@ -665,12 +728,7 @@ mod fmt {
                 }                FormExpr::Match {} => todo!(),
                 FormExpr::Struct {} => todo!(),
                 FormExpr::Impl {} => todo!(),
-                FormExpr::Func {
-                    name,
-                    arity,
-                    body,
-                    last,
-                } => todo!(),
+                FormExpr::Func(ff) => todo!(),
                 FormExpr::Print(ex) => format!("(print {})", expr(ex, state)),
                 FormExpr::Println(ex) => {
                     format!("(println {})", expr(ex, state))
@@ -683,8 +741,9 @@ mod fmt {
                 FormExpr::Assign { binding, rhs } => {
                     format!("(#= {binding} {})", expr(rhs, state))
                 }
-                FormExpr::Call { head, params } => {
-                    let mut s = state.fmtln(&format!("({} ", head.expect_ident().name()));
+                FormExpr::Call { lhs, params } => {
+                    let head = expr(lhs.as_ref(), state);
+                    let mut s = state.fmtln(&format!("({head} "));
 
                     for i in params.iter() {
                         let p = format!("{} ", expr(i, state));

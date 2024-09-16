@@ -64,6 +64,14 @@ impl Default for Chunk {
 
 impl Chunk {
     pub const DEFAULT_CAPACITY: usize = 255;
+    pub const fn zeroed() -> Self {
+        Self {
+            buf: Bytecode::zeroed(),
+            constants: Vec::new(),
+            scope: Scope::new(),
+        }
+    }
+
     pub fn with_capacity(buf_cap: usize, const_cap: usize) -> Self {
         Self {
             buf: Bytecode::from(Vec::with_capacity(buf_cap)),
@@ -396,6 +404,7 @@ impl Chunk {
                 let offset = opcode.try_param().unwrap().to_u32() as usize;
                 &format!("LONG_JUMP_TRUE => {}", offset)
             }
+            Op::NoOp => "<<<NO_OP>>>",
         };
 
         String::from(s)

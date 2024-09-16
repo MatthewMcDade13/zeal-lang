@@ -64,11 +64,12 @@ impl DerefMut for SymbolTable {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VarType {
     Let,
     Var,
     Const,
+    Fn,
 }
 
 impl Display for VarType {
@@ -77,6 +78,7 @@ impl Display for VarType {
             VarType::Let => idents::LET,
             VarType::Var => idents::VAR,
             VarType::Const => idents::CONST,
+            VarType::Fn => idents::FN,
         };
         write!(f, "{s}")
     }
@@ -89,6 +91,7 @@ impl VarType {
 
             VarType::Var => ZIdent::new(idents::VAR),
             VarType::Const => ZIdent::new(idents::CONST),
+            VarType::Fn => ZIdent::new(idents::FN),
         }
     }
 }

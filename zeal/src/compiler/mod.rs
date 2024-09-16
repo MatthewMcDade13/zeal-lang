@@ -1,16 +1,21 @@
+use std::rc::Rc;
+
 use anyhow::bail;
 use chunk::Chunk;
+use func::FuncChunk;
 use opcode::{Op, OpParam, Opcode, VarOp};
+use state::CompState;
 
 use crate::{
     ast::{
-        expr::{Expr, ExprList, FormExpr, LoopExpr, WhenForm},
+        expr::{Expr, ExprList, FormExpr, FuncForm, LoopExpr, Namespace, WhenForm},
         Ast, BinaryOpType, VarType,
     },
     core_types::{idents, num::ZBool, val::ZValue},
 };
 
 pub mod chunk;
+pub mod func;
 pub mod opcode;
 pub mod state;
 
@@ -18,18 +23,43 @@ pub mod state;
 pub struct Archon;
 
 impl Archon {
-    pub fn compile(ast: &Ast) -> anyhow::Result<Chunk> {
+    pub fn compile(ast: &Ast) -> anyhow::Result<FuncChunk> {
         println!("{ast}");
-        let mut ch = Chunk::default();
-        Self::compile_with(ast, &mut ch)?;
+        let ch = Self::compile_to_chunk(ast)?;
 
-        println!("{ch}");
-        Ok(ch)
+        let f = FuncChunk::Script { chunk: ch };
+        Ok(f)
     }
 
-    pub fn compile_with(ast: &Ast, ch: &mut Chunk) -> anyhow::Result<()> {
-        Self::compile_expr(ch, &ast.tree)?;
-        Ok(())
+    pub fn compile_func(form: &FuncForm) -> anyhow::Result<FuncChunk> {
+        let mut current = {
+            match form {
+                FuncForm::Module { .. } => FuncChunk::script(Chunk::zeroed()),
+                FuncForm::Function { name, args, .. } => {
+                    let mut ch = Chunk::zeroed();
+                    if let Some(args) = args.as_ref() {
+                        for arg in args.iter() {
+                            ch.declare_local(arg.clone());
+                        }
+
+                        FuncChunk::function(name.clone(), args.len() as u8, ch)
+                    } else {
+                        FuncChunk::function(name.clone(), 0, ch)
+                    }
+                }
+            }
+        };
+
+        let mut chunk = current.chunk_mut();
+        chunk.scope.start_scope();
+        Self::compile_expr_list(&mut chunk, form.body());
+        Ok(current)
+    }
+
+    pub fn compile_to_chunk(ast: &Ast) -> anyhow::Result<Chunk> {
+        let mut ch = Chunk::default();
+        Self::compile_expr(&mut ch, &ast.tree)?;
+        Ok(ch)
     }
 
     fn compile_logical_op(
@@ -53,7 +83,7 @@ impl Archon {
         Ok(())
     }
 
-    fn compile_expr_list(ch: &mut Chunk, el: &ExprList) -> anyhow::Result<()> {
+    pub(crate) fn compile_expr_list(ch: &mut Chunk, el: &ExprList) -> anyhow::Result<()> {
         match el {
             ExprList::Block(bl) => {
                 ch.scope.start_scope();
@@ -76,7 +106,7 @@ impl Archon {
         Ok(())
     }
 
-    fn compile_expr(ch: &mut Chunk, expr: &Expr) -> anyhow::Result<()> {
+    pub(crate) fn compile_expr(ch: &mut Chunk, expr: &Expr) -> anyhow::Result<()> {
         match expr {
             Expr::Form(form) => {
                 match form {
@@ -204,12 +234,10 @@ impl Archon {
                     FormExpr::Match {} => todo!(),
                     FormExpr::Struct {} => todo!(),
                     FormExpr::Impl {} => todo!(),
-                    FormExpr::Func {
-                        name,
-                        arity,
-                        body,
-                        last,
-                    } => todo!(),
+                    FormExpr::Func(ff) => {
+                        let child = Self::compile_func(ff)?;
+                        ch.push_constant(ZValue::Func(Rc::new(child)));
+                    }
                     FormExpr::Print(pex) => {
                         Self::compile_expr(ch, pex)?;
                         ch.push_opcode(Opcode::new(Op::Print));
@@ -271,7 +299,7 @@ impl Archon {
                         //     bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
                         // }
                     }
-                    FormExpr::Call { head, params } => {
+                    FormExpr::Call { lhs, params } => {
                         todo!()
                         // let head = head.expect_ident();
                         //
@@ -354,6 +382,7 @@ impl Archon {
                 ZValue::Ident(ident) => {
                     ch.push_binding(ident.clone(), VarOp::Get)?;
                 }
+                ZValue::Func(_) => todo!(),
             },
 
             Expr::Nil => {

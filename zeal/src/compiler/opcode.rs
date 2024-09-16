@@ -98,6 +98,7 @@ pub enum Op {
     /// u32 param
     LongJump,
 
+    NoOp,
     Unknown,
 }
 
@@ -158,11 +159,7 @@ impl Display for Op {
 
 impl Op {
     pub const fn is_valid(&self) -> bool {
-        if let Op::Unknown = self {
-            false
-        } else {
-            true
-        }
+        !matches!(self, Op::Unknown)
     }
 
     pub const fn set_local(size: OpParamSize) -> Self {
@@ -534,6 +531,9 @@ pub enum Opcode {
 impl Opcode {
 
 
+    pub const fn no_op() -> Self {
+        Self::Byte(Op::NoOp)
+    }
 
     pub const fn try_param(&self) -> Option<&OpParam> {
         match self {
@@ -679,8 +679,8 @@ impl Bytecode {
     pub fn slice_mut(&mut self) -> &mut [u8] {
         &mut self.buf
     }
-    pub fn zeroed(len: usize) -> Self {
-        Self { buf: vec![0; len] }
+    pub const fn zeroed() -> Self {
+        Self { buf: Vec::new() }
     }
 
     pub fn len(&self) -> usize {

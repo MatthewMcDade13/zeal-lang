@@ -1,16 +1,59 @@
 
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::core_types::str::{ZIdent, ZString};
+use crate::core_types::{func::Func, str::{ZIdent, ZString}};
+
+use super::func::FuncChunk;
+
+
+#[derive(Debug, Clone)]
+pub struct CompState {
+    pub target: FuncChunk, 
+    pub parent_scope: Option<Box<Self>>, 
+}
+    
+
+
+impl CompState {
+    pub const fn new_root(target: FuncChunk) -> Self {
+        Self { target, parent_scope: None }
+    }
+
+    pub fn new(target: FuncChunk, parent_scope: Self) -> Self {
+        let parent_scope = Some(Box::new(parent_scope));
+        Self { target, parent_scope }
+    }
+
+    pub const fn is_root(&self) -> bool {
+        self.parent_scope.is_none()
+        // matches!(self, Self::Root { .. })
+    }
+
+    // pub const fn target(&self) -> &FuncChunk { 
+    //     match self { 
+    //         Self::Root { target } => target, 
+    //         Self::Node { target, .. } => target 
+    //     } 
+    // } 
+    //
+    // pub fn target_mut(&mut self) -> &mut FuncChunk { 
+    //     match self { 
+    //         Self::Root { target } => target, 
+    //         Self::Node { target, .. } => target 
+    //     } 
+    // } 
+
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Scope {
     pub locals: Vec<Local>,
-    depth: BindScope,
+    depth: ScopeDepth,
 }
 
 #[derive(Debug, Default, Clone, Copy, Eq)]
-pub enum BindScope {
+pub enum ScopeDepth {
     #[default]
     Global,
     Local {
@@ -19,44 +62,44 @@ pub enum BindScope {
 }
 
 
-impl PartialOrd for BindScope {
+impl PartialOrd for ScopeDepth {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
          match self {
-            BindScope::Global => match other {
-                BindScope::Global => Some(Ordering::Equal), 
-                BindScope::Local { .. } =>  {
+            ScopeDepth::Global => match other {
+                ScopeDepth::Global => Some(Ordering::Equal), 
+                ScopeDepth::Local { .. } =>  {
                     Some(Ordering::Less)
                 }, 
             }, 
-            BindScope::Local { depth: sdepth } => match other {
-                BindScope::Global => Some(Ordering::Greater), 
-                BindScope::Local { depth: other_depth } => sdepth.partial_cmp(other_depth) 
+            ScopeDepth::Local { depth: sdepth } => match other {
+                ScopeDepth::Global => Some(Ordering::Greater), 
+                ScopeDepth::Local { depth: other_depth } => sdepth.partial_cmp(other_depth) 
             } 
-            BindScope::Local {depth: 0 } => match other {
-                BindScope::Global => Some(Ordering::Greater), 
-                BindScope::Local { depth } => 0.partial_cmp(depth), 
+            ScopeDepth::Local {depth: 0 } => match other {
+                ScopeDepth::Global => Some(Ordering::Greater), 
+                ScopeDepth::Local { depth } => 0.partial_cmp(depth), 
             }
         }
 
     }
 }
 
-impl PartialEq for BindScope {
+impl PartialEq for ScopeDepth {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            BindScope::Global => match other {
-                BindScope::Global => true, 
-                BindScope::Local { depth } => false, 
+            ScopeDepth::Global => match other {
+                ScopeDepth::Global => true, 
+                ScopeDepth::Local { depth } => false, 
             }, 
-            BindScope::Local { depth: sdepth } => match other {
-                BindScope::Global => false, 
-                BindScope::Local { depth: other_depth } => sdepth == other_depth 
+            ScopeDepth::Local { depth: sdepth } => match other {
+                ScopeDepth::Global => false, 
+                ScopeDepth::Local { depth: other_depth } => sdepth == other_depth 
             } 
         }
     }
 }
 
-impl Display for BindScope {
+impl Display for ScopeDepth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             Self::Global => "Global_Scope",
@@ -79,33 +122,33 @@ impl Display for Scope {
     }
 }
 
-impl BindScope {
+impl ScopeDepth {
 
     pub const fn unwrap(self) -> usize {
         match self {
-            BindScope::Global => panic!("Attempt to unwrap BindScope failed! Expeceted: BindScope::Local(n), Got: BindScope::Global"), 
-            BindScope::Local { depth } => {depth} 
+            ScopeDepth::Global => panic!("Attempt to unwrap BindScope failed! Expeceted: BindScope::Local(n), Got: BindScope::Global"), 
+            ScopeDepth::Local { depth } => {depth} 
         }
     }
 
     pub const fn is_local(self) -> bool {
         match self {
-            BindScope::Global => false,
-            BindScope::Local { .. } => true,
+            ScopeDepth::Global => false,
+            ScopeDepth::Local { .. } => true,
         }
     }
 
     pub const fn is_global(self) -> bool {
         match self {
-            BindScope::Global => true,
-            BindScope::Local { .. } => false,
+            ScopeDepth::Global => true,
+            ScopeDepth::Local { .. } => false,
         }
     }
 
     pub fn decn(self, n: usize) -> Self {
         match self {
-            BindScope::Global => panic!("Cannot decrement depth for a Global Scope!!!"), 
-            BindScope::Local { depth } => {
+            ScopeDepth::Global => panic!("Cannot decrement depth for a Global Scope!!!"), 
+            ScopeDepth::Local { depth } => {
                 let d = depth as isize;
                 let n = n as isize;
                 let res = d - n;
@@ -123,8 +166,8 @@ impl BindScope {
             self
         } else {
         match self {
-            BindScope::Global => Self::Local { depth: n - 1 }, 
-            BindScope::Local { depth } => {
+            ScopeDepth::Global => Self::Local { depth: n - 1 }, 
+            ScopeDepth::Local { depth } => {
                 Self::Local { depth: depth + n }
             } 
         }
@@ -149,7 +192,7 @@ impl Scope {
     pub const fn new() -> Self {
         Self {
             locals: Vec::new(),
-            depth: BindScope::Global,
+            depth: ScopeDepth::Global,
         }
     }
 
@@ -183,7 +226,7 @@ impl Scope {
         //
         // }
         for (i, l) in self.locals.iter().rev().enumerate() {
-            if l.ident.name() == ident.name() {
+            if l.ident.string() == ident.string() {
                 return Some(i);
             }
         }
@@ -193,14 +236,14 @@ impl Scope {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             locals: Vec::with_capacity(capacity),
-            depth: BindScope::Global,
+            depth: ScopeDepth::Global,
         }
     }
 
     pub fn add_local(&mut self, name: ZIdent) {
-        if let BindScope::Local {depth }= self.depth() {
+        if let ScopeDepth::Local {depth }= self.depth() {
 
-            let local = Local { ident: name, depth: BindScope::Local { depth } };
+            let local = Local { ident: name, depth: ScopeDepth::Local { depth } };
             self.locals.push(local);
         } else {
             panic!("Tried to add local when current scope is Global!!!");
@@ -209,7 +252,7 @@ impl Scope {
 
     }
 
-    pub const fn depth(&self) -> BindScope {
+    pub const fn depth(&self) -> ScopeDepth {
         self.depth
     }
 
@@ -219,19 +262,19 @@ impl Scope {
 
     pub fn end_scope(&mut self) -> usize {
         match self.depth {
-            BindScope::Global => {
+            ScopeDepth::Global => {
                 panic!("mismatched end_scope!!!. (Attempt to decrement depth when depth == 0)");
             }
             _ => { 
                 let new_depth = self.depth.dec_mut();
                 match new_depth {
-                    BindScope::Global => {
+                    ScopeDepth::Global => {
 
                         let n = self.locals.len();
                         self.locals.clear();
                         n
                     }
-                    BindScope::Local { depth } => {
+                    ScopeDepth::Local { depth } => {
                         let mut i = 0;
 
                         while let Some(local) = self.peek_top() {
@@ -254,7 +297,7 @@ impl Scope {
 #[derive(Debug, Clone)]
 pub struct Local {
     pub ident: ZIdent,
-    pub depth: BindScope,
+    pub depth: ScopeDepth,
 }
 
 impl Display for Local {

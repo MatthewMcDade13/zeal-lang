@@ -382,6 +382,9 @@ pub enum LexTok {
     If,
     #[token("else")]
     Else,
+
+    #[token("let fn")]
+    #[token("function")]
     #[token("fn")]
     Fn,
 

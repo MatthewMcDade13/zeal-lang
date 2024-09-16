@@ -1,9 +1,10 @@
 use std::{cell::RefCell, fmt::Display, hash::Hash, ops::Add, rc::Rc};
 
-use crate::compiler::opcode::Op;
+use crate::compiler::{func::FuncChunk, opcode::Op};
 
 use super::{
     bytes::ZByte,
+    func::Func,
     num::{ZBool, ZFloat64},
     str::{ZIdent, ZRune, ZString},
     vec::ZVec,
@@ -16,6 +17,8 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct ZMutRef(Rc<RefCell<ZValue>>);
 
+// TODO: For now i wont use my custom allocators, i want to at least get functions and maybe
+// structs working first. Soooo ill need to come back and trim the value enum down.
 #[derive(Default, Debug, Clone)]
 pub enum ZValue {
     #[default]
@@ -31,10 +34,10 @@ pub enum ZValue {
     // MutRef(ZMutRef),
     Rune(ZRune),
     Ident(ZIdent),
-    // List(Rc<[Self]>),
+    Func(Rc<FuncChunk>), // List(Rc<[Self]>),
 
-    // No-op / whitespace placeholder (for parsing)
-    // Unit,
+                         // No-op / whitespace placeholder (for parsing)
+                         // Unit,
 }
 
 impl Hash for ZValue {
@@ -82,12 +85,13 @@ impl PartialEq for ZValue {
                 } else {
                     false
                 }
-            } //     if let Self::List(other_li) = other {
-              //         li == other_li
-              //     } else {
-              //         false
-              //     }
-              // }
+            }
+            ZValue::Func(_) => todo!(), //     if let Self::List(other_li) = other {
+                                        //         li == other_li
+                                        //     } else {
+                                        //         false
+                                        //     }
+                                        // }
         }
     }
 }
@@ -172,6 +176,7 @@ impl ZValue {
             // ZValue::MutRef(_) => "Ref",
             ZValue::Rune(_) => "Rune",
             ZValue::Ident(_) => "Symbol",
+            ZValue::Func(_) => todo!(),
             // ZValue::List(_) => "AstList",
         }
     }
@@ -194,6 +199,7 @@ impl ZValue {
             // ZValue::MutRef(_) => false,
             ZValue::Rune(r) => false,
             ZValue::Ident(sym) => false,
+            ZValue::Func(_) => todo!(),
             // ZValue::List(li) => li.len() == 0,
         }
     }
@@ -279,6 +285,7 @@ impl Display for ZValue {
             // ZValue::MutRef(_) => todo!(),
             ZValue::Rune(ri) => ri.to_string(),
             ZValue::Ident(s) => format!("#{}", s.to_string()),
+            ZValue::Func(_) => todo!(),
             // ZValue::List(_) => todo!(),
         };
         write!(f, "{}", s)

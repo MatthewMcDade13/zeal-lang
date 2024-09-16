@@ -375,6 +375,8 @@ impl<'a, T> Clone for StackItem<'a, T> {
     }
 }
 
+/// Pointer to a Slot in parent SlabStack.
+/// Not actually a pointer, but an index into a Slab as well as a ref to the slab itself.
 #[derive(Debug, Clone, Copy)]
 pub struct StackPtr<'stack, T: bytemuck::AnyBitPattern + bytemuck::NoUninit, const S: usize> {
     slot: StackSlot<T>,
