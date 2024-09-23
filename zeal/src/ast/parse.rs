@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use anyhow::{anyhow, bail, ensure};
+use anyhow::{anyhow, bail, ensure, Context};
 
 use crate::{
     ast::{
@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-    expr::{FormExpr, LoopExpr, WhenForm},
+    expr::{AstList, FormExpr, LoopExpr, WhenForm},
     VarType,
 };
 
@@ -55,23 +55,40 @@ macro_rules! loop_block {
 /// section until given $end_pat pattern is peeked.
 /// (Does not advance past tok matched by $end_pat)
 macro_rules! try_block {
+    ($self: ident, $end_pat: pat) => {{
+        let mut stmt_exprs = Vec::new();
+        loop {
+            if $self.is_eof() {
+                break Some(ExprList::block(stmt_exprs));
+            }
+
+            if let $end_pat = $self.peek().ty {
+                break Some(ExprList::block(stmt_exprs));
+            }
+
+            let st = $self.expression_stmt()?;
+
+            stmt_exprs.push(st);
+        }
+    }};
     ($self: ident, $try_start_pat: pat, $end_pat: pat) => {{
         if let $try_start_pat = $self.peek().ty {
             $self.adv(1)?;
-            let mut stmt_exprs = Vec::new();
-            loop {
-                if $self.is_eof() {
-                    break Some(ExprList::block(stmt_exprs));
-                }
-
-                if let $end_pat = $self.peek().ty {
-                    break Some(ExprList::block(stmt_exprs));
-                }
-
-                let st = $self.expression_stmt()?;
-
-                stmt_exprs.push(st);
-            }
+            try_block!($self, $end_pat)
+            // let mut stmt_exprs = Vec::new();
+            // loop {
+            //     if $self.is_eof() {
+            //         break Some(ExprList::block(stmt_exprs));
+            //     }
+            //
+            //     if let $end_pat = $self.peek().ty {
+            //         break Some(ExprList::block(stmt_exprs));
+            //     }
+            //
+            //     let st = $self.expression_stmt()?;
+            //
+            //     stmt_exprs.push(st);
+            // }
         } else {
             None
         }
@@ -86,23 +103,26 @@ macro_rules! try_block {
 /// section until given $end_pat pattern is peeked.
 /// (Does not advance past tok matched by $end_pat)
 macro_rules! block {
+    ($self: ident, $end_pat: pat) => {{
+        let mut stmt_exprs: Vec<Expr> = Vec::new();
+        loop {
+            if $self.is_eof() {
+                break Ok(ExprList::block(stmt_exprs));
+            }
+
+            if let $end_pat = $self.peek().ty {
+                break Ok(ExprList::block(stmt_exprs));
+            }
+
+            let st = $self.expression_stmt()?;
+
+            stmt_exprs.push(st);
+        }
+    }};
     ($self: ident, $start_pat: pat, $end_pat: pat) => {{
         if let $start_pat = $self.peek().ty {
             $self.adv(1)?;
-            let mut stmt_exprs = Vec::new();
-            loop {
-                if $self.is_eof() {
-                    break Ok(ExprList::block(stmt_exprs));
-                }
-
-                if let $end_pat = $self.peek().ty {
-                    break Ok(ExprList::block(stmt_exprs));
-                }
-
-                let st = $self.expression_stmt()?;
-
-                stmt_exprs.push(st);
-            }
+            block!($self, $end_pat)
         } else {
             anyhow::Result::Err(anyhow!(
                 "{}",
@@ -143,6 +163,7 @@ impl ParseErrInfo {
         }
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct Parser {
     i: usize,
@@ -263,6 +284,82 @@ impl Parser {
             TokType::Eof => bail!("{}", ParseError::Eof),
             _ => self.place_value_block(BlockType::default()),
         }
+    }
+
+    fn func_decl(&mut self) -> anyhow::Result<Expr> {
+        if matches!(self.peek().ty, TokType::Ident) {
+            let name = self.peek().clone().into_ident();
+            self.adv(1)?;
+            if matches!(self.peek().ty, TokType::OpenParen) {
+                self.adv(1)?;
+                let params = self.parameter_list()?;
+
+                // TODO: Add function return type parsing here
+                let body = try_block!(self, TokType::End)
+                    .context("Error parsing function body. Missing 'end'?")?;
+                ensure!(
+                    matches!(self.peek().ty, TokType::End),
+                    "Expected 'end'. Got: {:?}",
+                    self.peek_ty()
+                );
+                self.adv(1)?;
+                let f = Expr::func_form(name, params, body);
+                Ok(f)
+            } else {
+                bail!(
+                    "Expeceted '(' after function name =>\n\t{}",
+                    ParseError::UnexpectedToken(ParseErrInfo::from(self, None))
+                );
+            }
+        } else {
+            bail!(
+                "Expected identifer after 'fn' =>\n\t{}",
+                ParseError::UnexpectedToken(ParseErrInfo::from(self, None))
+            )
+        }
+    }
+
+    #[inline]
+    fn peek_ty(&self) -> TokType {
+        self.peek().ty
+    }
+
+    // fn expect_match(&mut self, match_for)
+
+    /// Parses current value at self.peek() as a ZIdent, and then
+    /// advances cursor + 1, if not an identifer, returns error
+    fn expect_ident(&mut self) -> anyhow::Result<ZIdent> {
+        let ty = self.peek().ty;
+        if matches!(ty, TokType::Ident) {
+            let ident = self.peek().clone().into_ident();
+            self.adv(1)?;
+            Ok(ident)
+        } else {
+            bail!("Expected Identifier. Got: {:?}", ty)
+        }
+    }
+
+    fn parameter_list(&mut self) -> anyhow::Result<Option<AstList<ZIdent>>> {
+        let mut params = Vec::new();
+        if matches!(self.peek_ty(), TokType::CloseParen) {
+            return Ok(None);
+        }
+
+        let ident = self.expect_ident()?;
+        params.push(ident);
+
+        while !self.is_eof() && self.peek().ty == TokType::Comma {
+            self.adv(1)?;
+            let ident = self.expect_ident()?;
+            params.push(ident);
+        }
+        ensure!(
+            matches!(self.peek().ty, TokType::CloseParen),
+            "Expected ')' at end of parameter list. Got: {:?}",
+            self.peek().clone()
+        );
+        let res = Some(params.into_boxed_slice().into());
+        Ok(res)
     }
 
     fn loop_expr(&mut self) -> anyhow::Result<Expr> {

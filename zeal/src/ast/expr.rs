@@ -213,6 +213,25 @@ impl ExprList {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct FuncDecl {
+
+    pub name: ZIdent, 
+    pub params: Option<AstList<ZIdent>>, 
+    pub body: ExprList, 
+}
+
+impl FuncDecl {
+    pub fn arity(&self) -> usize {
+        if let Some(ps) = self.params.as_ref() {
+            ps.len()
+        } else {
+            0
+        }
+    }
+}
+
+
 #[derive(Debug, Clone, Default)]
 pub enum Expr {
     Binding {
@@ -221,18 +240,29 @@ pub enum Expr {
         name: ZValue,
         init: Rc<Expr>,
     },
+    Function(FuncDecl),
     Form(FormExpr),
     List(ExprList),
     Atom(ZValue),
+
     #[default]
     Nil,
 }
+
 
 impl Expr {
 
     pub const fn is_block(&self) -> bool {
         matches!(self, Self::List(ExprList::Block(_)))
     } 
+
+
+
+    pub fn func_form(name: ZIdent, args: Option<AstList<ZIdent>>, body: ExprList) -> Self {
+        let ff = FuncDecl{ name, params: args, body }; 
+
+        Self::Function(ff)
+    }
 
     pub fn stringify<T>(item: &T) -> Self
     where
@@ -297,6 +327,7 @@ impl Expr {
             Expr::List(_) => todo!(),
             Expr::Atom(_) => todo!(),
             Expr::Nil => todo!(),
+            Expr::Function(func_decl) => todo!(),
         }
     }
 
@@ -368,6 +399,7 @@ impl Expr {
             Expr::Atom(_) => "Atom",
             Expr::Nil => "Nil",
             Expr::Form(_) => "Call",
+            Expr::Function(_) => "Function", 
         }
     }
 
@@ -492,8 +524,11 @@ impl Expr {
     }
 }
 
+
+
+
 mod fmt {
-    use std::{any::Any, fmt::Debug};
+    use std::{fmt::Debug};
 
     use super::*;
 
@@ -715,6 +750,9 @@ mod fmt {
                 format!("({} {name}, {})", ty.to_string(), init_s)
             }
             Expr::Nil => String::from("nil"),
+            Expr::Function(func_decl) => {
+                todo!()
+            }, 
         }
     }
 }

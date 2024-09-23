@@ -15,8 +15,18 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0.82"
-bytemuck = { version = "1.16.0", features = ["min_const_generics", "derive", "bytemuck_derive", "const_zeroed", "align_offset", "must_cast", "unsound_ptr_pod_impl", "zeroable_atomics", "zeroable_maybe_uninit"] }
+bytemuck = { version = "1.16.0", features = [
+  "min_const_generics",
+  "derive",
+  "bytemuck_derive",
+  "const_zeroed",
+  "align_offset",
+  "must_cast",
+  "zeroable_atomics",
+  "zeroable_maybe_uninit",
+] }
 clap = "4.5.4"
+env_logger = "0.11.5"
 log = "0.4.22"
 logos = "0.14.0"
 num-derive = "0.4.2"
@@ -24,3 +34,6 @@ num-traits = "0.2.19"
 phf = { version = "0.11.2", features = ["macros"] }
 thiserror = "1.0.58"
 tokio = { version = "1.37.0", features = ["full"] }
+
+[dev-dependencies]
+env_logger = "0.11.5"

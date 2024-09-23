@@ -359,6 +359,7 @@ impl Archon {
             Expr::Nil => {
                 ch.push_opcode(Opcode::new(Op::Nil));
             }
+            Expr::Function(func_decl) => todo!(),
         }
         Ok(())
     }

@@ -1,0 +1,5 @@
+
+[workspace]
+members = [
+  "zeal", # Replace with the name of your existing project directory
+]
