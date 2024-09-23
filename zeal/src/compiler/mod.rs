@@ -2,57 +2,48 @@ use std::rc::Rc;
 
 use anyhow::bail;
 use chunk::Chunk;
-use func::FuncChunk;
 use opcode::{Op, OpParam, Opcode, VarOp};
-use state::CompState;
+use unit::FuncChunk;
 
 use crate::{
     ast::{
-        expr::{Expr, ExprList, FormExpr, FuncForm, LoopExpr, Namespace, WhenForm},
+        expr::{Expr, ExprList, FormExpr, FuncDecl, FuncExpr, LoopExpr, Namespace, WhenForm},
         Ast, BinaryOpType, VarType,
     },
     core_types::{idents, num::ZBool, val::ZValue},
 };
 
 pub mod chunk;
-pub mod func;
 pub mod opcode;
 pub mod state;
+pub mod unit;
 
 /// Bytecode compiler for ZealVM bytecode
 pub struct Archon;
 
 impl Archon {
     pub fn compile(ast: &Ast) -> anyhow::Result<FuncChunk> {
-        println!("{ast}");
         let ch = Self::compile_to_chunk(ast)?;
 
-        let f = FuncChunk::Script { chunk: ch };
+        let f = FuncChunk::script(ch);
         Ok(f)
     }
 
-    pub fn compile_func(form: &FuncForm) -> anyhow::Result<FuncChunk> {
-        let mut current = {
-            match form {
-                FuncForm::Module { .. } => FuncChunk::script(Chunk::zeroed()),
-                FuncForm::Function { name, args, .. } => {
-                    let mut ch = Chunk::zeroed();
-                    if let Some(args) = args.as_ref() {
-                        for arg in args.iter() {
-                            ch.declare_local(arg.clone());
-                        }
+    pub fn compile_func(form: &FuncDecl) -> anyhow::Result<FuncChunk> {
+        let mut current = FuncChunk::empty_with_sig(form.name.clone(), form.arity() as u8);
 
-                        FuncChunk::function(name.clone(), args.len() as u8, ch)
-                    } else {
-                        FuncChunk::function(name.clone(), 0, ch)
-                    }
-                }
-            }
-        };
-
-        let mut chunk = current.chunk_mut();
+        let chunk = &mut current.chunk;
         chunk.scope.start_scope();
-        Self::compile_expr_list(&mut chunk, form.body());
+
+        chunk.declare_local(form.name.clone())?;
+
+        if let Some(args) = form.params.as_ref() {
+            for arg in args.iter() {
+                chunk.declare_local(arg.clone())?;
+            }
+        }
+
+        Self::compile_expr_list(chunk, &form.body)?;
         Ok(current)
     }
 
@@ -139,30 +130,6 @@ impl Archon {
                         for patch in end_patches.iter() {
                             ch.patch_jump(*patch);
                         }
-
-                        // Self::compile_expr( ch, cond)?;
-                        //
-                        // let then_patch = ch.push_jump(Op::JumpFalse);
-                        // ch.push_popn(1);
-                        // Self::compile_expr_list( ch, then_body)?;
-                        // let else_jump = ch.push_jump(Op::Jump);
-                        // ch.patch_jump(then_patch);
-                        // ch.push_popn(1);
-                        //
-                        // // ch.patch_jump(then_patch);
-                        //
-                        // if let Some(eb) = else_body {
-                        //     match eb.as_ref() {
-                        //     // else
-                        //     Expr::List(ExprList::Block(bl)) => {
-                        //         Self::compile_expr_list( ch, &ExprList::Block(bl.clone()))?;
-                        //     }
-                        //     // elseif
-                        //     Expr::Form(FormExpr::Cond { .. }) => Self::compile_expr( ch, eb.as_ref())?,
-                        //     _ => bail!("CompileError => Expected Expr::List(ExprList::Block()) | Expr::Call(CallExpr::If {{..}}) in Archon::compile_expr for else body!!! Probably missing ending else/end/elseif!!!"),
-                        // }
-                        // }
-                        // ch.patch_jump(else_jump);
                     }
                     FormExpr::Loop {
                         body: ExprList::Block(bl),
@@ -234,7 +201,7 @@ impl Archon {
                     FormExpr::Match {} => todo!(),
                     FormExpr::Struct {} => todo!(),
                     FormExpr::Impl {} => todo!(),
-                    FormExpr::Func(ff) => {
+                    FormExpr::Proto(ff) => {
                         let child = Self::compile_func(ff)?;
                         ch.push_constant(ZValue::Func(Rc::new(child)));
                     }
@@ -299,50 +266,40 @@ impl Archon {
                         //     bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
                         // }
                     }
-                    FormExpr::Call { lhs, params } => {
-                        todo!()
-                        // let head = head.expect_ident();
+                    FormExpr::Call { callee, params } => {
+                        match callee.as_ref() {
+                            Expr::Atom(ZValue::Ident(name)) => {}
+
+                            // Expr::Atom(ZValue::Func(cu)) => {}
+                            // Expr::Form(FormExpr::Call { .. }) => {
+                            // Self::compile_expr(ch, c)?;
+                            // }
+                            _ => {}
+                        }
+                        // if let = callee {
                         //
-                        // if let Some(op) = head.binary_operator() {
-                        //     // NOTE: For now mathematic operators have only 2 operands. In the future
-                        //     // we can easily allow for a lisp style ops
-                        //     let left = &params[0];
-                        //     let right = &params[1];
-                        //     Self::compile_expr( ch, left)?;
-                        //     Self::compile_expr( ch, right)?;
-                        //     ch.push_opcode(Opcode::new(op));
-                        // } else if let Some(op) = head.unary_operator() {
-                        //     let operand = &params[0];
-                        //     Self::compile_expr( ch, operand)?;
                         // } else {
-                        //     match head.name() {
-                        //         idents::ASSIGN => {
-                        //             let name = &params[0];
-                        //             let ident = name.inner_ident().expect(
-                        //                 "first param of Assignment call must be an Identifier!!!",
-                        //             );
-                        //             let ty = ast.symbols.var_type(&ident);
-                        //             if let Some(VarType::Var) = ty {
-                        //                 let val = &params[1];
-                        //                 Self::compile_expr( ch, val)?;
-                        //                 let _ = ch.push_binding(ident.clone(), VarOp::Set)?;
-                        //             } else {
-                        //                 bail!("Cannot assign to a binding that was not declared as 'var'. ident: {}, var_type: {ty:?}", ident.name());
-                        //             }
-                        //         }
-                        //         idents::PRINT => {
-                        //             let right = &params[0];
-                        //             Self::compile_expr( ch, right)?;
-                        //             ch.push_opcode(Opcode::new(Op::Print));
-                        //         }
-                        //         idents::PRINTLN => {
-                        //             let right = &params[0];
-                        //             Self::compile_expr( ch, right)?;
-                        //             ch.push_opcode(Opcode::new(Op::Println));
-                        //         }
-                        //         _ => bail!("cant compile: {head}"),
-                        //     };
+                        //     Self::compile_expr(ch, callee);
                         // }
+                        let nargs = if let Some(ps) = params {
+                            for param in ps.iter() {
+                                Self::compile_expr(ch, param)?;
+                            }
+                            ps.len()
+                        } else {
+                            // NOTE: Implicit nil if no args.
+                            1
+                        } as u64;
+                        let op_param = OpParam::squash(nargs);
+                        ch.push_opcode(Opcode::with_param(Op::Call, op_param));
+                    }
+                    FormExpr::Return { expr } => {
+                        if let Some(e) = expr {
+                            Self::compile_expr(ch, e)?;
+                        } else {
+                            let _ = ch.push_opcode(Opcode::new(Op::Nil));
+                        }
+                        let _ = ch.push_opcode(Opcode::new(Op::Return));
                     }
                     _ => bail!("Unspecified error in compile_expr matching CallExpr::Std(StdForm)"),
                 }
@@ -382,7 +339,7 @@ impl Archon {
                 ZValue::Ident(ident) => {
                     ch.push_binding(ident.clone(), VarOp::Get)?;
                 }
-                ZValue::Func(_) => todo!(),
+                ZValue::Func(fu) => todo!(),
             },
 
             Expr::Nil => {

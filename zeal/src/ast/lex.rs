@@ -362,7 +362,6 @@ pub enum LexTok {
     When,
     #[token("each")]
     Each,
-    #[token("elif")]
     #[token("elseif")]
     ElseIf,
     #[token("then")]
@@ -383,7 +382,6 @@ pub enum LexTok {
     #[token("else")]
     Else,
 
-    #[token("let fn")]
     #[token("function")]
     #[token("fn")]
     Fn,
@@ -450,7 +448,7 @@ pub enum LexTok {
     #[regex(r"\n", newline_cb)]
     NewLine,
 
-    #[regex(r"\w+")]
+    #[regex(r"\w+", priority = 1)]
     Ident,
 
     #[token("false", |_| false)]
@@ -534,6 +532,8 @@ pub enum LexTok {
     #[token("=>")]
     FatArrow,
 
+    // #[token(r"")]
+    // Path(ZIdent, ZIdent),
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().unwrap(), priority = 50)]
     Number(f64),
 

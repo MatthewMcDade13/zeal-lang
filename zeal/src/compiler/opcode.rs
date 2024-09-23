@@ -2,13 +2,9 @@ use std::{
     fmt::Display, num::ParseIntError, ops::{Add, Deref, DerefMut, Div, Index, IndexMut, Mul, Rem, Sub}, slice
 };
 
-use anyhow::{bail, ensure};
-use num_traits::ToBytes;
 
 use crate::{
-    ast::{BinaryOpType, UnaryOpType},
-    core_types::val::ZValue,
-    sys::{self, array_from_raw, array_from_slice, Packable},
+    ast::{BinaryOpType, UnaryOpType}, sys,
 };
 
 
@@ -36,6 +32,7 @@ impl Display for VarOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Op {
     Return,
+    Call,
     Println,
     Print,
     Pop,
@@ -310,7 +307,6 @@ impl From<BinaryOpType> for Op {
 impl From<UnaryOpType> for Op {
     fn from(value: UnaryOpType) -> Self {
         match value {
-            UnaryOpType::Call => todo!(),
             UnaryOpType::Negate => Op::Neg,
             UnaryOpType::Not => Op::Not,
         }

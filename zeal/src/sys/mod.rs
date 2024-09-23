@@ -2,6 +2,14 @@ pub mod buf;
 pub mod mem;
 pub mod string;
 
+#[inline]
+pub fn clamp<T>(lower: T, val: T, higher: T) -> T
+where
+    T: Ord,
+{
+    std::cmp::max(lower, std::cmp::min(val, higher))
+}
+
 pub fn append_byte_slice(dst: &mut Vec<u8>, src: &[u8]) {
     let i = dst.len() - 1;
     let end = i + src.len();

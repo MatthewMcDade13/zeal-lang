@@ -193,9 +193,9 @@ impl Chunk {
 
     pub fn push_local(&mut self, name: ZIdent, varop: VarOp) -> anyhow::Result<()> {
         let (op, id) = if let VarOp::Get | VarOp::Set = varop {
-            if let Some(local_depth) = self.scope.resolve_local(&name) {
-                let size = OpParamSize::squash_size(local_depth as u64);
-                (Op::local(size, varop), local_depth)
+            if let Some(local_offset) = self.scope.resolve_local(&name) {
+                let size = OpParamSize::squash_size(local_offset as u64);
+                (Op::local(size, varop), local_offset)
             } else {
                 self.push_global(name, varop);
                 return Ok(());
@@ -322,7 +322,20 @@ impl Chunk {
             Op::Concat => "CONCAT",
             Op::Const8 => {
                 let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("CONST8 => {}, actual: {}", index, self.constants[index])
+                let val = &self.constants[index];
+                if let ZValue::Func(f) = val {
+                    let name = f.name.clone();
+                    let arity = f.arity;
+                    let arity_s = if arity == 0 {
+                        String::new()
+                    } else {
+                        arity.to_string()
+                    };
+                    let code = &f.chunk;
+                    &format!("fn {name}/{arity_s}:\n\t{code}")
+                } else {
+                    &format!("CONST8 => {}, actual: {}", index, self.constants[index])
+                }
             }
             Op::Const16 => {
                 let index = opcode.try_param().unwrap().to_u32() as usize;
@@ -340,6 +353,10 @@ impl Chunk {
                 let index = opcode.try_param().unwrap().to_u32() as usize;
                 &format!("CONST64 => {}, actual: {}", index, self.constants[index])
             }
+            Op::Call => {
+                let nargs = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("CALL => {}", nargs)
+            }
             Op::Unknown => "UNKNOWN_OP",
             Op::DeclareGlobal8 => {
                 let index = opcode.try_param().unwrap().to_u32() as usize;
@@ -356,7 +373,8 @@ impl Chunk {
 
             Op::GetLocal8 => {
                 let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("GET_LOCAL8 => {}", index)
+                let local = &self.scope.locals[index];
+                &format!("GET_LOCAL8 => {index}, ident: {local}")
             }
             Op::SetLocal8 => {
                 let index = opcode.try_param().unwrap().to_u32() as usize;

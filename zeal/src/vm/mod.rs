@@ -7,8 +7,8 @@ use crate::{
     ast::{Ast, BinaryOpType},
     compiler::{
         chunk::Chunk,
-        func::FuncChunk,
         opcode::{Op, Opcode},
+        unit::FuncChunk,
         Archon,
     },
     core_types::{str::ZIdent, val::ZValue},
@@ -66,15 +66,17 @@ impl VM {
         self.stack.to_string()
     }
 
-    pub fn dump_chunks(&self) -> String {
-        todo!()
+    pub fn dump_chunk(&self) -> String {
+        self.try_frame()
+            .expect("Cannot dump when no frames in CallStack!!!")
+            .to_string()
         // self.chunk_top().unwrap().to_string()
     }
 
     pub fn dump(&self) -> String {
         let mut dump = String::from("\n ----- DUMP -----\n");
         let stack = self.stack.to_string();
-        let bcode = self.dump_chunks();
+        let bcode = self.dump_chunk();
         dump.push_str(&stack);
         dump.push_str(&bcode);
         dump.push_str(" ----- DUMP END ------\n");
@@ -94,11 +96,6 @@ impl VM {
         Archon::compile(&ast)
     }
 
-    #[inline]
-    pub fn frame_top(&self) -> Option<&CallFrame> {
-        self.frames.peek_top()
-    }
-
     // TODO: pub fn test_opcode(&self, opcode: Opcode) -> anyhow::Result<OpEffect> {}
     // ------------------------------------------------------------------------------------
     // something fn like above that doesnt mutate the VM, but reocrds what the
@@ -109,28 +106,70 @@ impl VM {
     //
     // pub fn exec_opcode(&mut self, opcode: Opcode) -> anyhow::Result<()> {}
 
-    pub fn top_frame(&self) -> Option<&CallFrame> {
+    #[inline]
+    pub fn try_frame(&self) -> Option<&CallFrame> {
         self.frames.peek_top()
     }
 
-    pub fn top_frame_mut(&mut self) -> Option<&mut CallFrame> {
+    #[inline]
+    /// Get current Frame being executed.
+    pub fn try_frame_mut(&mut self) -> Option<&mut CallFrame> {
         self.frames.peekn_mut(0)
     }
 
-    pub fn call(&mut self, func: FuncChunk) {
-        let cf = self.new_frame(func);
+    #[inline]
+    fn frame(&self) -> &CallFrame {
+        self.try_frame()
+            .expect("Tried to get executing callframe but Call Stack is empty!!!")
+    }
+
+    #[inline]
+    fn frame_mut(&mut self) -> &mut CallFrame {
+        self.try_frame_mut()
+            .expect("Tried to get executing callframe but Call Stack is empty!!!")
+    }
+
+    /// Pushes ZBalue::Func onto stack memory, also crates a new CallFrame
+    /// and pushes that onto Call Stack.
+    pub fn call(&mut self, unit: Rc<FuncChunk>) {
+        assert!(
+            matches!(unit.as_ref(), FuncChunk::Fn { .. }),
+            "Only functions can be called! Got: {:?}",
+            unit.as_ref()
+        );
+        let stack_fn = Rc::clone(&unit);
+        self.stack.push(ZValue::Func(stack_fn));
+
+        let cf = self.new_frame(unit);
+
+        self.frames.push(cf);
+    }
+
+    fn next_opcode(&mut self) -> Option<Opcode> {
+        let frame = self.try_frame_mut()?;
+
+        frame.next_opcode()
+    }
+
+    #[inline]
+    pub fn frame_constants(&self) -> &[ZValue] {
+        let f = self.frame();
+        f.constants()
     }
 
     pub fn exec(&mut self) -> anyhow::Result<ZValue> {
-        todo!();
-        let frame = &mut self.frames[0];
-        // let frame = self
-        // .top_frame_mut()
-        // .context("Cannot exec an empty Call Stack!!!")?;
-        while frame.ip < frame.bytecode_len() {
-            let opcode = frame.next_opcode()?;
+        while let Some(opcode) = self.next_opcode() {
             match opcode.op() {
-                Op::Return => {}
+                Op::Return => {
+                    let retval = self.stack.expect_pop();
+                    if let Some(frame) = self.frames.pop() {
+                        self.stack.cursor.set(frame.start_slot);
+                        self.stack.push(retval);
+                    } else {
+                        // let _ = self.stack.pop();
+                        break;
+                    }
+                }
                 Op::Println => {
                     let v = self.stack.peek_top().expect("cannot peek an empty stack!");
                     println!("{v}");
@@ -189,9 +228,7 @@ impl VM {
                     // let id = param.to_u32() as usize;
                     // let v = constants[id].clone();
                     // let v = self.chunk().try_read_const(opcode).unwrap();
-                    let v = frame
-                        .read_constant(&opcode)
-                        .expect("Failed to read Constant!");
+                    let v = self.read_constant(&opcode).expect("Empty Call Frame!");
 
                     self.stack.push(v.clone());
                 }
@@ -199,16 +236,16 @@ impl VM {
 
                 // NOTE: ----- DEFINE GLOBAL -----
                 Op::DeclareGlobal8 | Op::DeclareGlobal16 | Op::DeclareGlobal32 => {
-                    let name = frame
+                    let name = self
                         .read_constant(&opcode)
                         .expect("Failed to read constant global!!!");
-                    if let ZValue::Ident(s) = name {
+                    if let ZValue::Ident(s) = name.clone() {
                         let val = self.stack.expect_pop();
                         self.globals.insert(s.clone(), val);
                     }
                 }
                 Op::GetGlobal8 | Op::GetGlobal16 | Op::GetGlobal32 => {
-                    if let Some(ZValue::Ident(name)) = frame.read_constant(&opcode) {
+                    if let Some(ZValue::Ident(name)) = self.read_constant(&opcode) {
                         if let Some(val) = self.globals.get(name) {
                             self.stack.push(val.clone());
                         } else {
@@ -217,7 +254,7 @@ impl VM {
                                 RuntimeError::VMUnknownIdentifier {
                                     name: name.clone(),
                                     opcode,
-                                    constants: frame.constants().to_vec(),
+                                    constants: self.frame_constants().to_vec(),
                                     globals: self.globals.clone()
                                 }
                             )
@@ -228,7 +265,7 @@ impl VM {
                 }
 
                 Op::SetGlobal8 | Op::SetGlobal16 | Op::SetGlobal32 => {
-                    if let Some(ZValue::Ident(name)) = frame.read_constant(&opcode) {
+                    if let Some(ZValue::Ident(name)) = self.read_constant(&opcode) {
                         let top = self.stack.peek_top().expect("Nothing in stack to peek!!!");
 
                         if self.globals.contains_key(name) {
@@ -239,7 +276,7 @@ impl VM {
                                 RuntimeError::VMUnknownIdentifier {
                                     name: name.clone(),
                                     opcode,
-                                    constants: frame.constants().to_vec(),
+                                    constants: self.frame_constants().to_vec(),
                                     globals: self.globals.clone(),
                                 }
                             )
@@ -257,10 +294,9 @@ impl VM {
                 // NOTE: ----- GET LOCAL -----
                 Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
                     if let Some(local) = self.read_local(&opcode) {
-                        let l = local.clone();
                         self.stack.push(local.clone());
                     } else {
-                        bail!("Unable to call GetLocal* to get Local")
+                        bail!("Unable to call GetLocal*")
                     }
                 }
                 // NOTE: ----- END GET LOCAL -----
@@ -271,34 +307,55 @@ impl VM {
                 Op::JumpFalse => {
                     if let Some(top) = self.stack.peek_top() {
                         if top.is_falsey() {
-                            let jumpto = opcode
-                                .try_param()
-                                .expect("JumpFalse16 Op has no parameter!!!");
-
-                            frame.ip = jumpto.to_u32() as usize;
+                            self.jump_to(&opcode);
+                            // let jumpto = opcode
+                            //     .try_param()
+                            //     .expect("JumpFalse16 Op has no parameter!!!");
+                            //
+                            // frame.ip = jumpto.to_u32() as usize;
                         }
                     }
                 }
 
                 Op::LongJumpFalse => todo!(),
                 Op::Jump => {
-                    let jumpto = opcode.try_param().expect("Jump16 Op has no parameter!!!");
-                    frame.ip = jumpto.to_usize();
+                    // let jumpto = opcode.try_param().expect("Jump16 Op has no parameter!!!");
+                    self.jump_to(&opcode);
+                    // frame.ip = jumpto.to_usize();
                 }
                 Op::LongJump => todo!(),
                 Op::JumpTrue => {
                     if let Some(top) = self.stack.peek_top() {
                         if top.is_truthy() {
-                            let jumpto = opcode
-                                .try_param()
-                                .expect("JumpTrue16 Op has no parameter!!!");
-
-                            frame.ip = jumpto.to_u32() as usize;
+                            self.jump_to(&opcode);
+                            // let jumpto = opcode
+                            //     .try_param()
+                            //     .expect("JumpTrue16 Op has no parameter!!!");
+                            //
+                            // frame.ip = jumpto.to_u32() as usize;
                         }
                     }
                 }
                 Op::LongJumpTrue => todo!(),
-                Op::NoOp => {} // NOTE: ----- END SET LOCAL -----
+                Op::NoOp => {}
+                Op::Call => {
+                    let nargs = opcode
+                        .try_param()
+                        .expect("Op::Call requires paramter and received none!!!")
+                        .to_u32() as usize;
+                    // .read_constant(&opcode)
+                    // .expect(&format!("Failed to read constant from Frame: {:?}", frame));
+                    // TODO: Fix this. we need to have function in stack memory BEFORE we compile
+                    // its arguments and then emit Op::Call
+                    if let Some(callable) = self.stack.peekn(nargs) {
+                        match callable {
+                            ZValue::Func(f) => {
+                                self.call(Rc::clone(&f));
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                } // NOTE: ----- END SET LOCAL -----
             };
         }
 
@@ -308,6 +365,17 @@ impl VM {
             ZValue::Nil
         };
         Ok(top)
+    }
+
+    fn jump_to(&mut self, jump_op: &Opcode) {
+        let jumpto = jump_op
+            .try_param()
+            .expect(&format!("{} has no parameter!!!", jump_op.op().to_string()));
+    }
+
+    fn read_constant(&self, opcode: &Opcode) -> Option<&ZValue> {
+        let f = self.try_frame()?;
+        f.read_constant(opcode)
     }
 
     fn binary_op_num(&mut self, ty: BinaryOpType) {
@@ -353,12 +421,12 @@ impl VM {
         self.exec_source(&source)
     }
 
-    pub fn new_frame(&self, func: FuncChunk) -> CallFrame {
+    pub fn new_frame(&self, func: Rc<FuncChunk>) -> CallFrame {
         let arity = func.arity() as isize;
         let beg = self.stack.top_index().unwrap() as isize - arity - 1;
         let start_slot = std::cmp::min(0, beg) as usize;
         CallFrame {
-            func: Some(Rc::new(func)),
+            func: Some(func),
             ip: 0,
             start_slot,
         }
@@ -366,14 +434,12 @@ impl VM {
 
     pub fn exec_source(&mut self, src: &str) -> anyhow::Result<ZValue> {
         let f = self.compile_source(src)?;
-        let cf = self.new_frame(f);
+        let f = Rc::new(f);
+        self.call(f);
+        // let cf = self.new_frame(f);
         // SAFETY: new_frame gaurantees that CallFrame::func is not None,
         // so this is safe.
-        let zfunc = unsafe { cf.func.as_ref().unwrap_unchecked() };
-        let zfunc = Rc::clone(zfunc);
-        self.stack.push(ZValue::Func(zfunc));
 
-        self.frames.push(cf);
         self.exec()
     }
 
@@ -388,13 +454,147 @@ impl VM {
     // }
 
     fn read_local(&self, opcode: &Opcode) -> Option<&ZValue> {
+        let frame = self
+            .try_frame()
+            .expect("Cannot read local from empty CallFrame!!!");
         if let Some(param) = opcode.try_param() {
             let slot = param.to_usize();
-            let v = self.stack.peekn(slot)?;
+            let slot = frame.start_slot + slot;
+            assert!(slot < self.stack.len());
+            let v = &self.stack[slot];
             Some(v)
         } else {
             None
         }
+    }
+
+    pub fn debug_opcode(&self, opcode: Opcode) -> String {
+        let s = match opcode.op() {
+            Op::Return => "RETURN",
+            Op::Println => "PRINTLN",
+            Op::Print => "PRINT",
+            Op::Pop => "POP",
+            Op::PopN => {
+                let n = opcode.try_param().unwrap().to_u32() as usize;
+
+                &format!("POPN => {n},")
+            }
+            Op::Add => "ADD",
+            Op::Sub => "SUB",
+            Op::Div => "DIV",
+            Op::Mul => "MUL",
+            Op::Neg => "NEGATE",
+            Op::Not => "NOT",
+            Op::Nil => "NIL",
+            Op::True => "TRUE",
+            Op::False => "FALSE",
+            Op::Concat => "CONCAT",
+            Op::Const8 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                let val = &self.constants[index];
+                if let ZValue::Func(f) = val {
+                    let name = f.name();
+                    let arity = f.arity();
+                    let arity_s = if arity == 0 {
+                        String::new()
+                    } else {
+                        arity.to_string()
+                    };
+                    let code = f.chunk();
+                    &format!("fn {name}/{arity_s}:\n\t{code}")
+                } else {
+                    &format!("CONST8 => {}, actual: {}", index, self.constants[index])
+                }
+            }
+            Op::Const16 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("CONST16 => {}, actual: {}", index, self.constants[index])
+            }
+            Op::Const24 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("CONST24 => {}, actual: {}", index, self.constants[index])
+            }
+            Op::Const32 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("CONST32 => {}, actual: {}", index, self.constants[index])
+            }
+            Op::Const64 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("CONST64 => {}, actual: {}", index, self.constants[index])
+            }
+            Op::Call => {
+                let nargs = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("CALL => {}", nargs)
+            }
+            Op::Unknown => "UNKNOWN_OP",
+            Op::DeclareGlobal8 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("DEF_GLOBAL8 => {}", index)
+            }
+            Op::GetGlobal8 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("GET_GLOBAL8 => {}", index)
+            }
+            Op::SetGlobal8 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("SET_GLOBAL8 => {}", index)
+            }
+
+            Op::GetLocal8 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                let local = &self.scope.locals[index];
+                &format!("GET_LOCAL8 => {index}, ident: {local}")
+            }
+            Op::SetLocal8 => {
+                let index = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("SET_LOCAL8 => {}", index)
+            }
+            Op::Eq => "EQ",
+            Op::Gt => "GT",
+            Op::Lt => "LT",
+            Op::Ge => "GE",
+            Op::Le => "LE",
+            Op::NotEq => "NEQ",
+            Op::DeclareGlobal16 => todo!(),
+            Op::GetGlobal16 => todo!(),
+            Op::SetGlobal16 => todo!(),
+            Op::GetLocal16 => todo!(),
+            Op::SetLocal16 => todo!(),
+            Op::DeclareGlobal32 => todo!(),
+            Op::GetGlobal32 => todo!(),
+            Op::SetGlobal32 => todo!(),
+            Op::GetLocal32 => todo!(),
+            Op::SetLocal32 => todo!(),
+            Op::JumpFalse => {
+                let offset = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("JUMP_FALSE => {}", offset)
+            }
+            Op::LongJumpFalse => {
+                let offset = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("LONG_JUMP_FALSE => {}", offset)
+            }
+            Op::Jump => {
+                let offset = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("JUMP => {}", offset)
+            }
+            Op::LongJump => {
+                let offset = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("LONG_JUMP => {}", offset)
+            }
+
+            Op::JumpTrue => {
+                let offset = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("JUMP_TRUE => {}", offset)
+            }
+
+            Op::LongJumpTrue => {
+                let offset = opcode.try_param().unwrap().to_u32() as usize;
+                &format!("LONG_JUMP_TRUE => {}", offset)
+            }
+            Op::NoOp => "<<<NO_OP>>>",
+        };
+
+        String::from(s)
     }
 
     // #[inline]
@@ -436,14 +636,20 @@ impl CallFrame {
         }
     }
 
+    /// Unconditional jump to location index in bytecode.
+    /// panics if location out of range.
+    pub fn jump_to(&mut self, location: usize) {
+        assert!(
+            location < self.bytecode_len(),
+            "Access violation! Got: {location} when bytecode length is: {}!",
+            self.bytecode_len()
+        );
+        self.ip = location;
+    }
+
     pub fn constants(&self) -> &[ZValue] {
-        let f = self
-            .func
-            .as_ref()
-            .expect("Cannot get constant slice from a Func::NoOp!!!");
-        let c = f
-            .try_chunk()
-            .expect("Cannot read constants from a Func::NoOp!!!");
+        let cu = self.func.as_ref().expect("CompUnit contains no bytecode!!");
+        let c = cu.chunk();
         &c.constants
     }
 
@@ -451,14 +657,16 @@ impl CallFrame {
         let func = self.func.as_ref()?;
         let param = opcode.try_param()?;
         let id = param.to_usize();
-        let c = func.try_chunk()?;
+        let c = func.chunk();
         Some(&c.constants[id])
     }
 
     pub fn bytecode_len(&self) -> usize {
         if let Some(f) = &self.func {
-            f.try_chunk()
-                .expect("Invalid read on a Func::NoOp!!!")
+            self.func
+                .as_ref()
+                .expect("Invalid read on a CompUnit with no bytecode!!")
+                .chunk()
                 .len()
         } else {
             0
@@ -466,17 +674,16 @@ impl CallFrame {
     }
 
     /// Gets opcode at current self.ip, then increments self.ip to the next opcode.
-    pub fn next_opcode(&mut self) -> anyhow::Result<Opcode> {
-        let opcode = self.opcode_at(self.ip)?;
+    pub fn next_opcode(&mut self) -> Option<Opcode> {
+        let opcode = self.opcode_at(self.ip).ok()?;
         self.ip += opcode.offset();
-        Ok(opcode)
+        Some(opcode)
     }
 
     pub fn opcode_at(&self, index: usize) -> anyhow::Result<Opcode> {
         if let Some(f) = self.func.as_ref() {
             let opcode = match f.as_ref() {
-                FuncChunk::NoOp => Opcode::no_op(),
-                FuncChunk::Fn { chunk, .. } | FuncChunk::Script { chunk } => {
+                FuncChunk::Fn { chunk, .. } | FuncChunk::Module { chunk, .. } => {
                     let o = chunk.opcode_at(index);
                     o.context(format!(
                         "Opcode index out of range! Got: {index} but chunk length is only {}!",

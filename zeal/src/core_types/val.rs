@@ -1,6 +1,6 @@
 use std::{cell::RefCell, fmt::Display, hash::Hash, ops::Add, rc::Rc};
 
-use crate::compiler::{func::FuncChunk, opcode::Op};
+use crate::compiler::{opcode::Op, unit::FuncChunk};
 
 use super::{
     bytes::ZByte,
@@ -285,8 +285,9 @@ impl Display for ZValue {
             // ZValue::MutRef(_) => todo!(),
             ZValue::Rune(ri) => ri.to_string(),
             ZValue::Ident(s) => format!("#{}", s.to_string()),
-            ZValue::Func(_) => todo!(),
-            // ZValue::List(_) => todo!(),
+            ZValue::Func(cu) => match cu.as_ref() {
+                FuncChunk { arity, name, .. } => format!("fn {name}/{arity}"),
+            }, // ZValue::List(_) => todo!(),
         };
         write!(f, "{}", s)
     }

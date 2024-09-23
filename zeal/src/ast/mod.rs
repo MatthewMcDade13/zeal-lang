@@ -5,63 +5,65 @@ pub mod parse;
 use crate::ast::expr::{Expr, ExprList};
 use crate::ast::lex::{LexTok, Tok, TokBuffer};
 use crate::ast::parse::Parser;
-use crate::core_types::{idents, Meta};
+use crate::core_types::idents;
+use crate::core_types::str::ZIdent;
+use crate::meta::sym::SymTable;
+use crate::meta::Meta;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::Index;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use crate::core_types::str::ZIdent;
-
-#[derive(Debug, Clone)]
-pub struct SymbolTable(HashMap<ZIdent, Meta>);
-
-impl SymbolTable {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    pub fn add_new(&mut self, ident: ZIdent, var_type: VarType) -> bool {
-        self.add(ident, Meta::new(var_type))
-    }
-    /// Adds value to symbol table, Returns true if
-    /// successfully added, returns false if ident is already
-    /// in symbol table
-    pub fn add(&mut self, ident: ZIdent, meta: Meta) -> bool {
-        let k = &ident;
-        if !self.contains_key(k) {
-            self.insert(k.clone(), meta);
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn var_type(&self, name: ZIdent) -> Option<VarType> {
-        self.get(&name).map(|meta| meta.var_type)
-    }
-}
-
-impl Default for SymbolTable {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Deref for SymbolTable {
-    type Target = HashMap<ZIdent, Meta>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for SymbolTable {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+//
+// #[derive(Debug, Clone)]
+// pub struct SymbolTable(HashMap<ZIdent, Meta>);
+//
+// impl SymbolTable {
+//     pub fn new() -> Self {
+//         Self(HashMap::new())
+//     }
+//
+//     pub fn add_new(&mut self, ident: ZIdent, var_type: VarType) -> bool {
+//         self.add(ident, Meta::new(var_type))
+//     }
+//     /// Adds value to symbol table, Returns true if
+//     /// successfully added, returns false if ident is already
+//     /// in symbol table
+//     pub fn add(&mut self, ident: ZIdent, meta: Meta) -> bool {
+//         let k = &ident;
+//         if !self.contains_key(k) {
+//             self.insert(k.clone(), meta);
+//             true
+//         } else {
+//             false
+//         }
+//     }
+//
+//     pub fn var_type(&self, name: ZIdent) -> Option<VarType> {
+//         self.get(&name).map(|meta| meta.var_type)
+//     }
+// }
+//
+// impl Default for SymbolTable {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
+//
+// impl Deref for SymbolTable {
+//     type Target = HashMap<ZIdent, Meta>;
+//
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
+//
+// impl DerefMut for SymbolTable {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.0
+//     }
+// }
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -103,7 +105,6 @@ pub trait AstPass {
 #[derive(Debug, Clone)]
 pub struct Ast {
     pub tree: Expr,
-    pub symbols: SymbolTable,
 }
 
 impl FromStr for Ast {
@@ -123,21 +124,13 @@ impl Ast {
         pass.pipe(self)
     }
 
-    pub fn binding_type(&self, name: &ZIdent) -> Option<VarType> {
-        self.symbols.get(name).map(|meta| meta.var_type)
-    }
-
     pub fn empty() -> Self {
-        Self {
-            tree: Expr::Nil,
-            symbols: SymbolTable::new(),
-        }
+        Self { tree: Expr::Nil }
     }
 
     pub fn from_toks(toks: &[Tok]) -> anyhow::Result<Self> {
         let tree = Parser::parse_ast(toks)?;
-        let symbols = Self::build_symbol_table(&tree);
-        let s = Self { tree, symbols };
+        let s = Self { tree };
         Ok(s)
         // Ok(Self(ast))
     }
@@ -153,36 +146,36 @@ impl Ast {
         let s = Self::from_toks(buf.slice())?;
         Ok(s)
     }
-
-    fn symbols(ast: &Expr, st: &mut SymbolTable) {
-        match ast {
-            Expr::Binding { ty, name, .. } => {
-                let _ = st.add_new(name.expect_ident(), *ty);
-            }
-            Expr::List(ex) => match ex {
-                ExprList::Block(bl) => {
-                    for e in bl.iter() {
-                        Self::symbols(e, st);
-                    }
-                }
-                ExprList::Tuple(tup) => {
-                    for e in tup.iter() {
-                        Self::symbols(e, st);
-                    }
-                }
-                // ExprList::Unit(_) => todo!(),
-                ExprList::Nil => todo!(),
-            }, //Self::symbols(ex, st),
-
-            _ => {}
-        }
-    }
-
-    fn build_symbol_table(ast: &Expr) -> SymbolTable {
-        let mut st = SymbolTable::new();
-        Self::symbols(&ast, &mut st);
-        st
-    }
+    //
+    // fn symbols(ast: &Expr, st: &mut SymbolTable) {
+    //     match ast {
+    //         Expr::Binding { ty, name, .. } => {
+    //             let _ = st.add_new(name.expect_ident(), *ty);
+    //         }
+    //         Expr::List(ex) => match ex {
+    //             ExprList::Block(bl) => {
+    //                 for e in bl.iter() {
+    //                     Self::symbols(e, st);
+    //                 }
+    //             }
+    //             ExprList::Tuple(tup) => {
+    //                 for e in tup.iter() {
+    //                     Self::symbols(e, st);
+    //                 }
+    //             }
+    //             // ExprList::Unit(_) => todo!(),
+    //             ExprList::Nil => todo!(),
+    //         }, //Self::symbols(ex, st),
+    //
+    //         _ => {}
+    //     }
+    // }
+    //
+    //     fn build_symbol_table(ast: &Expr) -> SymbolTable {
+    //         let mut st = SymbolTable::new();
+    //         Self::symbols(&ast, &mut st);
+    //         st
+    //     }
 }
 
 impl Display for Ast {
@@ -248,7 +241,6 @@ impl Display for BinaryOpType {
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnaryOpType {
-    Call,
     Negate,
     Not,
 }
@@ -256,7 +248,6 @@ pub enum UnaryOpType {
 impl Display for UnaryOpType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            UnaryOpType::Call => "(...)",
             UnaryOpType::Negate => idents::SUB,
             UnaryOpType::Not => idents::NOT,
         };

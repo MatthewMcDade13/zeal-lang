@@ -25,6 +25,10 @@ mod tests {
         y: i32,
     }
 
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
     #[test]
     fn slab_stack() -> anyhow::Result<()> {
         const SIZE: usize = KB * 512;
@@ -56,11 +60,18 @@ mod tests {
 
     #[test]
     fn calc_vars_test() -> anyhow::Result<()> {
-        const PATH: &'static str = "src/test/scripts/calc_vars.zeal";
+        const PATH: &str = "src/test/scripts/calc_vars.zeal";
 
         let ast = Ast::from_file(PATH)?;
         let code = Archon::compile(&ast)?;
         Ok(())
         // let ast = Ast::from_file("src/test/scripts/calc_vars.zeal")?;
+    }
+
+    #[test]
+    fn parse_ast_funcs() -> anyhow::Result<()> {
+        const PATH: &str = "src/scripts/funcs.zl";
+        let ast = Ast::from_file(PATH)?;
+        Ok(())
     }
 }

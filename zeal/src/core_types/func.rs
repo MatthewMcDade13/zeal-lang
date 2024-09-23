@@ -1,4 +1,4 @@
-use crate::compiler::func::FuncChunk;
+use crate::compiler::unit::FuncChunk;
 
 /// Run-time representation of a function
 #[derive(Debug, Clone)]

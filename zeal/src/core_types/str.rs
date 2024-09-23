@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ZString(Rc<str>);
 
 impl Deref for ZString {
@@ -207,7 +207,7 @@ impl Display for ZRune {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ZIdent(ZString);
 
 impl PartialEq<str> for ZIdent {

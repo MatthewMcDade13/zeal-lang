@@ -31,6 +31,10 @@ impl StackCursor {
         self.addn(offset)
     }
 
+    pub fn set(&mut self, loc: usize) {
+        self.0 = loc as isize;
+    }
+
     pub const fn inc(self) -> Self {
         self.addn(1)
     }
@@ -250,6 +254,13 @@ where
             cursor: StackCursor::empty(),
             buf,
         }
+    }
+
+    /// Pops n items from stack,Returns number of elements that were popped.
+    pub fn popn(&mut self, n: usize) -> usize {
+        let i = std::cmp::max(0, std::cmp::min(n, self.buf.len()));
+        self.cursor.set(i);
+        n - i
     }
 
     pub fn pop(&mut self) -> Option<T> {

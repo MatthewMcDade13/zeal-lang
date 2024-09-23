@@ -83,41 +83,53 @@ impl WhenForm {
 //     pub namespace: Namespace,
 // }
 
-#[derive(Debug, Clone)]
-pub enum FuncForm {
-    Module { body: ExprList },
-    Function { name: ZIdent, args: Option<AstList<ZIdent>>, body: ExprList, },
-}
+// #[derive(Debug, Clone)]
+// pub struct FuncForm {
+//     pub name: ZIdent, 
+//     pub params: Option<AstList<ZIdent>>, 
+//     pub body: ExprList
+// }
+//
 
-impl FuncForm {
+impl FuncExpr {
     #[inline]
     pub fn arity(&self) -> usize {
-        if let Self::Function { args: Some(args), .. }  = self {
-            args.len()
+        if let Some(ps) = self.args.as_ref() {
+            ps.len()
         } else {
             0
         }
     } 
 
-    pub const fn namespace(&self) -> Namespace {
-        match self {
-            Self::Module { .. } => Namespace::Module,
-            Self::Function { .. } => Namespace::Function,
-        }
+    // pub const fn is_module(&self) -> bool {
+    //     matches!(self, Self::Module { .. })
+    // }
+
+    // pub const fn is_func(&self) -> bool {
+    //     matches!(self, Self::Function { .. })
+    // }
+
+    // pub const fn params(&self) -> Option<&AstList<ZIdent>> {
+    //         self.params.as_ref() 
+    // }
+    //
+
+    // pub fn name(&self) -> &str {
+    //     match self {
+    //         FuncForm::Module { .. } => "<<Module>>", 
+    //         FuncForm::Function { name, .. } => name.string(),
+    //     }
+    // }
+
+    pub fn name_ident(&self) -> ZIdent {
+        self.name.clone()
     }
 
-    pub const fn body(&self) -> &ExprList {
-        match self {
-            FuncForm::Module { body } => body, 
-            FuncForm::Function { body, .. } => body, 
-        }
-    }
 }
 
 
 #[derive(Debug, Clone)]
 pub enum FormExpr {
-    Func(FuncForm),
     /// (if cond_expr [...if_body] [...else_body])
     When {
         conds: AstList<WhenForm>,
@@ -134,6 +146,11 @@ pub enum FormExpr {
     Loop {
         body: ExprList,
         meta: LoopExpr,
+    },
+
+    /// (return expr?)
+    Return {
+        expr: Option<Rc<Expr>>,
     },
 
     /// (match expr [...patterns wildcard?])
@@ -166,9 +183,9 @@ pub enum FormExpr {
     ///              |   |
     ///           head params
     Call {
-        lhs: Rc<Expr>,
+        callee: Rc<Expr>,
         // head: ZValue,
-        params: AstList<Expr>,
+        params: Option<AstList<Expr>>,
     },
 }
 
@@ -265,19 +282,77 @@ impl ExprList {
     }
 }
 
+
+#[derive(Debug, Clone)]
+pub enum NewtypeExpr {
+    Function(FuncDecl),
+    Alias,
+    Wrap,
+    // Struct()
+}
+
 #[derive(Debug, Clone, Default)]
 pub enum Expr {
-    Binding {
-        ty: VarType,
-        /// Must be ZValue::Ident
-        name: ZValue,
-        init: Rc<Expr>,
-    },
+    Binding(BindingExpr), 
+    /// (const name (fn [... params] (do ...body end)))
     Form(FormExpr),
     List(ExprList),
     Atom(ZValue),
+    Newtype(NewtypeExpr),
     #[default]
     Nil,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FuncDecl {
+
+    pub name: ZIdent, 
+    pub params: Option<AstList<ZIdent>>, 
+    pub body: ExprList, 
+}
+
+impl FuncDecl {
+    pub fn arity(&self) -> usize {
+        if let Some(ps) = self.params.as_ref() {
+            ps.len()
+        } else {
+            0
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncExpr { 
+    pub name: ZIdent, 
+    pub args: Option<AstList<ZIdent>>, 
+    pub body: ExprList, 
+}
+
+#[derive(Debug, Clone)]
+pub struct Binding<Init> {
+    pub name: ZIdent,
+    pub rhs: Init,
+}
+
+pub type BindConst = Binding<Rc<Expr>>;
+pub type BindLet = Binding<Rc<Expr>>;
+pub type BindVar = Binding<Option<Rc<Expr>>>;
+pub type BindFunc = Binding<Rc<FuncExpr>>;
+pub type VarAssign = Binding<Rc<Expr>>;
+
+
+// NOTE: Const is strictly a compile-time binding. Let cant
+// be reassigned, but can be shadowed. Var can be reassigned, and not shadowed.
+// Func variant has same rules as const, but initializer is specialized for Function Forms.
+// ----------------------------------------------------------------------------------------
+// ex: Self::Func -> const {name} = func(a: Int, b: Int): Int -> a + b end
+#[derive(Debug, Clone)]
+pub enum BindingExpr {
+    
+    Const(BindConst),
+    Let(BindLet),
+    Var(BindVar),
+    Assign(VarAssign)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -289,10 +364,9 @@ pub enum Namespace {
 impl Expr {
 
     pub fn func_form(name: ZIdent, args: Option<AstList<ZIdent>>, body: ExprList) -> Self {
-        // NOTE: This is never a module type as during parse-time there is no concept 
-        // of modules, scope or 'top-level' constructs.
-        let ff = FuncForm::Function { name, args, body }; 
-        Self::Form(FormExpr::Func(ff))
+        let ff = FuncDecl{ name, params: args, body }; 
+        let nt = NewtypeExpr::Function(ff);
+        Self::Newtype(nt)
 
     }
 
@@ -348,20 +422,28 @@ impl Expr {
     /// Attempts to put self into an ExprList. If self is Expr::List,
     /// conversion is just a cast, otherwise converts self properties into strings and then shoves
     /// it into an ExprList::Tuple
-    pub fn into_tuple(self) -> ExprList {
-        match self {
-            Expr::Binding { ty, name, init } => {
-                let t = Expr::stringify(&ty);
-                let n = Expr::stringify(&name);
-                let i = Expr::clone(init.as_ref());
-                ExprList::Tuple([t, n, i].into())
-            }
-            Expr::Form(_) => todo!(),
-            Expr::List(_) => todo!(),
-            Expr::Atom(_) => todo!(),
-            Expr::Nil => todo!(),
-        }
-    }
+    // pub fn into_tuple(self) -> ExprList {
+    //     match self {
+    //         Expr::Binding(be) => {
+    //             match be {
+    //                 BindingExpr::Const(e) | 
+    //                 BindingExpr::Let(e) |  
+    //                 BindingExpr::Var(e) |  
+    //                 BindingExpr::Assign(e) => {}  
+    //                 BindingExpr::Func(_) => todo!(),
+    //
+    //             }
+    //             let t = Expr::stringify(&ty);
+    //             let n = Expr::stringify(&name);
+    //             let i = Expr::clone(init.as_ref());
+    //             ExprList::Tuple([t, n, i].into())
+    //         }
+    //         Expr::Form(_) => todo!(),
+    //         Expr::List(_) => todo!(),
+    //         Expr::Atom(_) => todo!(),
+    //         Expr::Nil => todo!(),
+    //     }
+    // }
 
     #[inline]
     pub fn expect_call(&self) -> FormExpr {
@@ -431,6 +513,7 @@ impl Expr {
             Expr::Atom(_) => "Atom",
             Expr::Nil => "Nil",
             Expr::Form(_) => "Call",
+            Expr::Newtype(_) => "Function" 
         }
     }
 
@@ -446,14 +529,14 @@ impl Expr {
         }
     }
 
-    #[inline]
-    pub fn binding(ty: VarType, head: ZIdent, init: Option<Expr>) -> Self {
-        Self::Binding {
-            ty,
-            name: ZValue::Ident(head),
-            init: Rc::from(init.unwrap_or_default()),
-        }
-    }
+    // #[inline]
+    // pub fn binding(ty: VarType, head: ZIdent, init: Option<Expr>) -> Self {
+    //     Self::Binding {
+    //         ty,
+    //         name: ZValue::Ident(head),
+    //         init: Rc::from(init.unwrap_or_default()),
+    //     }
+    // }
 
     pub fn assignment(name: ZIdent, rhs: Expr) -> Self {
         let form = FormExpr::Assign {
@@ -557,6 +640,8 @@ impl Expr {
 
 mod fmt {
     use std::{any::Any, fmt::Debug};
+
+    use log::debug;
 
     use super::*;
 
@@ -728,7 +813,6 @@ mod fmt {
                 }                FormExpr::Match {} => todo!(),
                 FormExpr::Struct {} => todo!(),
                 FormExpr::Impl {} => todo!(),
-                FormExpr::Func(ff) => todo!(),
                 FormExpr::Print(ex) => format!("(print {})", expr(ex, state)),
                 FormExpr::Println(ex) => {
                     format!("(println {})", expr(ex, state))
@@ -738,18 +822,26 @@ mod fmt {
                     let right = expr(right, state);
                     format!("({op} {left} {right})")
                 }
-                FormExpr::Assign { binding, rhs } => {
-                    format!("(#= {binding} {})", expr(rhs, state))
-                }
-                FormExpr::Call { lhs, params } => {
+                // FormExpr::Assign { binding, rhs } => {
+                    // format!("(#= {binding} {})", expr(rhs, state))
+                // }
+                FormExpr::Call { callee: lhs, params } => {
                     let head = expr(lhs.as_ref(), state);
-                    let mut s = state.fmtln(&format!("({head} "));
+                    let mut ps = String::new();
+                    let params_str= if let Some(params) = params {
+                        let res = params.iter().fold(&mut ps , |acc, e| { 
+                            let e = expr(e, state); 
+                            acc.push_str(&e); acc.push(' '); 
+                            acc 
+                        });
+                        res.trim_end().to_string()
 
-                    for i in params.iter() {
-                        let p = format!("{} ", expr(i, state));
-                        s.push_str(&p);
-                    }
-                    format!("{})", s.trim_end())
+                    } else {
+                        String::new()
+                    };
+
+                    state.writeln(&format!("(call {head} {params_str})"))
+
                 }
                 FormExpr::UnaryOperator { op, scalar } => todo!(),
                 FormExpr::Break { expr: ex } => {
@@ -760,21 +852,100 @@ mod fmt {
                     };
                     format!("(break{s})")
                 }
+                FormExpr::Return { expr } => { 
+                    let mut s = String::from("(return ");
+                    let es = expr.as_ref().map(|e| { self::expr(e.as_ref(), state) }).unwrap_or_default(); 
+                    s.push_str(&es);
+                    s.push(')');
+                    
+                    state.writeln(&s)
+                }
+                FormExpr::Assign { binding, rhs } => todo!(), 
             },
             Expr::List(li) => exprlist(li, state),
             Expr::Atom(at) => at.to_string(),
-            Expr::Binding { ty, name, init } => {
+            Expr::Binding(be) => {
+                match be {
+                     
+                    // TODO: Cleanup these dups
+                    BindingExpr::Const(be) => {
+                        let name = &be.name;
+                        let rhs = be.rhs.as_ref();
+                        let rhs = expr(rhs, state);
+                        let s = format!("(const {name} = {rhs})");
+                        state.writeln(&s)
+       
+                    }
+                    BindingExpr::Let(be) => {
+                        let name = &be.name;
+                        let rhs = be.rhs.as_ref();
+                        let rhs = expr(rhs, state);
+                        let s = format!("(let {name} = {rhs})");
+                        state.writeln(&s)
+ 
+                    }
+                    BindingExpr::Assign(be) => {
+                        let name = &be.name;
+                        let rhs = be.rhs.as_ref();
+                        let rhs = expr(rhs, state);
+                        let s = format!("({name} = {rhs})");
+                        state.writeln(&s)
+
+                    } 
+
+                    BindingExpr::Var(be) => {
+                        let name = &be.name;
+                        if let Some(rhs) = be.rhs.as_ref() {
+                            let rhs = expr(rhs, state);
+                            let s = format!("(var {name} = {rhs})");
+                            state.writeln(&s)
+
+                        } else {
+
+                            let s = format!("(var {name} = nil)");
+                            state.writeln(&s)
+                        }
+
+ 
+                    } 
+                } 
                 // let init = init.as_ref() {
                 //     i.clone()
                 // } else {
                 //     Expr::Nil
                 // };
 
-                let init_s = expr(init, state);
-                format!("({} {name}, {})", ty.to_string(), init_s)
+                // let init_s = expr(init, state);
+                // format!("({ty} {name}, {init_s})")
+
             }
             Expr::Nil => String::from("nil"),
+            Expr::Newtype(NewtypeExpr::Function(FuncDecl { name, params: args, body })) => {
+                
+                    let params = { 
+                        if let Some(args) = args.as_ref() {
+                            let mut ps = String::new();
+                            args.iter().fold(&mut ps , |acc, ident| { 
+                                acc.push_str(ident.string()); 
+                                acc.push(' '); 
+                                acc 
+                            });
+                            ps
+
+                        } else {
+                            String::new()
+                        }
+                    };
+                        
+                let params = params.trim_end();
+                let body = exprlist(body, state);
+                state.writeln(&format!("(fn {name} [{params}] {body})"))
+
+
+            }
+        _ => todo!()
         }
+
     }
 }
 impl Display for Expr {

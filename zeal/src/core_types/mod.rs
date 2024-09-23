@@ -169,28 +169,3 @@ pub mod idents {
     /// allows 'lisp style' function application. ex: call add 1 2
     pub const CALL: &str = "call";
 }
-
-#[derive(Debug, Clone)]
-pub struct TypeInfo {
-    pub name: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct Meta {
-    pub var_type: VarType,
-    pub type_info: TypeInfo,
-    pub name: ZIdent,
-    pub binding_for: Option<ZValue>,
-}
-impl Meta {
-    pub fn new(var_type: VarType) -> Self {
-        Self {
-            var_type,
-            type_info: TypeInfo {
-                name: String::new(),
-            },
-            name: ZIdent::new(""),
-            binding_for: None,
-        }
-    }
-}

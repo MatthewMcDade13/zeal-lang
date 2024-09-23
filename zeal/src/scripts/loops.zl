@@ -13,11 +13,8 @@ when
   else -> (println "else")
 end
 
-  
-
 
 var i = 0
-
 while i <= 100 do
   when 
     i / 3 == 0 and i / 5 == 0 -> (println "FizzBuzz"),

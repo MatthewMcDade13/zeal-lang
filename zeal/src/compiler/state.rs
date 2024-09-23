@@ -3,48 +3,47 @@ use std::{cmp::Ordering, fmt::Display};
 
 use crate::core_types::{func::Func, str::{ZIdent, ZString}};
 
-use super::func::FuncChunk;
 
 
-#[derive(Debug, Clone)]
-pub struct CompState {
-    pub target: FuncChunk, 
-    pub parent_scope: Option<Box<Self>>, 
-}
-    
-
-
-impl CompState {
-    pub const fn new_root(target: FuncChunk) -> Self {
-        Self { target, parent_scope: None }
-    }
-
-    pub fn new(target: FuncChunk, parent_scope: Self) -> Self {
-        let parent_scope = Some(Box::new(parent_scope));
-        Self { target, parent_scope }
-    }
-
-    pub const fn is_root(&self) -> bool {
-        self.parent_scope.is_none()
-        // matches!(self, Self::Root { .. })
-    }
-
-    // pub const fn target(&self) -> &FuncChunk { 
-    //     match self { 
-    //         Self::Root { target } => target, 
-    //         Self::Node { target, .. } => target 
-    //     } 
-    // } 
-    //
-    // pub fn target_mut(&mut self) -> &mut FuncChunk { 
-    //     match self { 
-    //         Self::Root { target } => target, 
-    //         Self::Node { target, .. } => target 
-    //     } 
-    // } 
-
-}
-
+// #[derive(Debug, Clone)]
+// pub struct CompState {
+//     pub target: CompUnit, 
+//     pub parent_scope: Option<Box<Self>>, 
+// }
+//     
+//
+//
+// impl CompState {
+//     pub const fn new_root(target: CompUnit) -> Self {
+//         Self { target, parent_scope: None }
+//     }
+//
+//     pub fn new(target: CompUnit, parent_scope: Self) -> Self {
+//         let parent_scope = Some(Box::new(parent_scope));
+//         Self { target, parent_scope }
+//     }
+//
+//     pub const fn is_root(&self) -> bool {
+//         self.parent_scope.is_none()
+//         // matches!(self, Self::Root { .. })
+//     }
+//
+//     // pub const fn target(&self) -> &FuncChunk { 
+//     //     match self { 
+//     //         Self::Root { target } => target, 
+//     //         Self::Node { target, .. } => target 
+//     //     } 
+//     // } 
+//     //
+//     // pub fn target_mut(&mut self) -> &mut FuncChunk { 
+//     //     match self { 
+//     //         Self::Root { target } => target, 
+//     //         Self::Node { target, .. } => target 
+//     //     } 
+//     // } 
+//
+// }
+//
 
 #[derive(Debug, Clone)]
 pub struct Scope {
@@ -225,7 +224,7 @@ impl Scope {
         //
         //
         // }
-        for (i, l) in self.locals.iter().rev().enumerate() {
+        for (i, l) in self.locals.iter().enumerate() {
             if l.ident.string() == ident.string() {
                 return Some(i);
             }
