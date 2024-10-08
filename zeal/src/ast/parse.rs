@@ -1,29 +1,5 @@
 use std::rc::Rc;
 
-use anyhow::{anyhow, bail, ensure, Context};
-
-use crate::{
-    ast::{
-        lex::{LineInfo, TokType},
-        Expr, ExprList, LexTok, Tok,
-    },
-    core_types::{
-        idents,
-        num::{ZBool, ZFloat64},
-        str::{ZIdent, ZString},
-        val::ZValue,
-    },
-    err::{
-        self,
-        parse::{ExprInfo, ParseErrInfo, ParseError},
-    },
-};
-
-use super::{
-    expr::{AstList, FormExpr, LoopExpr, WhenForm},
-    VarType,
-};
-
 macro_rules! loop_block {
     ($self: ident, $start_pat: pat, $end_pat: pat) => {{
         if let $start_pat = $self.peek().ty {
@@ -50,6 +26,10 @@ macro_rules! loop_block {
         }
     }};
 }
+
+// macro_rules! open_block {
+// ($self: ident, ) => ()
+// }
 
 /// Tries to match pattern $try_start_pat and then parses
 /// section until given $end_pat pattern is peeked.
@@ -178,7 +158,8 @@ impl Parser {
         };
         let mut exprs = Vec::new();
         while !p.is_eof() {
-            match p.expression_stmt() {
+            let ex = p.expression_stmt();
+            match ex {
                 Ok(ex) => exprs.push(ex),
                 Err(e) => {
                     if let Some(ParseError::Eof) = e.downcast_ref::<ParseError>() {
@@ -200,31 +181,31 @@ impl Parser {
         Ok(exprs)
     }
 
-    fn loop_body(&mut self) -> anyhow::Result<ExprList> {
-        if let TokType::Do | TokType::Begin = self.peek().ty {
-            self.adv(1)?;
-            let mut stmt_exprs = Vec::new();
-            loop {
-                if self.is_eof() {
-                    break Ok(ExprList::Block(stmt_exprs.into()));
-                }
-
-                if let TokType::End = self.peek().ty {
-                    break Ok(ExprList::Block(stmt_exprs.into()));
-                }
-
-                let st = self.expression_stmt()?;
-
-                stmt_exprs.push(st);
-            }
-        } else {
-            anyhow::Result::Err(anyhow!(
-                "{}",
-                ParseError::ExpectedBlock(ParseErrInfo::from(self, None))
-            ))
-        }
-    }
-
+    // fn loop_body(&mut self) -> anyhow::Result<ExprList> {
+    //     if let TokType::Do | TokType::Begin = self.peek().ty {
+    //         self.adv(1)?;
+    //         let mut stmt_exprs = Vec::new();
+    //         loop {
+    //             if self.is_eof() {
+    //                 break Ok(ExprList::Block(stmt_exprs.into()));
+    //             }
+    //
+    //             if let TokType::End = self.peek().ty {
+    //                 break Ok(ExprList::Block(stmt_exprs.into()));
+    //             }
+    //
+    //             let st = self.expression_stmt()?;
+    //
+    //             stmt_exprs.push(st);
+    //         }
+    //     } else {
+    //         anyhow::Result::Err(anyhow!(
+    //             "{}",
+    //             ParseError::ExpectedBlock(ParseErrInfo::from(self, None))
+    //         ))
+    //     }
+    // }
+    //
     /// top level statement in Zeal. Zeal programs are (for now, until i implement modules) the
     /// made up of expression statement 'building blocks'.
     /// i.e.: program ::= expression_stmt* EOF
@@ -251,6 +232,11 @@ impl Parser {
                 self.print_expr(PrintType::Newline)
             }
 
+            TokType::Fn => {
+                self.adv(1)?;
+                self.func_decl()
+            }
+
             TokType::When => {
                 self.adv(1)?;
                 self.when_expr()
@@ -266,6 +252,10 @@ impl Parser {
             TokType::While => {
                 self.adv(1)?;
                 self.while_expr()
+            }
+            TokType::Return => {
+                self.adv(1)?;
+                self.return_expr()
             }
             TokType::Each => {
                 todo!()
@@ -283,6 +273,20 @@ impl Parser {
 
             TokType::Eof => bail!("{}", ParseError::Eof),
             _ => self.place_value_block(BlockType::default()),
+        }
+    }
+
+
+    fn return_expr(&mut self) -> anyhow::Result<Expr> {
+        if matches!(self.peek_ty(), TokType::Semicolon) {
+            self.adv(1)?;
+            let e = Expr::Form(FormExpr::Return { expr: None });
+            Ok(e)
+        } else {
+            let retval = self.expression()?;
+            let retval = Rc::new(retval);
+            let e = Expr::Form(FormExpr::Return { expr: Some(retval) });
+            Ok(e)
         }
     }
 
@@ -362,6 +366,7 @@ impl Parser {
         Ok(res)
     }
 
+
     fn loop_expr(&mut self) -> anyhow::Result<Expr> {
         let loop_body = block!(self, TokType::Do | TokType::Begin, TokType::End)?;
         self.adv(1)?;
@@ -429,6 +434,77 @@ impl Parser {
         Ok(form)
     }
 
+    fn func_decl(&mut self) -> anyhow::Result<Expr> {
+        if matches!(self.peek().ty, TokType::Ident) {
+            let name = self.peek().clone().into_ident();
+            self.adv(1)?;
+            if matches!(self.peek().ty, TokType::OpenParen) {
+                self.adv(1)?;
+                let params = self.parameter_list()?;
+
+                // TODO: Add function return type parsing here
+                let body = try_block!(self, TokType::End)
+                    .context("Error parsing function body. Missing 'end'?")?;
+                ensure!(
+                    matches!(self.peek().ty, TokType::End),
+                    "Expected 'end'. Got: {:?}",
+                    self.peek_ty()
+                );
+                self.adv(1)?;
+                let f = Expr::func_form(name, params, body);
+                Ok(f)
+            } else {
+                bail!(
+                    "Expeceted '(' after function name =>\n\t{}",
+                    ParseError::UnexpectedToken(ParseErrInfo::from(self, None))
+                );
+            }
+        } else {
+            bail!(
+                "Expected identifer after 'fn' =>\n\t{}",
+                ParseError::UnexpectedToken(ParseErrInfo::from(self, None))
+            )
+        }
+    }
+
+    // fn expect_match(&mut self, match_for)
+
+    /// Parses current value at self.peek() as a ZIdent, and then
+    /// advances cursor + 1, if not an identifer, returns error
+    fn expect_ident(&mut self) -> anyhow::Result<ZIdent> {
+        let ty = self.peek().ty;
+        if matches!(ty, TokType::Ident) {
+            let ident = self.peek().clone().into_ident();
+            self.adv(1)?;
+            Ok(ident)
+        } else {
+            bail!("Expected Identifier. Got: {:?}", ty)
+        }
+    }
+
+    fn parameter_list(&mut self) -> anyhow::Result<Option<AstList<ZIdent>>> {
+        let mut params = Vec::new();
+        if matches!(self.peek_ty(), TokType::CloseParen) {
+            return Ok(None);
+        }
+
+        let ident = self.expect_ident()?;
+        params.push(ident);
+
+        while !self.is_eof() && self.peek().ty == TokType::Comma {
+            self.adv(1)?;
+            let ident = self.expect_ident()?;
+            params.push(ident);
+        }
+        ensure!(
+            matches!(self.peek().ty, TokType::CloseParen),
+            "Expected ')' at end of parameter list. Got: {:?}",
+            self.peek().clone()
+        );
+        let res = Some(params.into_boxed_slice().into());
+        Ok(res)
+    }
+
     fn bind_expr(&mut self, var_ty: VarType) -> anyhow::Result<Expr> {
         if let TokType::Ident = self.peek().ty {
             let name = self.peek().clone();
@@ -440,11 +516,38 @@ impl Parser {
                 None
             };
             let name = ZIdent::from(name);
-            let init = initializer.clone();
+
+            let rhs = initializer.map(|e| Rc::new(e));
+            // TODO: Cleanup below, its disguisting and ugg
             let e = match var_ty {
-                VarType::Var => Expr::var_definition(name, init),
-                VarType::Let => Expr::let_definition(name, init),
-                VarType::Const => todo!(),
+                VarType::Var => Expr::Binding(BindingExpr::Var(BindVar { name, rhs })),
+                VarType::Let => {
+                    ensure!(rhs.is_some(), "Let form requires an initializer");
+                    let rhs = rhs.unwrap();
+
+                    Expr::Binding(BindingExpr::Let(BindLet { name, rhs }))
+                }
+                VarType::Const => {
+                    ensure!(rhs.is_some(), "Const form requires a constant initializer");
+                    let rhs = rhs.unwrap();
+
+                    Expr::Binding(BindingExpr::Const(BindConst { name, rhs }))
+                }
+                VarType::Fn => {
+                    ensure!(rhs.is_some(), "Fn form requires an initializer");
+                    let rhs = rhs.unwrap();
+
+                    if let Expr::Newtype(ff @ NewtypeExpr::Function(FuncDecl { name, .. })) =
+                        rhs.as_ref()
+                    {
+                        Expr::Binding(BindingExpr::Const(BindConst {
+                            name: name.clone(),
+                            rhs: Rc::new(Expr::Newtype(ff.clone())),
+                        }))
+                    } else {
+                        bail!("function declaration needs right hand side: ")
+                    }
+                }
             };
             Ok(e)
         } else {
@@ -481,63 +584,10 @@ impl Parser {
         branches.push(WhenForm::End);
         let when = Expr::when_form(branches);
         Ok(when)
-        // while self.peek().ty != TokType::End && !self.is_eof() {
-        //     if matches!(self.peek().ty, TokType::Else) {
-        //
-        //         self.adv(1)?;
-        //         ensure!(
-        //             matches!(self.peek().ty, TokType::FatArrow),
-        //             "Expected '=>' after 'else' in when expression"); self.adv(1)?; let then = self.place_value_block()?;
-        //         // // self.adv(1)?;
-        //         // // if !then.is_block() {
-        //         //
-        //         //     // ensure!(self.peek().ty == TokType::Comma,"require trailing comma if then branch is anything but a block.");
-        //         //      // self.adv(1)?;
-        //         // // }
-        //         branches.push(WhenForm::Else(then));
-        //         branches.push(WhenForm::End);
-        //
-        //     } else {
-        //         let when_cond = self.expression()?;
-        //         ensure!(
-        //             matches!(self.peek().ty, TokType::FatArrow),
-        //                 "Parse Error: '=>' required in when expressions in between branch left hand conditions and right hand blocks/exprs. Ex: cond_expr => block end",
-        //
-        //         );
-        //         self.adv(1)?;
-        //         let then = self.place_value_block()?;
-        //
-        //         if !then.is_block() {
-        //             // require trailing comma if then branch is anything but a block.
-        //             ensure!(self.peek().ty == TokType::Comma,"require trailing comma if then branch is anything but a block.");
-        //              self.adv(1)?;
-        //         }
-        //         branches.push(WhenForm::Branch(when_cond, then));
-        //     }
-        // }
-
-        // let w = Expr::when_form(branches);
-        // Ok(w)
     }
 
-    /// Block expression that can be either:
-    ///
-    ///     place:
-    ///         begin
-    ///             println 50
-    ///         end
-    ///
-    ///             vs.
-    ///
-    ///     value:
-    ///     let x =  begin
-    ///         50
-    ///     end
-    ///
-    ///  DOES NOT CALL self.adv(1)?;
-    ///
-    /// TODO: Implement tracking if expression is place or value.
-    ///
+    // TODO: Implement tracking if expression is place or value.
+    //
     fn place_value_block(&mut self, ty: BlockType) -> anyhow::Result<Expr> {
         let bl = match ty {
             BlockType::WhenBranch => {
@@ -701,6 +751,41 @@ impl Parser {
         Ok(expr)
     }
 
+    fn call(&mut self) -> anyhow::Result<Expr> {
+        let mut expr = self.primary()?;
+
+        while !self.is_eof() && self.peek().ty == TokType::OpenParen {
+            self.adv(1)?;
+            expr = self.call_params(expr)?;
+        }
+        Ok(expr)
+    }
+
+    fn call_params(&mut self, lhs: Expr) -> anyhow::Result<Expr> {
+        if matches!(self.peek_ty(), TokType::CloseParen) {
+            Ok(Expr::Form(FormExpr::Call {
+                callee: Rc::new(lhs),
+                params: None,
+            }))
+        } else {
+            let mut params = Vec::new();
+            loop {
+                let arg = self.expression()?;
+                params.push(arg);
+                if matches!(self.peek_ty(), TokType::Comma) {
+                    self.adv(1)?;
+                    continue;
+                } else {
+                    break;
+                }
+            }
+            Ok(Expr::Form(FormExpr::Call {
+                callee: Rc::new(lhs),
+                params: Some(params.into_boxed_slice().into()),
+            }))
+        }
+    }
+
     fn unary(&mut self) -> anyhow::Result<Expr> {
         match self.peek().ty {
             TokType::Bang | TokType::Minus => {
@@ -710,7 +795,7 @@ impl Parser {
                 let expr = Expr::unary_op(operator, right);
                 Ok(expr)
             }
-            _ => self.primary(),
+            _ => self.call(),
         }
     }
 
@@ -811,6 +896,11 @@ impl Parser {
     #[inline]
     fn peek(&self) -> &Tok {
         &self.tokens[self.i]
+    }
+
+    #[inline]
+    fn peek_ty(&self) -> TokType {
+        self.peek().ty
     }
 
     #[inline]

@@ -2,13 +2,9 @@ use std::{
     fmt::Display, num::ParseIntError, ops::{Add, Deref, DerefMut, Div, Index, IndexMut, Mul, Rem, Sub}, slice
 };
 
-use anyhow::{bail, ensure};
-use num_traits::ToBytes;
 
 use crate::{
-    ast::{BinaryOpType, UnaryOpType},
-    core_types::val::ZValue,
-    sys::{self, array_from_raw, array_from_slice, Packable},
+    ast::{BinaryOpType, UnaryOpType}, sys,
 };
 
 
@@ -36,6 +32,7 @@ impl Display for VarOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Op {
     Return,
+    Call,
     Println,
     Print,
     Pop,
@@ -98,6 +95,7 @@ pub enum Op {
     /// u32 param
     LongJump,
 
+    NoOp,
     Unknown,
 }
 
@@ -158,11 +156,7 @@ impl Display for Op {
 
 impl Op {
     pub const fn is_valid(&self) -> bool {
-        if let Op::Unknown = self {
-            false
-        } else {
-            true
-        }
+        !matches!(self, Op::Unknown)
     }
 
     pub const fn set_local(size: OpParamSize) -> Self {
@@ -313,7 +307,6 @@ impl From<BinaryOpType> for Op {
 impl From<UnaryOpType> for Op {
     fn from(value: UnaryOpType) -> Self {
         match value {
-            UnaryOpType::Call => todo!(),
             UnaryOpType::Negate => Op::Neg,
             UnaryOpType::Not => Op::Not,
         }
@@ -534,6 +527,9 @@ pub enum Opcode {
 impl Opcode {
 
 
+    pub const fn no_op() -> Self {
+        Self::Byte(Op::NoOp)
+    }
 
     pub const fn try_param(&self) -> Option<&OpParam> {
         match self {
@@ -679,8 +675,8 @@ impl Bytecode {
     pub fn slice_mut(&mut self) -> &mut [u8] {
         &mut self.buf
     }
-    pub fn zeroed(len: usize) -> Self {
-        Self { buf: vec![0; len] }
+    pub const fn zeroed() -> Self {
+        Self { buf: Vec::new() }
     }
 
     pub fn len(&self) -> usize {
