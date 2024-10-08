@@ -15,7 +15,8 @@ end
 
 
 var i = 0
-while i <= 100 do
+
+while i <= 5 do
   when 
     i / 3 == 0 and i / 5 == 0 -> (println "FizzBuzz"),
     i / 3 == 0 -> (println "Fizz"),

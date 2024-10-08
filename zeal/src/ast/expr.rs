@@ -282,7 +282,6 @@ impl ExprList {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub enum NewtypeExpr {
     Function(FuncDecl),
@@ -299,11 +298,9 @@ pub enum Expr {
     List(ExprList),
     Atom(ZValue),
     Newtype(NewtypeExpr),
-    #[default]
-    Nil,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct FuncDecl {
 
     pub name: ZIdent, 
@@ -319,6 +316,23 @@ impl FuncDecl {
             0
         }
     }
+}
+
+
+#[derive(Debug, Clone, Default)]
+pub enum Expr {
+    Binding {
+        ty: VarType,
+        /// Must be ZValue::Ident
+        name: ZValue,
+        init: Rc<Expr>,
+    },
+    Function(FuncDecl),
+    Form(FormExpr),
+    List(ExprList),
+    Atom(ZValue),
+    #[default]
+    Nil,
 }
 
 #[derive(Debug, Clone)]
@@ -355,12 +369,6 @@ pub enum BindingExpr {
     Assign(VarAssign)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Namespace {
-    Module,
-    Function
-}
-
 impl Expr {
 
     pub fn func_form(name: ZIdent, args: Option<AstList<ZIdent>>, body: ExprList) -> Self {
@@ -373,6 +381,14 @@ impl Expr {
     pub const fn is_block(&self) -> bool {
         matches!(self, Self::List(ExprList::Block(_)))
     } 
+
+
+
+    pub fn func_form(name: ZIdent, args: Option<AstList<ZIdent>>, body: ExprList) -> Self {
+        let ff = FuncDecl{ name, params: args, body }; 
+
+        Self::Function(ff)
+    }
 
     pub fn stringify<T>(item: &T) -> Self
     where
@@ -419,31 +435,21 @@ impl Expr {
         }
     }
 
-    /// Attempts to put self into an ExprList. If self is Expr::List,
-    /// conversion is just a cast, otherwise converts self properties into strings and then shoves
-    /// it into an ExprList::Tuple
-    // pub fn into_tuple(self) -> ExprList {
-    //     match self {
-    //         Expr::Binding(be) => {
-    //             match be {
-    //                 BindingExpr::Const(e) | 
-    //                 BindingExpr::Let(e) |  
-    //                 BindingExpr::Var(e) |  
-    //                 BindingExpr::Assign(e) => {}  
-    //                 BindingExpr::Func(_) => todo!(),
-    //
-    //             }
-    //             let t = Expr::stringify(&ty);
-    //             let n = Expr::stringify(&name);
-    //             let i = Expr::clone(init.as_ref());
-    //             ExprList::Tuple([t, n, i].into())
-    //         }
-    //         Expr::Form(_) => todo!(),
-    //         Expr::List(_) => todo!(),
-    //         Expr::Atom(_) => todo!(),
-    //         Expr::Nil => todo!(),
-    //     }
-    // }
+    pub fn into_tuple(self) -> ExprList {
+        match self {
+            Expr::Binding { ty, name, init } => {
+                let t = Expr::stringify(&ty);
+                let n = Expr::stringify(&name);
+                let i = Expr::clone(init.as_ref());
+                ExprList::Tuple([t, n, i].into())
+            }
+            Expr::Form(_) => todo!(),
+            Expr::List(_) => todo!(),
+            Expr::Atom(_) => todo!(),
+            Expr::Nil => todo!(),
+            Expr::Function(func_decl) => todo!(),
+        }
+    }
 
     #[inline]
     pub fn expect_call(&self) -> FormExpr {
@@ -513,7 +519,8 @@ impl Expr {
             Expr::Atom(_) => "Atom",
             Expr::Nil => "Nil",
             Expr::Form(_) => "Call",
-            Expr::Newtype(_) => "Function" 
+
+            Expr::Function(_) => "Function", 
         }
     }
 
@@ -638,8 +645,11 @@ impl Expr {
     }
 }
 
+
+
+
 mod fmt {
-    use std::{any::Any, fmt::Debug};
+    use std::{fmt::Debug};
 
     use log::debug;
 

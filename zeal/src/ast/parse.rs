@@ -1,31 +1,5 @@
 use std::rc::Rc;
 
-use anyhow::{anyhow, bail, ensure, Context};
-use log::{debug, info, warn};
-
-use crate::{
-    ast::{
-        expr::{BindConst, BindFunc, BindLet, FuncDecl, FuncExpr, NewtypeExpr},
-        lex::{LineInfo, TokType},
-        Expr, ExprList, LexTok, Tok,
-    },
-    core_types::{
-        idents,
-        num::{ZBool, ZFloat64},
-        str::{ZIdent, ZString},
-        val::ZValue,
-    },
-    err::{
-        self,
-        parse::{ExprInfo, ParseErrInfo, ParseError},
-    },
-};
-
-use super::{
-    expr::{AstList, BindVar, BindingExpr, FormExpr, LoopExpr, WhenForm},
-    VarType,
-};
-
 macro_rules! loop_block {
     ($self: ident, $start_pat: pat, $end_pat: pat) => {{
         if let $start_pat = $self.peek().ty {
@@ -169,6 +143,7 @@ impl ParseErrInfo {
         }
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct Parser {
     i: usize,
@@ -301,6 +276,7 @@ impl Parser {
         }
     }
 
+
     fn return_expr(&mut self) -> anyhow::Result<Expr> {
         if matches!(self.peek_ty(), TokType::Semicolon) {
             self.adv(1)?;
@@ -313,6 +289,84 @@ impl Parser {
             Ok(e)
         }
     }
+
+    fn func_decl(&mut self) -> anyhow::Result<Expr> {
+        if matches!(self.peek().ty, TokType::Ident) {
+            let name = self.peek().clone().into_ident();
+            self.adv(1)?;
+            if matches!(self.peek().ty, TokType::OpenParen) {
+                self.adv(1)?;
+                let params = self.parameter_list()?;
+
+                // TODO: Add function return type parsing here
+                let body = try_block!(self, TokType::End)
+                    .context("Error parsing function body. Missing 'end'?")?;
+                ensure!(
+                    matches!(self.peek().ty, TokType::End),
+                    "Expected 'end'. Got: {:?}",
+                    self.peek_ty()
+                );
+                self.adv(1)?;
+                let f = Expr::func_form(name, params, body);
+                Ok(f)
+            } else {
+                bail!(
+                    "Expeceted '(' after function name =>\n\t{}",
+                    ParseError::UnexpectedToken(ParseErrInfo::from(self, None))
+                );
+            }
+        } else {
+            bail!(
+                "Expected identifer after 'fn' =>\n\t{}",
+                ParseError::UnexpectedToken(ParseErrInfo::from(self, None))
+            )
+        }
+    }
+
+    #[inline]
+    fn peek_ty(&self) -> TokType {
+        self.peek().ty
+    }
+
+    // fn expect_match(&mut self, match_for)
+
+    /// Parses current value at self.peek() as a ZIdent, and then
+    /// advances cursor + 1, if not an identifer, returns error
+    fn expect_ident(&mut self) -> anyhow::Result<ZIdent> {
+        let ty = self.peek().ty;
+        if matches!(ty, TokType::Ident) {
+            let ident = self.peek().clone().into_ident();
+            self.adv(1)?;
+            Ok(ident)
+        } else {
+            bail!("Expected Identifier. Got: {:?}", ty)
+        }
+    }
+
+    fn parameter_list(&mut self) -> anyhow::Result<Option<AstList<ZIdent>>> {
+        let mut params = Vec::new();
+        if matches!(self.peek_ty(), TokType::CloseParen) {
+            return Ok(None);
+        }
+
+        let ident = self.expect_ident()?;
+        params.push(ident);
+
+        while !self.is_eof() && self.peek().ty == TokType::Comma {
+            self.adv(1)?;
+            let ident = self.expect_ident()?;
+            params.push(ident);
+        }
+        ensure!(
+            matches!(self.peek().ty, TokType::CloseParen),
+            "Expected ')' at end of parameter list. Got: {:?}",
+            self.peek().clone()
+        );
+        let res = Some(params.into_boxed_slice().into());
+        Ok(res)
+    }
+
+
     fn loop_expr(&mut self) -> anyhow::Result<Expr> {
         let loop_body = block!(self, TokType::Do | TokType::Begin, TokType::End)?;
         self.adv(1)?;
