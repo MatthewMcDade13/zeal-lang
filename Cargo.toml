@@ -1,5 +1,5 @@
 
 [workspace]
-members = [
-  "zeal", # Replace with the name of your existing project directory
-]
+edition = "2021"
+resolver = "2"
+members = ["zeal-ast", "zeal-core", "zeal-llvm", "zvm"]

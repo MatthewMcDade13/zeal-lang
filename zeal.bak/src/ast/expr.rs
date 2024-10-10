@@ -8,6 +8,16 @@ use crate::core_types::{
 
 use super::{BinaryOpType, UnaryOpType, VarType};
 
+pub type ExprNode = Rc<Expr>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Atom(ZValue);
+
+pub enum Tuple {
+    Double(ExprNode, ExprNode),
+    Triple(ExprNode, ExprNode, ExprNode),
+}
+
 #[derive(Debug, Default, Clone)]
 pub enum LoopExpr {
     #[default]
