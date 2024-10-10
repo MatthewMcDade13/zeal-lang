@@ -1,6 +1,8 @@
 use std::{
+    any::TypeId,
     fmt::Display,
     hash::Hash,
+    mem::MaybeUninit,
     ops::{Index, IndexMut},
 };
 
@@ -27,6 +29,10 @@ impl StackCursor {
     pub const fn offset(self, offset: usize) -> Self {
         let offset = (offset as isize) * -1;
         self.addn(offset)
+    }
+
+    pub fn set(&mut self, loc: usize) {
+        self.0 = loc as isize;
     }
 
     pub const fn inc(self) -> Self {
@@ -85,7 +91,7 @@ impl StackCursor {
 #[derive(Debug, Clone)]
 pub struct Stack<const S: usize, T>
 where
-    T: Clone,
+    T: Default,
 {
     pub cursor: StackCursor,
     buf: [T; S],
@@ -93,7 +99,7 @@ where
 
 impl<const S: usize, T> Display for Stack<S, T>
 where
-    T: Clone + std::fmt::Display,
+    T: Clone + Default + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::from("\n----------\nSTACK\n----------\n");
@@ -152,7 +158,7 @@ impl<const S: usize> IntoIterator for Stack<S, ZValue> {
 
 impl<const S: usize, T> Stack<S, T>
 where
-    T: Clone,
+    T: Default,
 {
     pub const fn len(&self) -> usize {
         if let Some(index) = self.cursor.try_as_index() {
@@ -227,18 +233,34 @@ where
 
 impl<const S: usize, T> Stack<S, T>
 where
-    T: Clone + Default + std::fmt::Display + std::fmt::Debug,
+    T: Default + Clone + 'static + Display,
 {
     pub fn new() -> Self {
-        let buf: [T; S] = (0..S)
-            .map(|_| T::default())
-            .collect::<Vec<T>>()
-            .try_into()
-            .unwrap();
+        let mut buf: Vec<T> = vec![];
+        buf.resize_with(S, Default::default);
+        let buf: [T; S] = if let Ok(b) = buf.try_into() {
+            b
+        } else {
+            panic!(
+                "error converting vec to array of [{:?}; {S}]",
+                TypeId::of::<Self>()
+            );
+        };
+        // let buf: [MaybeUninit<T>; S] = [const { MaybeUninit::uninit() }; S];
+        // let x  = buf[0];
+        // let y = x.as_bytes_mut()
+        //
         Self {
             cursor: StackCursor::empty(),
             buf,
         }
+    }
+
+    /// Pops n items from stack,Returns number of elements that were popped.
+    pub fn popn(&mut self, n: usize) -> usize {
+        let i = std::cmp::max(0, std::cmp::min(n, self.buf.len()));
+        self.cursor.set(i);
+        n - i
     }
 
     pub fn pop(&mut self) -> Option<T> {
@@ -263,16 +285,36 @@ where
 
 impl<const S: usize, T> Default for Stack<S, T>
 where
-    T: Clone + Default + std::fmt::Display + std::fmt::Debug,
+    T: Clone + Default + std::fmt::Display + std::fmt::Debug + 'static,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
+impl<const S: usize, T> Index<std::ops::RangeFrom<usize>> for Stack<S, T>
+where
+    T: Clone + Default,
+{
+    type Output = [T];
+
+    fn index(&self, r: std::ops::RangeFrom<usize>) -> &Self::Output {
+        &self.buf[r.start..]
+    }
+}
+
+impl<const S: usize, T> IndexMut<std::ops::RangeFrom<usize>> for Stack<S, T>
+where
+    T: Clone + Default,
+{
+    fn index_mut(&mut self, r: std::ops::RangeFrom<usize>) -> &mut Self::Output {
+        &mut self.buf[r.start..]
+    }
+}
+
 impl<const S: usize, T> Index<usize> for Stack<S, T>
 where
-    T: Clone,
+    T: Clone + Default,
 {
     type Output = T;
 
@@ -283,9 +325,29 @@ where
 
 impl<const S: usize, T> IndexMut<usize> for Stack<S, T>
 where
-    T: Clone,
+    T: Clone + Default,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.buf[index]
+    }
+}
+
+impl<const S: usize, T> Index<std::ops::Range<usize>> for Stack<S, T>
+where
+    T: Clone + Default,
+{
+    type Output = [T];
+
+    fn index(&self, range: std::ops::Range<usize>) -> &Self::Output {
+        &self.buf[range.start..range.end]
+    }
+}
+
+impl<const S: usize, T> IndexMut<std::ops::Range<usize>> for Stack<S, T>
+where
+    T: Clone + Default,
+{
+    fn index_mut(&mut self, r: std::ops::Range<usize>) -> &mut Self::Output {
+        &mut self.buf[r.start..r.end]
     }
 }

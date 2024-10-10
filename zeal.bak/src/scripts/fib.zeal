@@ -1,6 +1,38 @@
 
 
-pub fn fib(n int) :: int 
+
+fn add(a, b) 
+  a + b
+end
+
+func
+
+fn add(a: int, b: int) -> int 
+ a + b 
+end
+
+let add = func x y -> x + y
+let fn add x y = x + y
+
+func add(a int, b int) -> int 
+  a + b
+end
+
+
+struct Type 
+end
+
+open Type 
+  impl Trait::method()
+end
+
+
+const add = func(a, b) -> 
+  a + b
+end
+
+
+pub fn fib(n int) -> int 
   if n == 1 then 
     1
   else

@@ -13,8 +13,6 @@ when
   else -> (println "else")
 end
 
-  
-
 
 var i = 0
 
