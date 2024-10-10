@@ -2,4 +2,4 @@
 [workspace]
 edition = "2021"
 resolver = "2"
-members = ["zeal-ast", "zeal-core", "zeal-llvm", "zvm"]
+members = [ "zeal","zeal-ast", "zeal-core", "zeal-llvm", "zvm"]
