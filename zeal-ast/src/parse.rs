@@ -106,6 +106,7 @@ pub enum BlockType {
     /// 'begin' to 'end'
     Begin,
 }
+
 #[derive(Debug, Clone)]
 pub struct Parser {
     pub i: usize,
@@ -248,6 +249,7 @@ impl Parser {
                 self.adv(1)?;
                 let body = ExprStmt::block(body);
                 let f = ExprStmt::func_decl(name, params, body);
+
                 Ok(f)
             } else {
                 bail!(
