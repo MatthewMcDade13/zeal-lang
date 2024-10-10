@@ -1,14 +1,9 @@
 use std::{
-    collections::HashSet,
-    fmt::Display,
     ops::{Deref, DerefMut},
     rc::Rc,
 };
 
-use lazy_static::lazy_static;
-use zeal_core::val::ZValue;
 
-use super::{BinaryOpType, UnaryOpType};
 
 pub type AstRune = Rc<str>;
 pub type ExprNode = Rc<Expr>;
