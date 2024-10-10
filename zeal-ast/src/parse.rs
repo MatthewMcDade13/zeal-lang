@@ -1,6 +1,5 @@
-use std::{rc::Rc, string};
-
 use anyhow::{anyhow, bail, ensure, Context};
+use std::rc::Rc;
 
 use crate::{
     err::{ParseErrInfo, ParseError},
