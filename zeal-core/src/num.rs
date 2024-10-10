@@ -21,6 +21,7 @@ impl Display for ZFloat64 {
         write!(f, "{}", self.0)
     }
 }
+impl Eq for ZFloat64 {}
 
 // impl Ord for ZFloat64 {
 //     fn cmp(&self, other: &Self) -> std::cmp::Ordering {

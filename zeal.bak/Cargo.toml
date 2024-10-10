@@ -14,6 +14,9 @@ path = "src/lib.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+zeal-llvm = { path = "../zeal-llvm" }
+zeal-ast = { path = "../zeal-ast" }
+zeal-core = { path = "../zeal-core" }
 anyhow = "1.0.82"
 bytemuck = { version = "1.16.0", features = [
   "min_const_generics",
@@ -27,6 +30,8 @@ bytemuck = { version = "1.16.0", features = [
 ] }
 clap = "4.5.4"
 env_logger = "0.11.5"
+
+inkwell = { version = "0.5.0", features = ["llvm18-0-prefer-static"] }
 log = "0.4.22"
 logos = "0.14.0"
 num-derive = "0.4.2"

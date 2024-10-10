@@ -8,6 +8,16 @@ use crate::core_types::{
 
 use super::{BinaryOpType, UnaryOpType, VarType};
 
+pub type ExprNode = Rc<Expr>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Atom(ZValue);
+
+pub enum Tuple {
+    Double(ExprNode, ExprNode),
+    Triple(ExprNode, ExprNode, ExprNode),
+}
+
 #[derive(Debug, Default, Clone)]
 pub enum LoopExpr {
     #[default]
@@ -331,6 +341,7 @@ pub enum Expr {
     Form(FormExpr),
     List(ExprList),
     Atom(ZValue),
+
     #[default]
     Nil,
 }
@@ -519,7 +530,10 @@ impl Expr {
             Expr::Atom(_) => "Atom",
             Expr::Nil => "Nil",
             Expr::Form(_) => "Call",
+<<<<<<< HEAD:zeal.bak/src/ast/expr.rs
 
+=======
+>>>>>>> d77b955bc66bb133db314dfbd1c6e19ca0365611:zeal/src/ast/expr.rs
             Expr::Function(_) => "Function", 
         }
     }
@@ -650,8 +664,11 @@ impl Expr {
 
 mod fmt {
     use std::{fmt::Debug};
+<<<<<<< HEAD:zeal.bak/src/ast/expr.rs
 
     use log::debug;
+=======
+>>>>>>> d77b955bc66bb133db314dfbd1c6e19ca0365611:zeal/src/ast/expr.rs
 
     use super::*;
 
@@ -930,6 +947,7 @@ mod fmt {
 
             }
             Expr::Nil => String::from("nil"),
+<<<<<<< HEAD:zeal.bak/src/ast/expr.rs
             Expr::Newtype(NewtypeExpr::Function(FuncDecl { name, params: args, body })) => {
                 
                     let params = { 
@@ -954,6 +972,11 @@ mod fmt {
 
             }
         _ => todo!()
+=======
+            Expr::Function(func_decl) => {
+                todo!()
+            }, 
+>>>>>>> d77b955bc66bb133db314dfbd1c6e19ca0365611:zeal/src/ast/expr.rs
         }
 
     }
