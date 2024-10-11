@@ -1,12 +1,6 @@
 pub mod buf;
-pub mod bytes;
-pub mod err;
-pub mod num;
 pub mod rune;
-pub mod str;
 pub mod val;
-
-
 
 #[inline]
 pub fn clamp<T>(lower: T, val: T, higher: T) -> T
@@ -73,8 +67,4 @@ where
     let mut arr = [default_val; S];
     copy_slice_into(&mut arr, sl);
     arr
-}
-
-pub trait Packable<In: num_traits::Num, Out = Self> {
-    fn pack(n: In) -> Out;
 }

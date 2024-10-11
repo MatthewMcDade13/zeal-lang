@@ -1,0 +1,40 @@
+let x = 5 * 5
+
+let y = x == 25
+
+println x
+println y
+
+var ttt
+
+
+if x <= 10 then
+  println "if"
+elseif x == 25 then 
+  println "elseif"
+else 
+  println "else"
+end
+
+begin 
+  let x = "local"
+  println x 
+  begin 
+    let y = "inner local"
+    println y
+  end
+end
+
+
+var s = "yoooo"
+
+println s
+
+s = "ayyyyee"
+
+println s
+
+
+
+
+

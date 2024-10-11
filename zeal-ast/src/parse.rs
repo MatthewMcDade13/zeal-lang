@@ -674,10 +674,10 @@ impl Parser {
             }
             LexTok::OpenParen => {
                 self.adv(1)?;
-                let expr = self.expression()?;
+                let expr = self.expression_stmt()?;
                 if self.peek().ty == TokType::CloseParen {
                     self.adv(1)?;
-                    Ok(expr)
+                    Ok(expr.into_atom_expr())
                 } else {
                     Err(anyhow::anyhow!(
                         "Expected matching ending right parenthesis in expression"

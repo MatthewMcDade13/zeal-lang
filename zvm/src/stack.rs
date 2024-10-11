@@ -268,6 +268,17 @@ where
     }
 }
 
+impl<const S: usize, T> Index<std::ops::RangeFrom<usize>> for Stack<S, T>
+where
+    T: Clone,
+{
+    type Output = [T];
+
+    fn index(&self, r: std::ops::RangeFrom<usize>) -> &Self::Output {
+        &self.buf[r.start..]
+    }
+}
+
 impl<const S: usize, T> Index<usize> for Stack<S, T>
 where
     T: Clone,
