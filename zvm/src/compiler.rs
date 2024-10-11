@@ -1,4 +1,10 @@
 //Bytecode compiler for ZealVM bytecode
+
+// use anyhow::bail;
+// use zeal_ast::{expr::Expr, Ast, BinaryOpType};
+//
+// use crate::{chunk::Chunk, opcode::Op};
+//
 // pub struct Archon;
 //
 // impl Archon {

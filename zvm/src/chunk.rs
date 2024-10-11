@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 use anyhow::bail;
 use zeal_core::{
@@ -33,6 +33,19 @@ use super::{
 //         }
 //     }
 // }
+
+#[derive(Debug, Clone)]
+pub struct FuncChunk {
+    pub arity: u8,
+    pub chunk: Chunk,
+    name: Rc<str>,
+}
+
+impl FuncChunk {
+    pub fn name(&self) -> &str {
+        self.name.as_ref
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Chunk {

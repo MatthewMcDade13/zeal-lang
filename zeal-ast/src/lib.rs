@@ -4,6 +4,8 @@ pub mod lex;
 pub mod parse;
 
 use expr::{AstList, ExprStmt};
+use lex::{Tok, TokBuffer};
+use parse::Parser;
 
 use std::fmt::Display;
 use std::num::ParseIntError;
@@ -34,8 +36,16 @@ impl From<ParseIntError> for LexError {
         }
     }
 }
-pub trait AstPass {
-    fn pipe(&self, ast: Ast) -> anyhow::Result<Ast>;
+
+pub trait AstWalker<T, R> {
+    fn visit(&mut self, node: &T) -> anyhow::Result<R>;
+}
+
+pub trait AstNode<W: AstWalker<Self, R>, R>
+where
+    Self: Sized,
+{
+    fn walk(&self, walker: &mut W) -> anyhow::Result<R>;
 }
 
 #[derive(Debug, Clone)]
@@ -44,32 +54,28 @@ pub struct Ast {
 }
 
 impl Ast {
-    pub fn pipe<Pass>(self, pass: &mut Pass) -> anyhow::Result<Self>
-    where
-        Pass: AstPass,
-    {
-        pass.pipe(self)
+    pub fn from_toks(toks: &[Tok]) -> anyhow::Result<Self> {
+        let ast = Parser::parse_ast(toks)?;
+        // let symbols = Self::build_symbol_table(&tree);
+        Ok(ast)
+        // Ok(Self(ast))
     }
 
-    //     pub fn from_toks(toks: &[Tok]) -> anyhow::Result<Self> {
-    //         let tree = Parser::parse_ast(toks)?;
-    //         // let symbols = Self::build_symbol_table(&tree);
-    //         let s = Self { tree };
-    //         Ok(s)
-    //         // Ok(Self(ast))
-    //     }
-    //
-    //     // pub fn from_str(str: &str) -> anyhow::Result<Self> {
-    //     //     let buf = TokBuffer::read_string(str)?;
-    //     //     let s = Self::from_toks(buf.slice())?;
-    //     //     Ok(s)
-    //     // }
-    //
-    //     pub fn from_file(path: &str) -> anyhow::Result<Self> {
-    //         let buf = TokBuffer::read_file(path)?;
-    //         let s = Self::from_toks(buf.slice())?;
-    //         Ok(s)
-    //     }
+    pub fn from_file(path: &str) -> anyhow::Result<Self> {
+        let buf = TokBuffer::read_file(path)?;
+        let s = Self::from_toks(buf.slice())?;
+        Ok(s)
+    }
+}
+
+impl std::str::FromStr for Ast {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let buf = TokBuffer::read_string(s)?;
+        let s = Self::from_toks(buf.slice())?;
+        Ok(s)
+    }
 }
 
 impl Display for Ast {

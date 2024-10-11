@@ -3,8 +3,6 @@ use std::{
     rc::Rc,
 };
 
-
-
 pub type AstRune = Rc<str>;
 pub type ExprNode = Rc<Expr>;
 
@@ -204,6 +202,13 @@ pub enum ExprStmt {
 }
 
 impl ExprStmt {
+    pub fn into_atom_expr(self) -> Expr {
+        match self {
+            Self::Atom(e) => e,
+            _ => panic!("Cannot cast ExprStmt into Atom Expr!, Got: {:?}", self),
+        }
+    }
+
     pub const fn continue_stmt() -> Self {
         Self::Escape(EscapeExpr::Continue)
     }
@@ -285,6 +290,8 @@ pub enum Expr {
     Rune(AstRune),
     Bool(bool),
     // RuneWord(Rc<[(AstRune, ExprNode)]>),
+    Byte(u8),
+    SByte(i8),
     Int(isize),
     Uint(usize),
     Float(f64),
@@ -329,6 +336,8 @@ impl Expr {
             Expr::Assign { .. } => "Assign",
             Expr::Call { .. } => "Call",
             Expr::Unit => "()",
+            Expr::Byte(_) => "Unsigned Byte",
+            Expr::SByte(_) => "Signed Byte",
         }
     }
 
@@ -406,7 +415,7 @@ impl Expr {
                 Self::pair(a, b.clone())
             }
             3 => {
-                let a = args.get(0).unwrap().clone();
+                let a = args.first().unwrap().clone();
                 let b = args.get(1).unwrap().clone();
                 let c = args.get(2).unwrap().clone();
                 Self::triple(a, b, c)

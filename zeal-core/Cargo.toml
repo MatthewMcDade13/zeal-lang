@@ -18,7 +18,7 @@ bytemuck = { version = "1.16.0", features = [
 ] }
 clap = "4.5.4"
 env_logger = "0.11.5"
-
+thiserror = "1.0.58"
 inkwell = { version = "0.5.0", features = ["llvm18-0-prefer-static"] }
 log = "0.4.22"
 num-traits = "0.2.19"

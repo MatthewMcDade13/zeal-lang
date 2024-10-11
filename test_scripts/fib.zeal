@@ -1,0 +1,46 @@
+
+
+
+fn add(a, b) 
+  a + b
+end
+
+func
+
+fn add(a: int, b: int) -> int 
+ a + b 
+end
+
+let add = func x y -> x + y
+let fn add x y = x + y
+
+func add(a int, b int) -> int 
+  a + b
+end
+
+
+struct Type 
+end
+
+open Type 
+  impl Trait::method(self)
+    ...
+  end
+end
+
+const add fn(int int) int = fn(a,b) int =>
+  a + b
+end
+
+
+pub func fib(n int)  
+  if n == 1 then 
+    1
+  else
+   let x = fib(n - 1) + fib(n -  2) 
+   x
+  end
+end
+
+println fib(5)
+
