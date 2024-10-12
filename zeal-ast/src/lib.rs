@@ -25,7 +25,31 @@ where
         walker.visit(self)
     }
 }
-
+//
+// <<<<<<< HEAD
+// =======
+// impl From<ParseIntError> for LexError {
+//     fn from(err: ParseIntError) -> Self {
+//         use std::num::IntErrorKind::*;
+//         match err.kind() {
+//             PosOverflow | NegOverflow => LexError::InvalidNumber("overflow error".to_owned()),
+//             _ => LexError::InvalidNumber("other error".to_owned()),
+//         }
+//     }
+// }
+//
+// pub trait AstWalker<T, R> {
+//     fn visit(&mut self, node: &T) -> anyhow::Result<R>;
+// }
+//
+// pub trait AstNode<W: AstWalker<Self, R>, R>
+// where
+//     Self: Sized,
+// {
+//     fn walk(&self, walker: &mut W) -> anyhow::Result<R>;
+// }
+//
+// >>>>>>> b9e7f67399bc78d594b62afd91b6e647862ab3a5
 #[derive(Debug, Clone)]
 pub struct Ast {
     pub tree: AstList<ExprStmt>,
