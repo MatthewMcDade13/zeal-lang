@@ -142,32 +142,6 @@ impl Parser {
         let ast = Ast { tree };
         Ok(ast)
     }
-
-    fn loop_body(&mut self) -> anyhow::Result<AstList<ExprStmt>> {
-        if let TokType::Do | TokType::Begin = self.peek().ty {
-            self.adv(1)?;
-            let mut stmt_exprs = Vec::new();
-            loop {
-                if self.is_eof() {
-                    break Ok(AstList::new(stmt_exprs));
-                }
-
-                if let TokType::End = self.peek().ty {
-                    break Ok(AstList::new(stmt_exprs));
-                }
-
-                let st = self.expression_stmt()?;
-
-                stmt_exprs.push(st);
-            }
-        } else {
-            anyhow::Result::Err(anyhow!(
-                "{}",
-                ParseError::ExpectedBlock(ParseErrInfo::from(self, None))
-            ))
-        }
-    }
-
     /// top level statement in Zeal. Zeal programs are (for now, until i implement modules) the
     /// made up of expression statement 'building blocks'.
     /// i.e.: program ::= expression_stmt* EOF
@@ -193,7 +167,10 @@ impl Parser {
                 self.adv(1)?;
                 self.print_expr(PrintType::Newline)
             }
-
+            TokType::Func => {
+                self.adv(1)?;
+                self.func_decl()
+            }
             TokType::When => {
                 self.adv(1)?;
                 self.when_expr()
@@ -410,7 +387,6 @@ impl Parser {
                 let otherwise = self.place_value_block(BlockType::WhenElse)?; //block!(self, TokType::ArrowRight, TokType::End | TokType::Comma)?;
 
                 branches.push(WhenForm::Else(otherwise));
-                println!("Matched Else: {:?}", self.peek().ty);
                 break;
             } else {
                 let cond = self.expression()?;
@@ -420,7 +396,6 @@ impl Parser {
             // self.adv(1)?;
             // branches.push(WhenForm::Branch(cond,, then.into_expr()));
         }
-        println!("End of when");
         branches.push(WhenForm::End);
         let when = ExprStmt::when_block(branches);
         Ok(when)
@@ -516,17 +491,6 @@ impl Parser {
         Ok(call)
     }
 
-    fn is_terminal(&self) -> bool {
-        matches!(self.peek().ty, TokType::Semicolon | TokType::NewLine)
-    }
-
-    fn eat_terminals(&mut self) -> anyhow::Result<()> {
-        while self.is_terminal() && !self.is_eof() {
-            self.adv(1)?;
-        }
-        Ok(())
-    }
-
     fn logical_bitwise(&mut self) -> anyhow::Result<Expr> {
         let mut expr = self.comparison()?;
         loop {
@@ -539,10 +503,9 @@ impl Parser {
 
                     expr = Expr::binary_op(expr, operator, right);
                 }
-                _ => break,
+                _ => break Ok(expr),
             }
         }
-        Ok(expr)
     }
 
     #[inline]
@@ -579,10 +542,9 @@ impl Parser {
 
                     expr = Expr::binary_op(expr, operator, right);
                 }
-                _ => break,
+                _ => break Ok(expr),
             }
         }
-        Ok(expr)
     }
 
     fn comparison(&mut self) -> anyhow::Result<Expr> {
@@ -601,11 +563,9 @@ impl Parser {
                     let right = self.term()?;
                     expr = Expr::binary_op(expr, operator, right);
                 }
-                _ => break,
+                _ => break Ok(expr),
             }
         }
-
-        Ok(expr)
     }
 
     fn factor(&mut self) -> anyhow::Result<Expr> {
@@ -619,11 +579,9 @@ impl Parser {
                     let right = self.unary()?;
                     expr = Expr::binary_op(expr, operator, right);
                 }
-                _ => break,
+                _ => break Ok(expr),
             }
         }
-
-        Ok(expr)
     }
 
     fn call_args(&mut self, call_head: Expr) -> anyhow::Result<Expr> {
@@ -641,6 +599,7 @@ impl Parser {
             "Expected ')' after call arguments"
         );
         self.adv(1)?;
+
         let ce = Expr::call_expr(call_head, args);
         Ok(ce)
     }
@@ -653,11 +612,9 @@ impl Parser {
                     self.adv(1)?;
                     expr = self.call_args(expr)?;
                 }
-                _ => break,
+                _ => break Ok(expr),
             }
         }
-
-        Ok(expr)
     }
 
     fn unary(&mut self) -> anyhow::Result<Expr> {
@@ -687,6 +644,11 @@ impl Parser {
             LexTok::Nil => {
                 self.adv(1)?;
                 Ok(Expr::Unit)
+            }
+            LexTok::Int(ref n) => {
+                let n = *n;
+                self.adv(1)?;
+                Ok(Expr::Int(n))
             }
             LexTok::Float(ref n) => {
                 let n = *n;
@@ -728,25 +690,6 @@ impl Parser {
                 // Ok(expr)
             }
         }
-    }
-
-    fn equality(&mut self) -> anyhow::Result<Expr> {
-        let mut expr = self.comparison()?;
-        loop {
-            match self.peek().ty {
-                TokType::BangEq | TokType::EqEq => {
-                    self.adv(1)?;
-                    let operator = self.peek_prev().clone().into_ast_rune();
-                    let operator = Expr::Rune(operator);
-
-                    let right = self.comparison()?;
-                    expr = Expr::binary_op(expr, operator, right);
-                }
-                _ => break,
-            }
-        }
-
-        Ok(expr)
     }
 
     fn is_eof(&self) -> bool {

@@ -410,7 +410,6 @@ impl Expr {
         Self::List(list)
     }
 
-    #[inline]
     pub fn pair(a: Self, b: Self) -> Self {
         Self::Pair([Rc::new(a), Rc::new(b)])
     }
@@ -456,7 +455,8 @@ impl Expr {
     fn args_to_expr(args: Vec<Self>) -> Self {
         match args.len() {
             0 => Self::Unit,
-            1 | 2 => {
+            1 => args.first().unwrap().clone(),
+            2 => {
                 let a = args.first().unwrap().clone();
                 let b = args.get(1).unwrap_or(&Expr::Unit);
                 Self::pair(a, b.clone())

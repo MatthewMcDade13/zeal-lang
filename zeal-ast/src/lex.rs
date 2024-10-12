@@ -122,7 +122,7 @@ impl Tok {
                 | TokType::Trait
                 | TokType::Impl
                 | TokType::If
-                | TokType::Fn
+                | TokType::Func
                 | TokType::Return
                 | TokType::Let
                 | TokType::Const
@@ -183,7 +183,7 @@ pub enum TokType {
     Impl,
     If,
     Else,
-    Fn,
+    Func,
 
     And,
 
@@ -275,7 +275,7 @@ impl From<&LexTok> for TokType {
             LexTok::Impl => TokType::Impl,
             LexTok::If => TokType::If,
             LexTok::Else => TokType::Else,
-            LexTok::Fn => TokType::Fn,
+            LexTok::Func => TokType::Func,
             LexTok::And => TokType::And,
             LexTok::Or => TokType::Or,
             LexTok::Return => TokType::Return,
@@ -379,8 +379,8 @@ pub enum LexTok {
     If,
     #[token("else")]
     Else,
-    #[token("fn")]
-    Fn,
+    #[token("func")]
+    Func,
 
     #[token("and")]
     And,
@@ -528,8 +528,8 @@ pub enum LexTok {
     #[token("=>")]
     FatArrow,
 
-    #[regex(r"-?\d+", |lex| lex.slice().parse::<i64>().unwrap())]
-    Int(i64),
+    #[regex(r"-?\d+", |lex| lex.slice().parse::<isize>().unwrap())]
+    Int(isize),
 
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().unwrap(), priority = 50)]
     Float(f64),
