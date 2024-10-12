@@ -6,7 +6,7 @@ use std::{
 
 use logos::{Lexer, Logos, Skip};
 
-use crate::{expr::AstRune, LexError};
+use crate::{err::LexError, expr::AstRune};
 
 /// A line of Toks that (hopefully) represent a statement/expression boundary.
 /// Splits on Newline/Semicolon/Terminal Tok
@@ -157,6 +157,9 @@ impl std::fmt::Display for Tok {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TokType {
+    SinglePipe,
+    DoublePipe,
+
     Rune,
     When,
     Each,
@@ -244,7 +247,8 @@ pub enum TokType {
 
     Nil,
 
-    Number,
+    Int,
+    Float,
 
     Str,
     #[default]
@@ -307,7 +311,7 @@ impl From<&LexTok> for TokType {
             LexTok::Colon => TokType::Colon,
             LexTok::Comma => TokType::Comma,
             LexTok::Nil => TokType::Nil,
-            LexTok::Number(_) => TokType::Number,
+            LexTok::Float(_) => TokType::Float,
             LexTok::String(_) => TokType::Str,
             LexTok::Semicolon => TokType::Semicolon,
             LexTok::Dot => TokType::Dot,
@@ -331,6 +335,9 @@ impl From<&LexTok> for TokType {
             LexTok::ArrowRight => TokType::ArrowRight,
             LexTok::ArrowLeft => TokType::ArrowLeft,
             LexTok::Rune => TokType::Rune,
+            LexTok::Int(_) => TokType::Int,
+            LexTok::SinglePipe => TokType::SinglePipe,
+            LexTok::DoublePipe => TokType::DoublePipe,
         }
     }
 }
@@ -353,7 +360,6 @@ pub enum LexTok {
     When,
     #[token("each")]
     Each,
-    #[token("elif")]
     #[token("elseif")]
     ElseIf,
     #[token("then")]
@@ -438,7 +444,7 @@ pub enum LexTok {
     #[regex(r"\n", newline_cb)]
     NewLine,
 
-    #[regex(r"\w+")]
+    #[regex(r"[_a-zA-Z]\w*\??")]
     Ident,
 
     #[token("false", |_| false)]
@@ -522,13 +528,22 @@ pub enum LexTok {
     #[token("=>")]
     FatArrow,
 
+    #[regex(r"-?\d+", |lex| lex.slice().parse::<i64>().unwrap())]
+    Int(i64),
+
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().unwrap(), priority = 50)]
-    Number(f64),
+    Float(f64),
 
     #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#, |lex| lex.slice().to_owned())]
     String(String),
     #[token("//")]
     Comment,
+
+    #[token("|")]
+    SinglePipe,
+
+    #[token("||")]
+    DoublePipe,
 }
 
 fn newline_cb(lex: &mut Lexer<LexTok>) -> Skip {

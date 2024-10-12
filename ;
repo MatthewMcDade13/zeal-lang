@@ -627,22 +627,13 @@ impl Parser {
     }
 
     fn call_args(&mut self, call_head: Expr) -> anyhow::Result<Expr> {
-        let mut args = Vec::<Expr>::new();
+        let mut args = Vec::new();
         if let TokType::CloseParen = self.peek_ty() {
             let ec = Expr::call(call_head, args);
             return Ok(ec);
         }
         args.push(self.expression()?);
-        while let TokType::Comma = self.peek_ty() {
-            args.push(self.expression()?);
-        }
-        ensure!(
-            matches!(self.peek_ty(), TokType::CloseParen),
-            "Expected ')' after call arguments"
-        );
-        self.adv(1)?;
-        let ce = Expr::call_expr(call_head, args);
-        Ok(ce)
+        while let TokType::Comma = self.peek_ty() {}
     }
 
     fn call(&mut self) -> anyhow::Result<Expr> {

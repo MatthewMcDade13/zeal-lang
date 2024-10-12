@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, num::ParseIntError};
 
 use crate::{
     expr::Expr,
@@ -92,6 +92,33 @@ impl ParseErrInfo {
             prev: p.peek_prev().clone(),
             curr: p.peek().clone(),
             next: None,
+        }
+    }
+}
+
+#[derive(thiserror::Error, Debug, Default, Clone, PartialEq)]
+pub enum LexError {
+    #[error("Invalid or Unknown Symbol: {0}")]
+    InvalidSymbol(String),
+    #[default]
+    #[error("Illegal Character encountered")]
+    IllegalCharacter,
+    #[error("Error Parsing Invalid Number: {0}")]
+    InvalidNumber(String),
+}
+
+impl From<std::num::ParseFloatError> for LexError {
+    fn from(err: std::num::ParseFloatError) -> Self {
+        LexError::InvalidNumber(err.to_string())
+    }
+}
+
+impl From<ParseIntError> for LexError {
+    fn from(err: ParseIntError) -> Self {
+        use std::num::IntErrorKind::*;
+        match err.kind() {
+            PosOverflow | NegOverflow => LexError::InvalidNumber("overflow error".to_owned()),
+            _ => LexError::InvalidNumber("other error".to_owned()),
         }
     }
 }

@@ -1,7 +1,10 @@
 use std::{
+    fmt::Display,
     ops::{Deref, DerefMut},
     rc::Rc,
 };
+
+use crate::{AstStringify, AstWalker};
 
 pub type AstRune = Rc<str>;
 pub type ExprNode = Rc<Expr>;
@@ -189,6 +192,26 @@ pub struct BindStmt {
     pub rhs: Expr,
 }
 
+impl Display for BindStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let bt = match self.bind_type {
+            BindType::Let => "let",
+            BindType::Var => "var",
+            BindType::Const => "const",
+            BindType::Function => "fn",
+            BindType::Struct => "struct",
+            BindType::Trait => "trait",
+            BindType::Newtype => "newtype",
+        };
+        if let Ok(rhs) = AstStringify::expr_tostring(&self.rhs) {
+            let s = format!("({bt} {} {rhs})", self.name.as_ref());
+            write!(f, "{s}")
+        } else {
+            std::fmt::Result::Err(std::fmt::Error)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExprStmt {
     Block(AstList<Self>),
@@ -319,6 +342,30 @@ pub enum EscapeExpr {
     Continue,
 }
 
+impl Display for EscapeExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            EscapeExpr::Return(expr) => {
+                if let Ok(es) = AstStringify::expr_tostring(expr) {
+                    format!("(return {es})")
+                } else {
+                    return std::fmt::Result::Err(std::fmt::Error);
+                }
+            }
+            EscapeExpr::Break(expr) => {
+                if let Ok(es) = AstStringify::expr_tostring(expr) {
+                    format!("(break {es}")
+                } else {
+                    return std::fmt::Result::Err(std::fmt::Error);
+                }
+            }
+
+            EscapeExpr::Continue => String::from("(continue ())"),
+        };
+        write!(f, "{s}")
+    }
+}
+
 impl Expr {
     pub const UNIT: Self = const { Self::Unit };
 
@@ -349,12 +396,12 @@ impl Expr {
     }
 
     #[inline]
-    pub fn unary_op(op: AstRune, rhs: Expr) -> Self {
+    pub fn unary_op(op: Expr, rhs: Expr) -> Self {
         Self::call_slice(op, &[rhs])
     }
 
     #[inline]
-    pub fn binary_op(lhs: Expr, op: AstRune, rhs: Expr) -> Self {
+    pub fn binary_op(lhs: Expr, op: Expr, rhs: Expr) -> Self {
         Self::call_slice(op, &[lhs, rhs])
     }
 
@@ -374,12 +421,12 @@ impl Expr {
     }
 
     #[inline]
-    pub fn call_slice(head: AstRune, args: &[Self]) -> Self {
+    pub fn call_slice(head: Expr, args: &[Self]) -> Self {
         Self::call(head, args.to_vec())
     }
 
-    pub fn call(head: AstRune, args: Vec<Self>) -> Self {
-        let head = Rc::new(Self::Rune(head));
+    pub fn call(head: Expr, args: Vec<Self>) -> Self {
+        let head = Rc::new(head);
         let args = Self::args_to_expr(args);
         let args = Rc::new(args);
         Self::Call { head, args }

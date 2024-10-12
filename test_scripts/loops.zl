@@ -8,20 +8,20 @@ end
 let num = 550
 
 when 
-  num >= 35 -> (println "num is bigger than 35"),
-  num < 34 and num >= 20 -> (println "num is smaller than 34"),
-  else -> (println "else")
+  num >= 35 => println("num is bigger than 35"),
+  num < 34 and num >= 20 => println("num is smaller than 34"),
+  else => println("else")
 end
 
 
 var i = 0
 while i <= 100 do
   when 
-    i / 3 == 0 and i / 5 == 0 -> (println "FizzBuzz"),
-    i / 3 == 0 -> (println "Fizz"),
-    i / 5 == 0 -> (println "Buzz"),
+    i / 3 == 0 and i / 5 == 0 => println("FizzBuzz"),
+    i / 3 == 0 => println("Fizz"),
+    i / 5 == 0 => println("Buzz"),
 
-    else -> (println "Ignore")
+    else => println("Ignore")
   end
   i = i + 1
 end
