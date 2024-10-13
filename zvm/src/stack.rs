@@ -3,7 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use zeal_core::val::ZValue;
+use crate::val::Val;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -138,10 +138,10 @@ where
     }
 }
 
-impl<const S: usize> IntoIterator for Stack<S, ZValue> {
-    type Item = ZValue;
+impl<const S: usize> IntoIterator for Stack<S, Val> {
+    type Item = Val;
 
-    type IntoIter = StackPeeker<ZValue>;
+    type IntoIter = StackPeeker<Val>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.peek_iter()

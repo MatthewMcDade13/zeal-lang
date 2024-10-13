@@ -1,6 +1,5 @@
 use std::{fmt::Display, ops::{Deref, DerefMut, Index, IndexMut}};
 
-use zeal_ast::{BinaryOpType, UnaryOpType};
 use zeal_core::copy_slice_into;
 
 
@@ -24,11 +23,38 @@ impl Display for VarOp {
     }
 }
 
+
+#[derive(Debug, Clone, Copy)]
+pub enum BinaryOpType {
+            Gt, 
+            Lt,  
+            Ge, 
+            Le, 
+            And, 
+            Or, 
+            Equals, 
+            NotEquals, 
+            BitAnd, 
+            BitOr, 
+            Xor, 
+            Concat, 
+            Add, 
+            Sub,
+            Mul, 
+            Div, 
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOpType {
+    Negate, Not
+}
+
 //
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Op {
+    Call,
     Return,
     Println,
     Print,
@@ -307,7 +333,6 @@ impl From<BinaryOpType> for Op {
 impl From<UnaryOpType> for Op {
     fn from(value: UnaryOpType) -> Self {
         match value {
-            UnaryOpType::Call => todo!(),
             UnaryOpType::Negate => Op::Neg,
             UnaryOpType::Not => Op::Not,
         }

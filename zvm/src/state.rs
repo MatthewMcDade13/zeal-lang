@@ -1,7 +1,6 @@
 
-use std::{cmp::Ordering, fmt::Display};
+use std::{cmp::Ordering, fmt::Display, rc::Rc};
 
-use zeal_core::str::ZIdent;
 
 
 #[derive(Debug, Clone)]
@@ -29,14 +28,15 @@ impl PartialOrd for BindScope {
                     Some(Ordering::Less)
                 }, 
             }, 
-            BindScope::Local { depth: sdepth } => match other {
-                BindScope::Global => Some(Ordering::Greater), 
-                BindScope::Local { depth: other_depth } => sdepth.partial_cmp(other_depth) 
-            } 
             BindScope::Local {depth: 0 } => match other {
                 BindScope::Global => Some(Ordering::Greater), 
                 BindScope::Local { depth } => 0.partial_cmp(depth), 
             }
+
+            BindScope::Local { depth: sdepth } => match other {
+                BindScope::Global => Some(Ordering::Greater), 
+                BindScope::Local { depth: other_depth } => sdepth.partial_cmp(other_depth) 
+            } 
         }
 
     }
@@ -47,7 +47,7 @@ impl PartialEq for BindScope {
         match self {
             BindScope::Global => match other {
                 BindScope::Global => true, 
-                BindScope::Local { depth } => false, 
+                BindScope::Local { .. } => false, 
             }, 
             BindScope::Local { depth: sdepth } => match other {
                 BindScope::Global => false, 
@@ -170,7 +170,7 @@ impl Scope {
     }
 
     /// Looks for local and returns its index in locals vec
-    pub fn resolve_local(&self, ident: &ZIdent) -> Option<usize> {
+    pub fn resolve_local(&self, ident: &str) -> Option<usize> {
         // let mut i= self.locals.len() as isize;
 
         // while i >= 0 {
@@ -184,7 +184,7 @@ impl Scope {
         //
         // }
         for (i, l) in self.locals.iter().rev().enumerate() {
-            if l.ident.name() == ident.name() {
+            if l.ident.as_ref() == ident {
                 return Some(i);
             }
         }
@@ -198,10 +198,10 @@ impl Scope {
         }
     }
 
-    pub fn add_local(&mut self, name: ZIdent) {
+    pub fn add_local(&mut self, name: &str) {
         if let BindScope::Local {depth }= self.depth() {
 
-            let local = Local { ident: name, depth: BindScope::Local { depth } };
+            let local = Local { ident: Rc::from(name), depth: BindScope::Local { depth } };
             self.locals.push(local);
         } else {
             panic!("Tried to add local when current scope is Global!!!");
@@ -254,7 +254,7 @@ impl Scope {
 
 #[derive(Debug, Clone)]
 pub struct Local {
-    pub ident: ZIdent,
+    pub ident: Rc<str>, 
     pub depth: BindScope,
 }
 
