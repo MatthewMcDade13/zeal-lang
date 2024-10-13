@@ -1,76 +1,69 @@
+// This is the native Rust function we want to call.
+#[no_mangle] // Prevents name mangling
+pub extern "C" fn my_native_function(x: i32) -> i32 {
+    x * 2
+}
+
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::execution_engine::{ExecutionEngine, JitFunction};
 use inkwell::module::Module;
-use inkwell::OptimizationLevel;
-
-use std::error::Error;
-
-/// Convenience type alias for the `sum` function.
-///
-/// Calling this is innately `unsafe` because there's no guarantee it doesn't
-/// do `unsafe` operations internally.
-type SumFunc = unsafe extern "C" fn(u64, u64, u64) -> u64;
-
-struct CodeGen<'ctx> {
-    context: &'ctx Context,
-    module: Module<'ctx>,
-    builder: Builder<'ctx>,
-    execution_engine: ExecutionEngine<'ctx>,
-}
-
-impl<'ctx> CodeGen<'ctx> {
-    fn jit_compile_sum(&self) -> Option<JitFunction<SumFunc>> {
-        let i64_type = self.context.i64_type();
-        let fn_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
-        let function = self.module.add_function("sum", fn_type, None);
-
-        let basic_block = self.context.append_basic_block(function, "entry");
-
-        self.builder.position_at_end(basic_block);
-
-        let x = function.get_nth_param(0)?.into_int_value();
-        let y = function.get_nth_param(1)?.into_int_value();
-        let z = function.get_nth_param(2)?.into_int_value();
-
-        let sum = self.builder.build_int_add(x, y, "sum").unwrap();
-        let sum = self.builder.build_int_add(sum, z, "sum").unwrap();
-
-        self.builder.build_return(Some(&sum)).unwrap();
-
-        unsafe { self.execution_engine.get_function("sum").ok() }
-    }
-}
+use inkwell::values::{FunctionValue, IntValue};
 
 #[cfg(test)]
 mod tests {
+    use inkwell::OptimizationLevel;
+
     use super::*;
 
     #[test]
-    fn llvm_basic() -> Result<(), Box<dyn Error>> {
+    fn llvm_call_native() -> anyhow::Result<()> {
+        // Create a new LLVM context
         let context = Context::create();
-        let module = context.create_module("sum");
-        let execution_engine = module.create_jit_execution_engine(OptimizationLevel::None)?;
-        let codegen = CodeGen {
-            context: &context,
-            module,
-            builder: context.create_builder(),
-            execution_engine,
+        let module = context.create_module("my_module");
+        let builder = context.create_builder();
+
+        // Define the function signature for `my_native_function`
+        let fn_type = context
+            .i32_type()
+            .fn_type(&[context.i32_type().into()], false);
+        let native_fn = module.add_function("my_native_function", fn_type, None);
+
+        // Create a new function in the module
+        let function = module.add_function("call_native_function", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        builder.position_at_end(entry);
+
+        // Create an argument for the native function
+        let arg = function.get_nth_param(0).unwrap().into_int_value();
+
+        // Call the native function
+        let call = builder.build_call(native_fn, &[arg.into()], "call_result")?;
+
+        let result = call.try_as_basic_value().left().unwrap();
+
+        // Return the result
+        builder.build_return(Some(&result))?;
+
+        // Create the execution engine
+        let execution_engine = module
+            .create_jit_execution_engine(OptimizationLevel::None)
+            .expect("Failed to create execution engine");
+
+        let func_ptr = unsafe {
+            execution_engine
+                .get_function::<unsafe extern "C" fn(i32) -> i32>("call_native_function")
+                .expect("Failed to get function pointer")
         };
+        // Get the function pointer for the function we want to call
 
-        let sum = codegen
-            .jit_compile_sum()
-            .ok_or("Unable to JIT compile `sum`")?;
-
-        let x = 1u64;
-        let y = 2u64;
-        let z = 3u64;
-
+        // Call the function through the execution engine
         unsafe {
-            println!("{} + {} + {} = {}", x, y, z, sum.call(x, y, z));
-            assert_eq!(sum.call(x, y, z), x + y + z);
+            let result = func_ptr.call(10); // Call with an argument, e.g., 10
+            println!("Result of calling native function: {}", result);
         }
 
+        // Print the generated LLVM IR
+        module.print_to_stderr();
         Ok(())
     }
 }

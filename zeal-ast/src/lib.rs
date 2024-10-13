@@ -2,6 +2,7 @@ pub mod err;
 pub mod expr;
 pub mod lex;
 pub mod parse;
+pub mod typecheck;
 
 use anyhow::bail;
 use expr::{AstList, Expr, ExprStmt};
