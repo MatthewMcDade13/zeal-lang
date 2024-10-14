@@ -45,6 +45,16 @@ impl FuncChunk {
     }
 }
 
+impl Display for FuncChunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.name();
+        let chunk = &self.chunk;
+        let arity = self.arity as usize;
+        let s = format!("{name}/{arity} =>\n\t{chunk}");
+        write!(f, "{s}")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ChunkBuilder(Chunk);
 
@@ -53,7 +63,15 @@ impl ChunkBuilder {
         self.0
     }
 
-    pub fn build_fn(self, arity: u8, name: &str) -> FuncChunk {
+    pub fn start_scope(&mut self) {
+        self.0.scope.start_scope();
+    }
+
+    pub fn end_scope(&mut self) -> usize {
+        self.0.scope.end_scope()
+    }
+
+    pub fn build_fn(self, name: &str, arity: u8) -> FuncChunk {
         FuncChunk {
             arity,
             name: Rc::from(name),
@@ -128,7 +146,7 @@ impl ChunkBuilder {
 
     pub fn push_local(&mut self, name: &str, varop: VarOp) -> anyhow::Result<()> {
         let (op, id) = if let VarOp::Get | VarOp::Set = varop {
-            if let Some(local_depth) = self.0.scope.resolve_local(&name) {
+            if let Some(local_depth) = self.0.scope.resolve_local(name) {
                 let size = OpParamSize::squash_size(local_depth as u64);
                 (Op::local(size, varop), local_depth)
             } else {
@@ -238,6 +256,16 @@ impl ChunkBuilder {
         let id = self.0.constants.len();
         self.0.constants.push(val);
         id
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Default for ChunkBuilder {
+    fn default() -> Self {
+        Self(Default::default())
     }
 }
 

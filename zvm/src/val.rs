@@ -40,6 +40,27 @@ impl Val {
             panic!("Expected float64, got: {self}")
         }
     }
+
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Val::Byte(n) => *n != 0,
+            Val::Bool(true) => true,
+            Val::Bool(false) => false,
+            Val::UNum(n) => *n != 0,
+            Val::Num(n) => *n != 0,
+            Val::Float(f) => *f != 0.0,
+            Val::Rune(rc) => rc.len() != 0,
+            Val::String(rc) => rc.len() != 0,
+            Val::Ptr(val) => val.is_truthy(),
+            Val::Func(rc) => rc.chunk.len() != 0,
+            Val::Unit => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_falsey(&self) -> bool {
+        !self.is_truthy()
+    }
 }
 
 impl From<bool> for Val {

@@ -35,6 +35,10 @@ impl StackCursor {
         self.addn(-1)
     }
 
+    pub fn set(&mut self, n: usize) {
+        self.0 = n as isize;
+    }
+
     const fn addn(self, n: isize) -> Self {
         let i = self.0 as isize + n;
         if i < 0 {

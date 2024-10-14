@@ -2,7 +2,10 @@ use std::{
     fmt::Display,
     ops::{Deref, DerefMut},
     rc::Rc,
+    slice::Iter,
 };
+
+use anyhow::bail;
 
 use crate::{AstStringify, AstWalker};
 
@@ -27,6 +30,14 @@ impl<T> AstList<T> {
     {
         let l = list.to_vec();
         Self::new(l)
+    }
+
+    pub fn iter(&self) -> anyhow::Result<Iter<'_, T>> {
+        if let AstList::List(l) = &self {
+            Ok(l.iter())
+        } else {
+            bail!("Cannot create iterator from a nil AstList!!!")
+        }
     }
 
     pub fn try_get(&self) -> Option<&Rc<[T]>> {
@@ -225,6 +236,20 @@ pub enum ExprStmt {
 }
 
 impl ExprStmt {
+    #[inline]
+    pub fn type_str(&self) -> String {
+        let s = match self {
+            ExprStmt::Block(_) => "Block",
+            ExprStmt::Loop(_) => "Loop",
+            ExprStmt::While { .. } => "While",
+            ExprStmt::When(_) => "When",
+            ExprStmt::DefFunc(_) => "DefFunc",
+            ExprStmt::Binding(_) => "Binding",
+            ExprStmt::Escape(_) => "Escape",
+            ExprStmt::Atom(_) => "AtomExpr",
+        };
+        String::from(s)
+    }
     pub fn into_atom_expr(self) -> Expr {
         match self {
             Self::Atom(e) => e,
