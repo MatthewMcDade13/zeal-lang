@@ -4,6 +4,8 @@
 // the code is still half-usable so i dont have to rewrite EVERYTHING from scratch, though i might
 // not mind that in the future. TO LLVM!!!!!!
 
+use zvm::vm::VM;
+
 const PATH: &str = "./zeal/src/scripts/loops.zl";
 
 fn main() -> anyhow::Result<()> {

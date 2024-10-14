@@ -3,7 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use zeal_core::val::ZValue;
+use crate::val::Val;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -33,6 +33,10 @@ impl StackCursor {
 
     pub const fn dec(self) -> Self {
         self.addn(-1)
+    }
+
+    pub fn set(&mut self, n: usize) {
+        self.0 = n as isize;
     }
 
     const fn addn(self, n: isize) -> Self {
@@ -138,10 +142,10 @@ where
     }
 }
 
-impl<const S: usize> IntoIterator for Stack<S, ZValue> {
-    type Item = ZValue;
+impl<const S: usize> IntoIterator for Stack<S, Val> {
+    type Item = Val;
 
-    type IntoIter = StackPeeker<ZValue>;
+    type IntoIter = StackPeeker<Val>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.peek_iter()

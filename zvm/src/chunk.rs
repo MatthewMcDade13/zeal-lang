@@ -1,10 +1,8 @@
 use std::{fmt::Display, rc::Rc};
 
 use anyhow::bail;
-use zeal_core::{
-    str::{ZIdent, ZString},
-    val::ZValue,
-};
+
+use crate::val::Val;
 
 use super::{
     opcode::{Bytecode, Op, OpParam, OpParamSize, Opcode, VarOp},
@@ -43,14 +41,238 @@ pub struct FuncChunk {
 
 impl FuncChunk {
     pub fn name(&self) -> &str {
-        self.name.as_ref
+        self.name.as_ref()
+    }
+}
+
+impl Display for FuncChunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.name();
+        let chunk = &self.chunk;
+        let arity = self.arity as usize;
+        let s = format!("{name}/{arity} =>\n\t{chunk}");
+        write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChunkBuilder(Chunk);
+
+impl ChunkBuilder {
+    pub fn build(self) -> Chunk {
+        self.0
+    }
+
+    pub fn start_scope(&mut self) {
+        self.0.scope.start_scope();
+    }
+
+    pub fn end_scope(&mut self) -> usize {
+        self.0.scope.end_scope()
+    }
+
+    pub fn build_fn(self, name: &str, arity: u8) -> FuncChunk {
+        FuncChunk {
+            arity,
+            name: Rc::from(name),
+            chunk: self.0,
+        }
+    }
+
+    pub fn push_constant(&mut self, v: Val) -> usize {
+        let id = self.add_constant(v);
+        let param = OpParam::squash(id as u64);
+        let op = param.as_const_op();
+
+        let op = Opcode::WithParam { op, param };
+        self.push_opcode(op);
+        param.to_u32() as usize
+    }
+
+    pub fn push_float(&mut self, n: f64) -> usize {
+        self.push_constant(Val::float(n))
+    }
+
+    pub fn append_chunk(&mut self, other: &Chunk) {
+        self.0.buf.append_bytes(other.buf.slice());
+        self.0.constants.extend_from_slice(&other.constants);
+    }
+
+    pub fn push_popn(&mut self, n: u8) {
+        let opcode = if n == 1 {
+            Opcode::new(Op::Pop)
+        } else {
+            Opcode::with_param(Op::PopN, OpParam::squash(n as u64))
+        };
+        self.push_opcode(opcode);
+    }
+
+    #[inline]
+    pub fn push_string(&mut self, string: &str) -> usize {
+        self.push_constant(Val::string(string))
+    }
+
+    #[inline]
+    pub fn push_rune(&mut self, ident: &str) -> usize {
+        self.push_constant(Val::rune(ident))
+    }
+
+    pub fn declare_local(&mut self, name: &str) -> anyhow::Result<()> {
+        if self.0.scope.depth().is_local() {
+            self.0.scope.add_local(name);
+        } else {
+            bail!("Cant compile local binding as global!");
+        }
+        Ok(())
+    }
+
+    pub fn declare_global(&mut self, name: &str) -> anyhow::Result<()> {
+        let id = self.add_global(name);
+        let param = OpParam::squash(id as u64);
+        let op = Op::global(OpParamSize::from_param(&param), VarOp::Declare);
+
+        let op = Opcode::WithParam { op, param };
+        self.push_opcode(op);
+        Ok(())
+    }
+
+    pub fn push_global(&mut self, name: &str, varop: VarOp) {
+        let id = self.add_global(name);
+        let param = OpParam::squash(id as u64);
+        let op = Op::global(OpParamSize::from_param(&param), varop);
+        let opcode = Opcode::WithParam { op, param };
+        self.push_opcode(opcode);
+    }
+
+    pub fn push_local(&mut self, name: &str, varop: VarOp) -> anyhow::Result<()> {
+        let (op, id) = if let VarOp::Get | VarOp::Set = varop {
+            if let Some(local_depth) = self.0.scope.resolve_local(name) {
+                let size = OpParamSize::squash_size(local_depth as u64);
+                (Op::local(size, varop), local_depth)
+            } else {
+                self.push_global(name, varop);
+                return Ok(());
+            }
+        } else {
+            bail!(
+                "Compile Error :: {} {}",
+                /* CompileError::InvalidAssignment */
+                varop,
+                name
+            )
+        };
+        let param = OpParam::squash(id as u64);
+        let opcode = Opcode::WithParam { op, param };
+        self.push_opcode(opcode);
+        Ok(())
+    }
+
+    pub fn declare_binding(&mut self, name: &str) -> anyhow::Result<()> {
+        if self.0.scope.depth().is_local() {
+            self.declare_local(name)
+            // Ok(())
+        } else {
+            self.declare_global(name)
+        }
+    }
+
+    pub fn push_binding(&mut self, name: &str, varop: VarOp) -> anyhow::Result<()> {
+        if self.0.scope.depth().is_local() {
+            // self.declare_local(name)
+            // Ok(())
+
+            self.push_local(name.clone(), varop)
+        } else {
+            self.push_global(name.clone(), varop);
+            Ok(())
+        }
+    }
+    /// adds v to constant table, returns id of constant
+    /// Pushes given opcode into bytecode buffer. returns index to the beginning of the opcode,
+    /// i.e. the opcode op byte
+    pub fn push_opcode<T>(&mut self, opcode: T) -> usize
+    where
+        T: Into<Opcode>,
+    {
+        let opcode = opcode.into();
+        let addr = self.0.buf.len();
+        self.0.buf.push(opcode.op_byte());
+        if let Some(p) = opcode.try_param() {
+            match *p {
+                OpParam::Byte(b) => {
+                    self.0.buf.push(b);
+                }
+                OpParam::Byte16(src) => {
+                    self.0.buf.extend_from_slice(&src);
+                }
+                OpParam::Byte24(src) => {
+                    self.0.buf.extend_from_slice(&src);
+                }
+                OpParam::Byte32(src) => {
+                    self.0.buf.extend_from_slice(&src);
+                }
+                OpParam::Byte64(src) => {
+                    self.0.buf.extend_from_slice(&src);
+                }
+            }
+        }
+        addr
+    }
+
+    /// Pushes Jump Op into Bytecode. Returns index of the pushed opcode
+    /// so that it can be used downstream to pass to Self::patch_jump()
+    pub fn push_jump(&mut self, op: Op) -> Patch {
+        let param = match op {
+            Op::JumpTrue | Op::JumpFalse | Op::Jump => OpParam::Byte16([0; 2]),
+            Op::LongJumpTrue | Op::LongJumpFalse | Op::LongJump => OpParam::Byte32([0; 4]),
+            _ => panic!("Cant push op byte that isnt a valid jump instruction!!!. Got: {op}"),
+        };
+
+        let opcode = Opcode::WithParam { op, param };
+        let patch_addr = self.push_opcode(opcode);
+        Patch {
+            addr: patch_addr,
+            opcode,
+        }
+    }
+
+    pub fn patch_jump(&mut self, mut patch: Patch) {
+        let jump = self.0.buf.len();
+        patch.update(jump);
+        if let Opcode::WithParam { param, .. } = patch.opcode {
+            self.0.buf.write_param_at(patch.addr, param);
+        } else {
+            panic!("Tried to patch an opcode that does not have any parameters!!!");
+        }
+    }
+
+    #[inline]
+    fn add_global(&mut self, ident: &str) -> usize {
+        self.add_constant(Val::rune(ident))
+    }
+
+    /// Pushes val to constant array and returns the index it was pushed to.
+    fn add_constant(&mut self, val: Val) -> usize {
+        let id = self.0.constants.len();
+        self.0.constants.push(val);
+        id
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Default for ChunkBuilder {
+    fn default() -> Self {
+        Self(Default::default())
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Chunk {
     pub buf: Bytecode,
-    pub constants: Vec<ZValue>,
+    pub constants: Vec<Val>,
     pub scope: Scope,
 }
 
@@ -109,11 +331,6 @@ impl Chunk {
         self.constants.len()
     }
 
-    pub fn append_chunk(&mut self, other: &Chunk) {
-        self.buf.append_bytes(other.buf.slice());
-        self.constants.extend_from_slice(&other.constants);
-    }
-
     /// Gets bygtecode as a raw &[u8]
     #[inline]
     pub fn bytes(&self) -> &[u8] {
@@ -125,11 +342,11 @@ impl Chunk {
     }
 
     #[inline]
-    pub fn constants(&self) -> &[ZValue] {
+    pub fn constants(&self) -> &[Val] {
         self.constants.as_ref()
     }
 
-    pub fn try_read_const(&self, opcode: Opcode) -> Option<&ZValue> {
+    pub fn try_read_const(&self, opcode: Opcode) -> Option<&Val> {
         match opcode.op() {
             Op::Const8 | Op::Const16 | Op::Const24 | Op::Const32 | Op::Const64 => {
                 let param = opcode.try_param().unwrap();
@@ -139,102 +356,6 @@ impl Chunk {
             _ => None,
         }
     }
-
-    pub fn push_popn(&mut self, n: u8) {
-        let opcode = if n == 1 {
-            Opcode::new(Op::Pop)
-        } else {
-            Opcode::with_param(Op::PopN, OpParam::squash(n as u64))
-        };
-        self.push_opcode(opcode);
-    }
-
-    #[inline]
-    pub fn push_string(&mut self, string: &str) -> usize {
-        self.push_constant(ZValue::string(ZString::from(string)))
-    }
-
-    #[inline]
-    pub fn push_ident(&mut self, ident: ZIdent) -> usize {
-        self.push_constant(ZValue::ident(ident))
-    }
-
-    #[inline]
-    pub fn push_ident_str(&mut self, string: &str) -> usize {
-        self.push_constant(ZValue::ident_from_str(string))
-    }
-
-    pub fn declare_local(&mut self, name: ZIdent) -> anyhow::Result<()> {
-        if self.scope.depth().is_local() {
-            self.scope.add_local(name);
-        } else {
-            bail!("Cant compile local binding as global!");
-        }
-        Ok(())
-    }
-
-    pub fn declare_global(&mut self, name: ZIdent) -> anyhow::Result<()> {
-        let id = self.add_global(name);
-        let param = OpParam::squash(id as u64);
-        let op = Op::global(OpParamSize::from_param(&param), VarOp::Declare);
-
-        let op = Opcode::WithParam { op, param };
-        self.push_opcode(op);
-        Ok(())
-    }
-
-    pub fn push_global(&mut self, name: ZIdent, varop: VarOp) {
-        let id = self.add_global(name);
-        let param = OpParam::squash(id as u64);
-        let op = Op::global(OpParamSize::from_param(&param), varop);
-        let opcode = Opcode::WithParam { op, param };
-        self.push_opcode(opcode);
-    }
-
-    pub fn push_local(&mut self, name: ZIdent, varop: VarOp) -> anyhow::Result<()> {
-        let (op, id) = if let VarOp::Get | VarOp::Set = varop {
-            if let Some(local_depth) = self.scope.resolve_local(&name) {
-                let size = OpParamSize::squash_size(local_depth as u64);
-                (Op::local(size, varop), local_depth)
-            } else {
-                self.push_global(name, varop);
-                return Ok(());
-            }
-        } else {
-            bail!(
-                "Compile Error :: {} {}",
-                /* CompileError::InvalidAssignment */
-                varop,
-                name
-            )
-        };
-        let param = OpParam::squash(id as u64);
-        let opcode = Opcode::WithParam { op, param };
-        self.push_opcode(opcode);
-        Ok(())
-    }
-
-    pub fn declare_binding(&mut self, name: ZIdent) -> anyhow::Result<()> {
-        if self.scope.depth().is_local() {
-            self.declare_local(name)
-            // Ok(())
-        } else {
-            self.declare_global(name)
-        }
-    }
-
-    pub fn push_binding(&mut self, name: ZIdent, varop: VarOp) -> anyhow::Result<()> {
-        if self.scope.depth().is_local() {
-            // self.declare_local(name)
-            // Ok(())
-
-            self.push_local(name.clone(), varop)
-        } else {
-            self.push_global(name.clone(), varop);
-            Ok(())
-        }
-    }
-
     // pub fn push_binding(&mut self, name: ZIdent, var_op: VarOp) -> anyhow::Result<()> {
     //     match self.scope.depth() {
     //         BindScope::Global => {
@@ -258,52 +379,6 @@ impl Chunk {
     //     self.push_opcode(op);
     //     Ok(())
     // }
-    /// adds v to constant table, returns id of constant
-    pub fn push_constant(&mut self, v: ZValue) -> usize {
-        let id = self.add_constant(v);
-        let param = OpParam::squash(id as u64);
-        let op = param.as_const_op();
-
-        let op = Opcode::WithParam { op, param };
-        self.push_opcode(op);
-        param.to_u32() as usize
-    }
-
-    pub fn push_number(&mut self, n: f64) -> usize {
-        self.push_constant(ZValue::number(n))
-    }
-
-    /// Pushes given opcode into bytecode buffer. returns index to the beginning of the opcode,
-    /// i.e. the opcode op byte
-    pub fn push_opcode<T>(&mut self, opcode: T) -> usize
-    where
-        T: Into<Opcode>,
-    {
-        let opcode = opcode.into();
-        let addr = self.buf.len();
-        self.buf.push(opcode.op_byte());
-        if let Some(p) = opcode.try_param() {
-            match *p {
-                OpParam::Byte(b) => {
-                    self.buf.push(b);
-                }
-                OpParam::Byte16(src) => {
-                    self.buf.extend_from_slice(&src);
-                }
-                OpParam::Byte24(src) => {
-                    self.buf.extend_from_slice(&src);
-                }
-                OpParam::Byte32(src) => {
-                    self.buf.extend_from_slice(&src);
-                }
-                OpParam::Byte64(src) => {
-                    self.buf.extend_from_slice(&src);
-                }
-            }
-        }
-        addr
-    }
-
     pub fn debug_opcode(&self, opcode: Opcode) -> String {
         let s = match opcode.op() {
             Op::Return => "RETURN",
@@ -409,48 +484,10 @@ impl Chunk {
                 let offset = opcode.try_param().unwrap().to_u32() as usize;
                 &format!("LONG_JUMP_TRUE => {}", offset)
             }
+            Op::Call => todo!(),
         };
 
         String::from(s)
-    }
-
-    /// Pushes Jump Op into Bytecode. Returns index of the pushed opcode
-    /// so that it can be used downstream to pass to Self::patch_jump()
-    pub fn push_jump(&mut self, op: Op) -> Patch {
-        let param = match op {
-            Op::JumpTrue | Op::JumpFalse | Op::Jump => OpParam::Byte16([0; 2]),
-            Op::LongJumpTrue | Op::LongJumpFalse | Op::LongJump => OpParam::Byte32([0; 4]),
-            _ => panic!("Cant push op byte that isnt a valid jump instruction!!!. Got: {op}"),
-        };
-
-        let opcode = Opcode::WithParam { op, param };
-        let patch_addr = self.push_opcode(opcode);
-        Patch {
-            addr: patch_addr,
-            opcode,
-        }
-    }
-
-    pub fn patch_jump(&mut self, mut patch: Patch) {
-        let jump = self.buf.len();
-        patch.update(jump);
-        if let Opcode::WithParam { param, .. } = patch.opcode {
-            self.buf.write_param_at(patch.addr, param);
-        } else {
-            panic!("Tried to patch an opcode that does not have any parameters!!!");
-        }
-    }
-
-    #[inline]
-    fn add_global(&mut self, ident: ZIdent) -> usize {
-        self.add_constant(ZValue::Ident(ident))
-    }
-
-    /// Pushes val to constant array and returns the index it was pushed to.
-    fn add_constant(&mut self, val: ZValue) -> usize {
-        let id = self.constants.len();
-        self.constants.push(val);
-        id
     }
 }
 

@@ -1,6 +1,9 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 
-pub const DEFAULT_SMALL_BUF_SIZE: usize = 24;
+pub const DEFAULT_SMALL_BUF_SIZE: usize = 23;
 
 #[derive(Debug, Clone)]
 pub enum ShortBuffer<T, const SHORT_SIZE: usize = DEFAULT_SMALL_BUF_SIZE, Fallback = Vec<T>> {
@@ -146,6 +149,7 @@ impl<T> ShortBuffer<T> {
 }
 
 pub type ShortBytes = ShortBuffer<u8>;
+pub type ShortRc<T> = ShortBuffer<T, DEFAULT_SMALL_BUF_SIZE, Rc<T>>;
 
 impl<T> Deref for ShortBuffer<T> {
     type Target = [T];
