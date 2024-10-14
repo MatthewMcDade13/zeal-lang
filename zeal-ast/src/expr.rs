@@ -77,35 +77,6 @@ impl<T> AstList<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct AstMeta {}
-
-#[derive(Debug, Clone)]
-pub struct MetaExpr {
-    pub node: Expr,
-    pub meta: AstMeta,
-}
-
-impl AsRef<Expr> for MetaExpr {
-    fn as_ref(&self) -> &Expr {
-        &self.node
-    }
-}
-
-impl Deref for MetaExpr {
-    type Target = Expr;
-
-    fn deref(&self) -> &Self::Target {
-        &self.node
-    }
-}
-
-impl DerefMut for MetaExpr {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.node
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum WhenForm {
     Branch(Expr, ExprStmt),
     Else(ExprStmt),

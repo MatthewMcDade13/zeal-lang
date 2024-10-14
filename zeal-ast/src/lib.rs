@@ -1,8 +1,9 @@
+pub mod env;
 pub mod err;
 pub mod expr;
 pub mod lex;
 pub mod parse;
-pub mod typecheck;
+pub mod passes;
 
 use anyhow::bail;
 use expr::{AstList, Expr, ExprStmt};

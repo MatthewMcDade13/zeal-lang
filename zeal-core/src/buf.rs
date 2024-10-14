@@ -1,7 +1,10 @@
 use std::{
+    hash::Hash,
     ops::{Deref, DerefMut},
     rc::Rc,
 };
+
+use crate::copy_slice_into;
 
 pub const DEFAULT_SMALL_BUF_SIZE: usize = 23;
 
@@ -14,7 +17,6 @@ pub enum ShortBuffer<T, const SHORT_SIZE: usize = DEFAULT_SMALL_BUF_SIZE, Fallba
 #[derive(Debug, Clone)]
 pub struct ShortVec<T, const SIZE: usize = DEFAULT_SMALL_BUF_SIZE> {
     buf: [T; SIZE],
-    top: usize,
 }
 
 impl<T, const S: usize> ShortVec<T, S>
@@ -24,69 +26,85 @@ where
     pub fn new() -> Self {
         Self {
             buf: [T::default(); S],
-            top: 0,
         }
+    }
+}
+
+impl<T, const S: usize> Default for ShortVec<T, S>
+where
+    T: Default + Copy,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl<const S: usize> ShortVec<u8, S> {
-    pub const fn new_bytes() -> Self {
-        Self {
-            buf: [0u8; S],
-            top: 0,
+    pub fn from_buf(buf: [u8; S]) -> Option<Self> {
+        if buf.len() > S {
+            None
+        } else {
+            Some(Self { buf })
         }
+    }
+
+    pub const fn new_bytes() -> Self {
+        Self { buf: [0u8; S] }
     }
 }
 
-impl<T, const S: usize> ShortVec<T, S> {
-    /// Tries to put val into self. returns None if successfully pushed,
-    /// otherwise self is full and we retrun  the given val back to caller
-    pub fn try_push(&mut self, val: T) -> Option<T> {
-        if self.top >= S {
-            Some(val)
+impl ShortStr {
+    pub const SIZE: usize = DEFAULT_SMALL_BUF_SIZE;
+
+    pub fn new(string: &str) -> Self {
+        if string.len() > Self::SIZE {
+            Self::Tall(Rc::from(string))
         } else {
-            let i = self.top;
-            self.buf[i] = val;
-            self.top += 1;
-            None
+            let mut buf = [0u8; Self::SIZE];
+            copy_slice_into(&mut buf, string.as_bytes());
+            Self::Short(ShortVec::from_buf(buf).unwrap())
         }
     }
 
-    pub fn pop(&mut self) -> Option<T>
-    where
-        T: Clone,
-    {
-        if self.top > 0 {
-            let i = self.top;
-            self.top -= 1;
-            Some(self.buf[i].clone())
-        } else {
-            None
+    pub fn as_str(&self) -> &str {
+        match self {
+            ShortBuffer::Short(short_vec) => {
+                std::str::from_utf8(short_vec.as_ref()).expect("Unable to convert u8 slice to str")
+            }
+            ShortBuffer::Tall(tv) => tv.as_ref(),
         }
     }
 
-    pub const fn len(&self) -> usize {
-        self.top
+    pub fn len(&self) -> usize {
+        match self {
+            ShortBuffer::Short(short_vec) => {
+                for (i, c) in short_vec.iter().rev().enumerate() {
+                    if *c != 0 {
+                        return i + 1;
+                    }
+                }
+                short_vec.len()
+            }
+            ShortBuffer::Tall(tv) => tv.len(),
+        }
     }
 
-    pub const fn is_empty(&self) -> bool {
-        self.top == 0
+    pub fn is_empty(&self) -> bool {
+        match self {
+            ShortBuffer::Short(short_vec) => short_vec[0] == 0,
+            ShortBuffer::Tall(tv) => tv.len() == 0,
+        }
     }
 
-    pub const fn is_full(&self) -> bool {
-        self.top >= S
+    pub fn is_full(&self) -> bool {
+        match self {
+            ShortBuffer::Short(short_vec) => *short_vec.last().unwrap() != 0,
+            ShortBuffer::Tall(_) => false,
+        }
     }
 
     pub const fn capacity(&self) -> usize {
-        S
-    }
-
-    /// Pops and discards poped value. returns number of sucessful pops
-    /// (ie: 0 if vec is empty)
-    pub fn pop_forget(&mut self, npops: usize) -> usize {
-        let pops = crate::clamp(0, npops, self.top);
-        self.top -= pops;
-        pops
+        DEFAULT_SMALL_BUF_SIZE
     }
 }
 
@@ -115,41 +133,67 @@ impl<T> DerefMut for ShortVec<T> {
         &mut self.buf
     }
 }
+//
+// impl<T> ShortBuffer<T> {
+//     pub fn push(&mut self, val: T)
+//     where
+//         T: Clone,
+//     {
+//         match self {
+//             ShortBuffer::Short(sh) => {
+//                 if let Some(v) = sh.try_push(val) {
+//                     let mut buf = Vec::with_capacity(sh.buf.len() * 2);
+//                     crate::clone_slice_into(buf.as_mut(), &sh.buf);
+//                     *self = Self::Tall(buf);
+//                     self.push(v)
+//                 }
+//             }
+//             ShortBuffer::Tall(v) => {
+//                 v.push(val);
+//             }
+//         }
+//     }
+//
+//     /// Tries to put val into self if self is Tall. returns None if successfully pushed,
+//     /// otherwise self is Short and we retrun  the given val back to caller
+//     pub fn try_push_tall(&mut self, val: T) -> Option<T> {
+//         if let Self::Tall(buf) = self {
+//             buf.push(val);
+//             None
+//         } else {
+//             Some(val)
+//         }
+//     }
+// }
 
-impl<T> ShortBuffer<T> {
-    pub fn push(&mut self, val: T)
-    where
-        T: Clone,
-    {
-        match self {
-            ShortBuffer::Short(sh) => {
-                if let Some(v) = sh.try_push(val) {
-                    let mut buf = Vec::with_capacity(sh.buf.len() * 2);
-                    crate::clone_slice_into(buf.as_mut(), &sh.buf);
-                    *self = Self::Tall(buf);
-                    self.push(v)
-                }
-            }
-            ShortBuffer::Tall(v) => {
-                v.push(val);
-            }
-        }
-    }
+pub type ShortBytes = ShortBuffer<u8>;
+pub type ShortStr = ShortBuffer<u8, DEFAULT_SMALL_BUF_SIZE, Rc<str>>;
 
-    /// Tries to put val into self if self is Tall. returns None if successfully pushed,
-    /// otherwise self is Short and we retrun  the given val back to caller
-    pub fn try_push_tall(&mut self, val: T) -> Option<T> {
-        if let Self::Tall(buf) = self {
-            buf.push(val);
-            None
-        } else {
-            Some(val)
-        }
+impl PartialEq for ShortStr {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str().eq(other.as_str())
     }
 }
 
-pub type ShortBytes = ShortBuffer<u8>;
-pub type ShortRc<T> = ShortBuffer<T, DEFAULT_SMALL_BUF_SIZE, Rc<T>>;
+impl Eq for ShortStr {}
+
+impl PartialOrd for ShortStr {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.as_str().partial_cmp(other.as_str())
+    }
+}
+
+impl Ord for ShortStr {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl Hash for ShortStr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
 
 impl<T> Deref for ShortBuffer<T> {
     type Target = [T];
