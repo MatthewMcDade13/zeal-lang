@@ -1,5 +1,6 @@
 use std::{fmt::Display, ops::{Deref, DerefMut, Index, IndexMut}};
 
+use zeal_ast::expr::OperatorType;
 use zeal_core::copy_slice_into;
 
 
@@ -22,38 +23,42 @@ impl Display for VarOp {
         write!(f, "{s}")
     }
 }
-
-
-#[derive(Debug, Clone, Copy)]
-pub enum BinaryOpType {
-            Gt, 
-            Lt,  
-            Ge, 
-            Le, 
-            And, 
-            Or, 
-            Equals, 
-            NotEquals, 
-            BitAnd, 
-            BitOr, 
-            Xor, 
-            Concat, 
-            Add, 
-            Sub,
-            Mul, 
-            Div, 
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum UnaryOpType {
-    Negate, Not
-}
-
+//
+//
+// #[derive(Debug, Clone, Copy)]
+// pub enum BinaryOpType {
+//             Gt, 
+//             Lt,  
+//             Ge, 
+//             Le, 
+//             And, 
+//             Or, 
+//             Equals, 
+//             NotEquals, 
+//             BitAnd, 
+//             BitOr, 
+//             Xor, 
+//             Concat, 
+//             Add, 
+//             Sub,
+//             Mul, 
+//             Div, 
+// }
+//
+// #[derive(Debug, Clone, Copy)]
+// pub enum UnaryOpType {
+//     Negate, Not
+// }
+//
 //
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Op {
+    Rune8,
+    Rune16,
+    Rune32,
+    Rune64,
     Call,
     Return,
     Println,
@@ -307,37 +312,34 @@ impl From<Op> for u8 {
     }
 }
 
-impl From<BinaryOpType> for Op {
-    fn from(value: BinaryOpType) -> Self {
+impl From<OperatorType> for Op {
+    fn from(value: OperatorType) -> Self {
         match value {
-            BinaryOpType::Gt => Op::Gt,
-            BinaryOpType::Lt => Op::Lt,
-            BinaryOpType::Ge => Op::Ge,
-            BinaryOpType::Le => Op::Le,
-            BinaryOpType::And => panic!("No Bytecode op for And"),
-            BinaryOpType::Or => panic!("No Bytecode op for Or"),
-            BinaryOpType::Equals => Op::Eq,
-            BinaryOpType::NotEquals => Op::NotEq,
-            BinaryOpType::BitAnd => todo!(),
-            BinaryOpType::BitOr => todo!(),
-            BinaryOpType::Xor => todo!(),
-            BinaryOpType::Concat => Op::Concat,
-            BinaryOpType::Add => Op::Add,
-            BinaryOpType::Sub => Op::Sub,
-            BinaryOpType::Mul => Op::Mul,
-            BinaryOpType::Div => Op::Div,
+            OperatorType::Gt => Op::Gt,
+            OperatorType::Lt => Op::Lt,
+            OperatorType::Ge => Op::Ge,
+            OperatorType::Le => Op::Le,
+            OperatorType::And => panic!("No Bytecode op for And"),
+            OperatorType::Or => panic!("No Bytecode op for Or"),
+            OperatorType::Eq => Op::Eq,
+            OperatorType::NotEq => Op::NotEq,
+            // OperatorType::BitAnd => todo!(),
+            // OperatorType::BitOr => todo!(),
+            // OperatorType::Xor => todo!(),
+            OperatorType::Concat => Op::Concat,
+            OperatorType::Add => Op::Add,
+            OperatorType::Sub => Op::Sub,
+            OperatorType::Mul => Op::Mul,
+            OperatorType::Div => Op::Div,
+            OperatorType::Negate => Op::Neg, 
+            OperatorType::Not => Op::Not, 
+            OperatorType::Modulo => todo!(), 
+            OperatorType::Unknown => Op::Unknown 
         }
     }
 }
 
-impl From<UnaryOpType> for Op {
-    fn from(value: UnaryOpType) -> Self {
-        match value {
-            UnaryOpType::Negate => Op::Neg,
-            UnaryOpType::Not => Op::Not,
-        }
-    }
-}
+
 
 impl From<u8> for Op {
     fn from(value: u8) -> Self {

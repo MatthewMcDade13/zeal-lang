@@ -12,7 +12,21 @@ use parse::Parser;
 
 use std::{fmt::Display, rc::Rc};
 
-pub trait AstWalker<Node, R>
+#[macro_export]
+macro_rules! ast_node {
+    ($node: ty) => {
+        impl $node {
+            pub fn walk<T, R>(&self, walker: &mut T) -> anyhow::Result<R>
+            where
+                T: AstWalker<Self, R>,
+            {
+                walker.visit(self)
+            }
+        }
+    };
+}
+
+pub trait AstWalker<Node, R = ()>
 where
     Self: Sized,
 {
@@ -75,21 +89,8 @@ impl Display for Ast {
     }
 }
 
-macro_rules! ast_node {
-    ($node: ty, $output: ty) => {
-        impl $node {
-            pub fn walk<T>(&self, walker: &mut T) -> anyhow::Result<$output>
-            where
-                T: AstWalker<Self, $output>,
-            {
-                walker.visit(self)
-            }
-        }
-    };
-}
-
-ast_node!(ExprStmt, String);
-ast_node!(Expr, String);
+ast_node!(ExprStmt);
+ast_node!(Expr);
 
 #[derive(Debug, Clone, Copy)]
 pub struct AstStringify;
@@ -233,6 +234,7 @@ impl AstWalker<Expr, String> for AstStringify {
             Expr::Assign { lhs, rhs } => format!("(= {} {})", lhs.walk(self)?, rhs.walk(self)?),
             Expr::Call { head, args } => format!("({} {})", head.walk(self)?, args.walk(self)?),
             Expr::Unit => String::from("()"),
+            Expr::Operator { ty, args } => format!("(:{ty} {})", args.walk(self)?),
         };
         Ok(s)
     }

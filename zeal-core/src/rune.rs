@@ -41,12 +41,10 @@ impl RuneTableBuilder {
         }
     }
 
-    pub fn add_rune(&mut self, rname: &str) -> RuneId {
-        if self.table.contains_key(rname) {
-            self.table[rname]
-        } else {
+    pub fn add_rune(&mut self, rname: &str) {
+        if !self.table.contains_key(rname) {
             let id = RuneId(self.table.len());
-            self.table.insert(rname.to_string(), id).unwrap()
+            self.table.insert(rname.to_string(), id);
         }
     }
 
@@ -87,6 +85,16 @@ impl RuneTable {
     #[inline]
     pub fn lookup_name(&self, name: &str) -> Option<&Rune> {
         self.buf.iter().find(|r| r.as_str() == name)
+    }
+
+    #[inline]
+    pub fn get_id(&self, name: &str) -> Option<RuneId> {
+        for (i, r) in self.buf.iter().enumerate() {
+            if r.as_str() == name {
+                return Some(RuneId(i));
+            }
+        }
+        None
     }
 
     // pub fn add(&mut self, rname: &str) -> Self {}

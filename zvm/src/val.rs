@@ -5,6 +5,7 @@ use crate::chunk::FuncChunk;
 #[derive(Debug, Default, Clone)]
 pub enum Val {
     Byte(u8),
+    SByte(i8),
     Bool(bool),
     UNum(usize),
     Num(isize),
@@ -54,6 +55,7 @@ impl Val {
             Val::Ptr(val) => val.is_truthy(),
             Val::Func(rc) => rc.chunk.len() != 0,
             Val::Unit => false,
+            Val::SByte(b) => *b != 0,
         }
     }
 
@@ -93,8 +95,9 @@ impl Display for Val {
                 let arity = rc.arity;
                 let chunk = &rc.chunk;
 
-                format!("{name}/{arity} ->\n\t{chunk}")
+                format!("{name}/{arity} ->\n\t{chunk:?}")
             }
+            Val::SByte(sb) => sb.to_string(),
         };
         write!(f, "{s}")
     }

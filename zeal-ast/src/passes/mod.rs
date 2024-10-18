@@ -1,1 +1,2 @@
-pub mod sym;
+pub mod rune;
+pub mod typecheck;

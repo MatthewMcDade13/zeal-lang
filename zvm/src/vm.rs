@@ -1,13 +1,13 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use anyhow::{bail, Context};
-use zeal_ast::Ast;
+use zeal_ast::{expr::OperatorType, Ast};
 
 use crate::{
     chunk::{Chunk, FuncChunk},
     compiler::Archon,
     err::RuntimeError,
-    opcode::{BinaryOpType, Op, Opcode},
+    opcode::{Op, Opcode},
     stack::Stack,
     val::Val,
 };
@@ -33,8 +33,8 @@ macro_rules! num_binary_op {
     };
 }
 
-pub const STACK_MAX: usize = u16::MAX as usize;
-pub const CALL_STACK_MAX: usize = STACK_MAX * 8;
+pub const STACK_MAX: usize = u16::MAX as usize / 2;
+pub const CALL_STACK_MAX: usize = STACK_MAX * 2;
 #[derive(Debug, Clone)]
 pub struct VM {
     stack: VMStack,
@@ -56,6 +56,14 @@ impl VM {
             globals: HashMap::new(),
             // runes: RuneTable::empty(),
         }
+    }
+
+    pub fn load_from_file(&mut self, path: &str) -> anyhow::Result<()> {
+        let src = std::fs::read_to_string(path)?;
+        let f = self.compile_source(&src)?;
+        let f = Rc::new(f);
+        self.call(f);
+        Ok(())
     }
 
     pub fn dump_stack(&self) -> String {
@@ -89,7 +97,7 @@ impl VM {
 
     /// Compiles ast into a single chunk and returns the depth (index) of the newly pushed chunk.
     pub fn compile_ast(&mut self, ast: &Ast) -> anyhow::Result<FuncChunk> {
-        Archon::compile_entrypoint(&ast)
+        Archon::compile_entrypoint(ast)
     }
 
     // TODO: pub fn test_opcode(&self, opcode: Opcode) -> anyhow::Result<OpEffect> {}
@@ -148,6 +156,8 @@ impl VM {
         f.constants()
     }
 
+    // TODO: implement debug opcodes with actual runtime values so
+    // i can debug and verify compilation to bytecode.
     pub fn exec(&mut self) -> anyhow::Result<Val> {
         while let Some(opcode) = self.next_opcode() {
             match opcode.op() {
@@ -184,17 +194,17 @@ impl VM {
                     }
                 }
                 Op::Add => {
-                    self.binary_op_float(BinaryOpType::Add);
+                    self.binary_op_float(OperatorType::Add);
                     // let right = self.stack.pop().expect_float64();
                     // let left = self.stack.pop().expect_float64();
                     // let res = ZValue::Number(left + right);
                     // self.stack.push(res);
                 }
                 Op::Sub => {
-                    self.binary_op_float(BinaryOpType::Sub);
+                    self.binary_op_float(OperatorType::Sub);
                 }
-                Op::Div => self.binary_op_float(BinaryOpType::Div),
-                Op::Mul => self.binary_op_float(BinaryOpType::Mul),
+                Op::Div => self.binary_op_float(OperatorType::Div),
+                Op::Mul => self.binary_op_float(OperatorType::Mul),
                 Op::Neg => {
                     let val = self.stack.expect_pop().expect_float64();
                     self.stack.push(Val::Float(-val));
@@ -275,12 +285,12 @@ impl VM {
                     }
                 }
                 // NOTE: ----- END DEFINE GLOBAL -----
-                Op::Eq => self.binary_op_float(BinaryOpType::Equals),
-                Op::Gt => self.binary_op_float(BinaryOpType::Gt),
-                Op::Lt => self.binary_op_float(BinaryOpType::Lt),
-                Op::Ge => self.binary_op_float(BinaryOpType::Ge),
-                Op::Le => self.binary_op_float(BinaryOpType::Le),
-                Op::NotEq => self.binary_op_float(BinaryOpType::NotEquals),
+                Op::Eq => self.binary_op_float(OperatorType::Eq),
+                Op::Gt => self.binary_op_float(OperatorType::Gt),
+                Op::Lt => self.binary_op_float(OperatorType::Lt),
+                Op::Ge => self.binary_op_float(OperatorType::Ge),
+                Op::Le => self.binary_op_float(OperatorType::Le),
+                Op::NotEq => self.binary_op_float(OperatorType::NotEq),
 
                 // NOTE: ----- GET LOCAL -----
                 Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
@@ -293,8 +303,7 @@ impl VM {
                 // NOTE: ----- END GET LOCAL -----
 
                 // NOTE: ----- SET LOCAL -----
-                Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => {}
-
+                Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => todo!(),
                 Op::JumpFalse => {
                     if let Some(top) = self.stack.peek_top() {
                         if top.is_falsey() {
@@ -340,12 +349,13 @@ impl VM {
                     if let Some(callable) = self.stack.peekn(nargs) {
                         match callable {
                             Val::Func(f) => {
-                                self.call(Rc::clone(&f));
+                                self.call(Rc::clone(f));
                             }
                             _ => todo!(),
                         }
                     }
-                } // NOTE: ----- END SET LOCAL -----
+                }
+                Op::Rune8 | Op::Rune16 | Op::Rune32 | Op::Rune64 => {}
             };
         }
 
@@ -360,7 +370,9 @@ impl VM {
     fn jump_to(&mut self, jump_op: &Opcode) {
         let jumpto = jump_op
             .try_param()
-            .expect(&format!("{} has no parameter!!!", jump_op.op().to_string()));
+            .unwrap_or_else(|| panic!("{} has no parameter!!!", jump_op.op()));
+        let cf = self.frame_mut();
+        cf.ip = jumpto.to_usize();
     }
 
     fn read_constant(&self, opcode: &Opcode) -> Option<&Val> {
@@ -368,43 +380,40 @@ impl VM {
         f.read_constant(opcode)
     }
 
-    fn binary_op_float(&mut self, ty: BinaryOpType) {
+    fn binary_op_float(&mut self, ty: OperatorType) {
         let right = self.stack.expect_pop().expect_float64();
         let left = self.stack.expect_pop().expect_float64();
 
         let res: Val = match ty {
-            BinaryOpType::Gt => (left > right).into(),
-            BinaryOpType::Lt => (left < right).into(),
-            BinaryOpType::Ge => (left >= right).into(),
-            BinaryOpType::Le => (left <= right).into(),
-            BinaryOpType::And => panic!("No opcode for And"),
-            BinaryOpType::Or => panic!("No opcode for Or"),
-            BinaryOpType::Equals => (left == right).into(),
-            BinaryOpType::NotEquals => (left != right).into(),
-            BinaryOpType::BitAnd => todo!(),
-            BinaryOpType::BitOr => todo!(),
-            BinaryOpType::Xor => todo!(),
-            BinaryOpType::Concat => todo!(),
-            BinaryOpType::Add => (left + right).into(),
-            BinaryOpType::Sub => (left - right).into(),
-            BinaryOpType::Mul => (left * right).into(),
-            BinaryOpType::Div => (left / right).into(),
+            OperatorType::Gt => (left > right).into(),
+            OperatorType::Lt => (left < right).into(),
+            OperatorType::Ge => (left >= right).into(),
+            OperatorType::Le => (left <= right).into(),
+            OperatorType::And => panic!("No opcode for And"),
+            OperatorType::Or => panic!("No opcode for Or"),
+            OperatorType::Eq => (left == right).into(),
+            OperatorType::NotEq => (left != right).into(),
+            // OperatorType::BitAnd => todo!(),
+            // OperatorType::BitOr => todo!(),
+            // OperatorType::Xor => todo!(),
+            OperatorType::Concat => todo!(),
+            OperatorType::Add => (left + right).into(),
+            OperatorType::Sub => (left - right).into(),
+            OperatorType::Mul => (left * right).into(),
+            OperatorType::Div => (left / right).into(),
+            OperatorType::Negate => {
+                panic!("Cannot run unary operator Negate as a binary float operator!")
+            }
+            OperatorType::Not => {
+                panic!("Cannot run unary operator Not as a binary float operator!")
+            }
+            OperatorType::Modulo => todo!(),
+            OperatorType::Unknown => panic!("Unknown Operator Type."),
         };
 
         self.stack.push(res);
     }
-    // for opcode in self.chunk.iter() {
-    // Ok(opcode.offset())
-    // vm_exec_opcode(&mut self.stack, &chunk.constants, opcode)?;
-    // }
 
-    // pub fn exec_chunks(&mut self, chs: &[Chunk]) -> anyhow::Result<()> {
-    //     for c in chs {
-    //         self.exec(*c)?;
-    //     }
-    //     Ok(())
-    // }
-    //
     pub fn exec_file(&mut self, path: &str) -> anyhow::Result<Val> {
         let source = std::fs::read_to_string(path)?;
 
@@ -457,158 +466,124 @@ impl VM {
         }
     }
 
-    pub fn debug_opcode(&self, opcode: Opcode) -> String {
-        let s = match opcode.op() {
-            Op::Return => "RETURN",
-            Op::Println => "PRINTLN",
-            Op::Print => "PRINT",
-            Op::Pop => "POP",
-            Op::PopN => {
-                let n = opcode.try_param().unwrap().to_u32() as usize;
-
-                &format!("POPN => {n},")
-            }
-            Op::Add => "ADD",
-            Op::Sub => "SUB",
-            Op::Div => "DIV",
-            Op::Mul => "MUL",
-            Op::Neg => "NEGATE",
-            Op::Not => "NOT",
-            Op::Nil => "NIL",
-            Op::True => "TRUE",
-            Op::False => "FALSE",
-            Op::Concat => "CONCAT",
-            Op::Const8 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                let val = &self.frame_constants()[index];
-                if let Val::Func(f) = val {
-                    let name = f.name();
-                    let arity = f.arity;
-                    let arity_s = if arity == 0 {
-                        String::new()
-                    } else {
-                        arity.to_string()
-                    };
-                    let code = &f.chunk;
-                    &format!("fn {name}/{arity_s}:\n\t{code}")
-                } else {
-                    &format!(
-                        "CONST8 => {}, actual: {}",
-                        index,
-                        self.frame_constants()[index]
-                    )
+    pub fn dump_bytecode_mut(&mut self) -> String {
+        let mut n = 0;
+        let mut bstr = String::new();
+        while let Some(opcode) = self.next_opcode() {
+            let s = match opcode.op() {
+                Op::Return => String::from("RETURN"),
+                Op::Println => String::from("PRINTLN"),
+                Op::Print => String::from("PRINT"),
+                Op::Pop => String::from("POP"),
+                Op::PopN => {
+                    let param = opcode.try_param().unwrap();
+                    let n = param.to_u32() as usize;
+                    format!("POPN => {n}")
                 }
-            }
-            Op::Const16 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!(
-                    "CONST16 => {}, actual: {}",
-                    index,
-                    self.frame_constants()[index]
-                )
-            }
-            Op::Const24 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!(
-                    "CONST24 => {}, actual: {}",
-                    index,
-                    self.frame_constants()[index]
-                )
-            }
-            Op::Const32 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!(
-                    "CONST32 => {}, actual: {}",
-                    index,
-                    self.frame_constants()[index]
-                )
-            }
-            Op::Const64 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!(
-                    "CONST64 => {}, actual: {}",
-                    index,
-                    self.frame_constants()[index]
-                )
-            }
-            Op::Call => {
-                let nargs = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("CALL => {}", nargs)
-            }
-            Op::Unknown => "UNKNOWN_OP",
-            Op::DeclareGlobal8 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("DEF_GLOBAL8 => {}", index)
-            }
-            Op::GetGlobal8 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("GET_GLOBAL8 => {}", index)
-            }
-            Op::SetGlobal8 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("SET_GLOBAL8 => {}", index)
-            }
+                Op::Add => String::from("ADD"),
+                Op::Sub => String::from("SUB"),
+                Op::Div => String::from("DIV"),
+                Op::Mul => String::from("MUL"),
+                Op::Neg => String::from("NEGATE"),
+                Op::Not => String::from("NOT"),
+                Op::Nil => String::from("NIL"),
+                Op::True => String::from("TRUE"),
+                Op::False => String::from("FALSE"),
+                Op::Concat => todo!(),
+                Op::Const8 | Op::Const16 | Op::Const24 | Op::Const32 | Op::Const64 => {
+                    let v = self.read_constant(&opcode).expect("Empty Call Frame!");
 
-            Op::GetLocal8 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                let local = &self.frame().code().scope.locals[index];
-                &format!("GET_LOCAL8 => {index}, ident: {local}")
-            }
-            Op::SetLocal8 => {
-                let index = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("SET_LOCAL8 => {}", index)
-            }
-            Op::Eq => "EQ",
-            Op::Gt => "GT",
-            Op::Lt => "LT",
-            Op::Ge => "GE",
-            Op::Le => "LE",
-            Op::NotEq => "NEQ",
-            Op::DeclareGlobal16 => todo!(),
-            Op::GetGlobal16 => todo!(),
-            Op::SetGlobal16 => todo!(),
-            Op::GetLocal16 => todo!(),
-            Op::SetLocal16 => todo!(),
-            Op::DeclareGlobal32 => todo!(),
-            Op::GetGlobal32 => todo!(),
-            Op::SetGlobal32 => todo!(),
-            Op::GetLocal32 => todo!(),
-            Op::SetLocal32 => todo!(),
-            Op::JumpFalse => {
-                let offset = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("JUMP_FALSE => {}", offset)
-            }
-            Op::LongJumpFalse => {
-                let offset = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("LONG_JUMP_FALSE => {}", offset)
-            }
-            Op::Jump => {
-                let offset = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("JUMP => {}", offset)
-            }
-            Op::LongJump => {
-                let offset = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("LONG_JUMP => {}", offset)
-            }
+                    format!("CONST => {v}")
+                }
+                Op::Unknown => todo!(),
 
-            Op::JumpTrue => {
-                let offset = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("JUMP_TRUE => {}", offset)
-            }
+                // NOTE: ----- DEFINE GLOBAL -----
+                Op::DeclareGlobal8 | Op::DeclareGlobal16 | Op::DeclareGlobal32 => {
+                    let name = self
+                        .read_constant(&opcode)
+                        .expect("Failed to read constant global!!!")
+                        .clone();
+                    self.globals.insert(name.to_string(), name.clone());
+                    format!("DECLARE_GLOBAL => {name}")
+                }
+                Op::GetGlobal8 | Op::GetGlobal16 | Op::GetGlobal32 => {
+                    if let Some(Val::Rune(name)) = self.read_constant(&opcode) {
+                        if let Some(val) = self.globals.get(name.as_ref()) {
+                            format!("GET_GLOBAL => {val}")
+                        } else {
+                            format!("GET_GLOBAL => {name}")
+                        }
+                    } else {
+                        panic!("Attempted to get Global, but its value in VM constants is not Val::Rune.")
+                    }
+                }
 
-            Op::LongJumpTrue => {
-                let offset = opcode.try_param().unwrap().to_u32() as usize;
-                &format!("LONG_JUMP_TRUE => {}", offset)
-            }
-        };
+                Op::SetGlobal8 | Op::SetGlobal16 | Op::SetGlobal32 => {
+                    if let Some(Val::Rune(name)) = self.read_constant(&opcode) {
+                        format!("SET_GLOBAL => {name}")
+                    } else {
+                        String::from("SET_GLOBAL => Failed to read constant!")
+                    }
+                }
+                // NOTE: ----- END DEFINE GLOBAL -----
+                Op::Eq => String::from("EQ"),
+                Op::Gt => String::from("GT"),
+                Op::Lt => String::from("LT"),
+                Op::Ge => String::from("GE"),
+                Op::Le => String::from("LE"),
+                Op::NotEq => String::from("NOT_EQ"),
 
-        String::from(s)
+                // NOTE: ----- GET LOCAL -----
+                Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
+                    if let Some(local) = self.read_local(&opcode) {
+                        format!("GET_LOCAL => {local}")
+                    } else {
+                        String::from("GET_LOCAL => Unable to call GetLocal*")
+                    }
+                }
+                // NOTE: ----- END GET LOCAL -----
+
+                // NOTE: ----- SET LOCAL -----
+                Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => todo!(),
+                Op::JumpFalse => {
+                    format!("JUMP_FALSE => {}", opcode.try_param().unwrap().to_usize())
+                }
+
+                Op::LongJumpFalse => todo!(),
+                Op::Jump => {
+                    format!("JUMP => {}", opcode.try_param().unwrap().to_usize())
+                }
+                Op::LongJump => todo!(),
+                Op::JumpTrue => {
+                    format!("JUMP_TRUE => {}", opcode.try_param().unwrap().to_usize())
+                }
+                Op::LongJumpTrue => todo!(),
+                Op::Call => {
+                    let nargs = opcode
+                        .try_param()
+                        .expect("Op::Call requires paramter and received none!!!")
+                        .to_u32() as usize;
+                    format!("CALL => {nargs}")
+                }
+                Op::Rune8 | Op::Rune16 | Op::Rune32 | Op::Rune64 => {
+                    let arg = opcode
+                        .try_param()
+                        .expect("Op::Rune requires paramter and received none!!!")
+                        .to_usize();
+                    format!("RUNE => {arg}")
+                }
+            };
+
+            n += 1;
+            bstr.push_str(&format!("{n}: {s}\n"));
+        }
+        bstr
     }
 
     // #[inline]
     // pub fn memfor(&self, frame: &CallFrame) -> &[ZValue] {
     //     &self.stack[frame.mem_slots.clone()]
-    // }
+    //
 }
 
 impl Default for VM {
@@ -619,7 +594,8 @@ impl Default for VM {
 
 impl Display for VM {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let d = self.dump();
+        let mut s = self.clone();
+        let d = s.dump_bytecode_mut();
         write!(f, "{d}")
     }
 }

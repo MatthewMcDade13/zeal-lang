@@ -4,24 +4,27 @@
 // the code is still half-usable so i dont have to rewrite EVERYTHING from scratch, though i might
 // not mind that in the future. TO LLVM!!!!!!
 
+use std::str::FromStr;
+
+use zeal_ast::Ast;
 use zvm::vm::VM;
 
-const PATH: &str = "./zeal/src/scripts/loops.zl";
+const PATH: &str = "./test_scripts/loops.zl";
 
 fn main() -> anyhow::Result<()> {
-    const SOURCE: &str = "4 * 3 + 10 / 5 - 6\n\n"; //\nlet x = 5 + 5 + (5 * 3)\n\n";
-                                                   //
+    //
 
     // let ast = TokBuffer::read_file(PATH)?;
     // let ast = Ast::from_file(PATH)?;
     // println!("{ast}");
 
     let mut vm = VM::new();
-    let v = vm.exec_file(PATH)?;
+    vm.exec_file(PATH)?;
+    // println!("{vm}");
     // println!("EXEC RESULT => {v}");
     // let x = TokBuffer::read_string(s)?;
 
-    // let x = Ast::from_str(SOURCE)?;
+    // let x = Ast::from_str(PATH)?;
     // println!("{x}");
     // let code = Archon::compile(&x)?;
     // println!("{a:?}");
