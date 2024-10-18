@@ -19,6 +19,7 @@ pub enum BindScope {
 }
 
 
+
 impl PartialOrd for BindScope {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
          match self {

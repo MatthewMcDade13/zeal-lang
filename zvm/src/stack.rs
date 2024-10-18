@@ -184,8 +184,8 @@ where
         }
     }
 
-    pub fn peekn_mut(&mut self, n: isize) -> Option<&mut T> {
-        let c = self.cursor.addn(n);
+    pub fn peekn_mut(&mut self, n: usize) -> Option<&mut T> {
+        let c = self.cursor.offset(n);
         if let Some(index) = c.try_as_index() {
             Some(&mut self.buf[index])
         } else {
@@ -269,6 +269,30 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<const S: usize, T> Index<std::ops::RangeInclusive<usize>> for Stack<S, T>
+where
+    T: Clone,
+{
+    type Output = [T];
+
+    fn index(&self, index: std::ops::RangeInclusive<usize>) -> &Self::Output {
+        let start = *index.start();
+        let end = *index.end();
+        &self.buf[start..=end]
+    }
+}
+
+impl<const S: usize, T> IndexMut<std::ops::RangeInclusive<usize>> for Stack<S, T>
+where
+    T: Clone,
+{
+    fn index_mut(&mut self, index: std::ops::RangeInclusive<usize>) -> &mut Self::Output {
+        let start = *index.start();
+        let end = *index.end();
+        &mut self.buf[start..=end]
     }
 }
 

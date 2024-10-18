@@ -5,9 +5,9 @@ use std::{
     slice::Iter,
 };
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 
-use crate::{AstStringify, AstWalker};
+use crate::AstStringify;
 
 pub type AstRune = Rc<str>;
 pub type ExprNode = Rc<Expr>;
@@ -73,35 +73,6 @@ impl<T> AstList<T> {
             AstList::Nil => Vec::new(),
             AstList::List(rc) => rc.to_vec(),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AstMeta {}
-
-#[derive(Debug, Clone)]
-pub struct MetaExpr {
-    pub node: Expr,
-    pub meta: AstMeta,
-}
-
-impl AsRef<Expr> for MetaExpr {
-    fn as_ref(&self) -> &Expr {
-        &self.node
-    }
-}
-
-impl Deref for MetaExpr {
-    type Target = Expr;
-
-    fn deref(&self) -> &Self::Target {
-        &self.node
-    }
-}
-
-impl DerefMut for MetaExpr {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.node
     }
 }
 
@@ -331,7 +302,85 @@ impl ExprStmt {
     }
 }
 
-//
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum OperatorType {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Concat,
+    Negate,
+    Not,
+    Modulo,
+    Gt,
+    Lt,
+    Ge,
+    Le,
+    Eq,
+    NotEq,
+    And,
+    Or,
+    Unknown,
+}
+
+impl From<&str> for OperatorType {
+    fn from(value: &str) -> Self {
+        match value {
+            "<" => Self::Lt,
+            ">" => Self::Gt,
+            "<=" => Self::Le,
+            ">=" => Self::Gt,
+            "==" => Self::Eq,
+            "!=" => Self::NotEq,
+            "++" => Self::Concat,
+            "+" => Self::Add,
+            "-" => Self::Sub,
+            "*" => Self::Mul,
+            "/" => Self::Div,
+            "neg" => Self::Negate,
+            "not" => Self::Not,
+            "mod" => Self::Modulo,
+            "and" => Self::And,
+            "or" => Self::Or,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl Display for OperatorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            OperatorType::Add => "+",
+            OperatorType::Sub => "-",
+            OperatorType::Mul => "*",
+            OperatorType::Div => "/",
+            OperatorType::Concat => "++",
+            OperatorType::Negate => "neg",
+            OperatorType::Not => "not",
+            OperatorType::Modulo => "mod",
+            OperatorType::Gt => ">",
+            OperatorType::Lt => "<",
+            OperatorType::Ge => ">=",
+            OperatorType::Le => "<=",
+            OperatorType::Eq => "==",
+            OperatorType::NotEq => "!=",
+            OperatorType::And => "and",
+            OperatorType::Or => "or",
+            OperatorType::Unknown => return std::fmt::Result::Err(std::fmt::Error),
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl OperatorType {
+    pub const fn is_known(&self) -> bool {
+        !self.is_unknown()
+    }
+
+    pub const fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -345,8 +394,12 @@ pub enum Expr {
     Float(f64),
     String(Rc<str>),
     List(AstList<Self>),
-    Pair([Rc<Expr>; 2]),
-    Triple([Rc<Expr>; 3]),
+    Operator {
+        ty: OperatorType,
+        args: Rc<Expr>,
+    },
+    Pair(Rc<[Expr; 2]>),
+    Triple(Rc<[Expr; 3]>),
     Assign {
         lhs: Rc<Expr>,
         rhs: Rc<Expr>,
@@ -394,6 +447,28 @@ impl Display for EscapeExpr {
 impl Expr {
     pub const UNIT: Self = const { Self::Unit };
 
+    pub fn try_list(&self) -> Option<&[Expr]> {
+        match self {
+            Expr::List(ast_list) => {
+                if let AstList::List(l) = ast_list {
+                    Some(l)
+                } else {
+                    None
+                }
+            }
+            Expr::Pair(p) => Some(p.as_ref()),
+            Expr::Triple(t) => Some(t.as_ref()),
+            _ => None,
+        }
+    }
+
+    pub fn assert_list(&self) -> anyhow::Result<&[Expr]> {
+        self.try_list().context(format!(
+            "Failed to read Expr as a list! Got: {}",
+            self.type_str()
+        ))
+    }
+
     pub const fn type_str(&self) -> &'static str {
         match self {
             Expr::Rune(_) => "Rune",
@@ -410,6 +485,7 @@ impl Expr {
             Expr::Unit => "()",
             Expr::Byte(_) => "Unsigned Byte",
             Expr::SByte(_) => "Signed Byte",
+            Expr::Operator { .. } => "Operator",
         }
     }
 
@@ -421,13 +497,17 @@ impl Expr {
     }
 
     #[inline]
-    pub fn unary_op(op: Expr, rhs: Expr) -> Self {
-        Self::call_slice(op, &[rhs])
+    pub fn unary_op(op: OperatorType, rhs: Expr) -> Self {
+        let ty = op;
+        let args = Rc::new(rhs);
+        Self::Operator { ty, args }
     }
 
     #[inline]
-    pub fn binary_op(lhs: Expr, op: Expr, rhs: Expr) -> Self {
-        Self::call_slice(op, &[lhs, rhs])
+    pub fn binary_op(lhs: Expr, op: OperatorType, rhs: Expr) -> Self {
+        let ty = op;
+        let args = Rc::new(Self::pair(lhs, rhs));
+        Self::Operator { ty, args }
     }
 
     pub fn list(list: Vec<Self>) -> Self {
@@ -436,12 +516,12 @@ impl Expr {
     }
 
     pub fn pair(a: Self, b: Self) -> Self {
-        Self::Pair([Rc::new(a), Rc::new(b)])
+        Self::Pair(Rc::from([a, b]))
     }
 
     #[inline]
     pub fn triple(a: Self, b: Self, c: Self) -> Self {
-        Self::Triple([Rc::new(a), Rc::new(b), Rc::new(c)])
+        Self::Triple(Rc::from([a, b, c]))
     }
 
     #[inline]

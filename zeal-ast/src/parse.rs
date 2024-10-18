@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::{
     err::{ParseErrInfo, ParseError},
-    expr::{AstList, AstRune, BindType, Binding, Expr, ExprStmt, WhenForm},
+    expr::{AstList, AstRune, BindType, Binding, Expr, ExprStmt, OperatorType, WhenForm},
     lex::{LexTok, LineInfo, Tok, TokType},
     Ast,
 };
@@ -497,11 +497,17 @@ impl Parser {
             match self.peek().ty {
                 TokType::Or | TokType::And => {
                     self.adv(1)?;
-                    let operator = self.peek_prev().clone().into_ast_rune();
-                    let operator = Expr::Rune(operator);
+                    let operator = self.peek_prev().lexeme.clone();
+                    let operator = operator.as_str();
+
+                    let op = OperatorType::from(operator);
+                    if op.is_unknown() {
+                        bail!("Unknown operator: {}", operator);
+                    }
+
                     let right = self.logical_bitwise()?;
 
-                    expr = Expr::binary_op(expr, operator, right);
+                    expr = Expr::binary_op(expr, op, right);
                 }
                 _ => break Ok(expr),
             }
@@ -536,11 +542,17 @@ impl Parser {
             match self.peek().ty {
                 TokType::Minus | TokType::Plus => {
                     self.adv(1)?;
-                    let operator = self.peek_prev().clone().into_ast_rune();
-                    let operator = Expr::Rune(operator);
+                    let operator = self.peek_prev().lexeme.clone();
+                    let operator = operator.as_str();
+
+                    let op = OperatorType::from(operator);
+                    if op.is_unknown() {
+                        bail!("Unknown operator: {}", operator);
+                    }
+
                     let right = self.factor()?;
 
-                    expr = Expr::binary_op(expr, operator, right);
+                    expr = Expr::binary_op(expr, op, right);
                 }
                 _ => break Ok(expr),
             }
@@ -558,10 +570,15 @@ impl Parser {
                 | TokType::EqEq
                 | TokType::BangEq => {
                     self.adv(1)?;
-                    let operator = self.peek_prev().clone().into_ast_rune();
-                    let operator = Expr::Rune(operator);
+                    let operator = self.peek_prev().lexeme.clone();
+                    let operator = operator.as_str();
+                    let op = OperatorType::from(operator);
+                    if op.is_unknown() {
+                        bail!("Unknown operator: {}", operator);
+                    }
+
                     let right = self.term()?;
-                    expr = Expr::binary_op(expr, operator, right);
+                    expr = Expr::binary_op(expr, op, right);
                 }
                 _ => break Ok(expr),
             }
@@ -574,10 +591,15 @@ impl Parser {
             match self.peek().ty {
                 TokType::ForwardSlash | TokType::Star => {
                     self.adv(1)?;
-                    let operator = self.peek_prev().clone().into_ast_rune();
-                    let operator = Expr::Rune(operator);
+                    let operator = self.peek_prev().lexeme.clone();
+                    let operator = operator.as_str();
+                    let op = OperatorType::from(operator);
+                    if op.is_unknown() {
+                        bail!("Unknown operator: {}", operator);
+                    }
+
                     let right = self.unary()?;
-                    expr = Expr::binary_op(expr, operator, right);
+                    expr = Expr::binary_op(expr, op, right);
                 }
                 _ => break Ok(expr),
             }
@@ -621,10 +643,16 @@ impl Parser {
         match self.peek().ty {
             TokType::Bang | TokType::Minus => {
                 self.adv(1)?;
-                let operator = self.peek_prev().clone().into_ast_rune();
-                let operator = Expr::Rune(operator);
+                let operator = self.peek_prev().lexeme.clone();
+                let operator = operator.as_str();
+
+                let op = OperatorType::from(operator);
+                if op.is_unknown() {
+                    bail!("Unknown operator: {}", operator);
+                }
+
                 let right = self.unary()?;
-                let expr = Expr::unary_op(operator, right);
+                let expr = Expr::unary_op(op, right);
                 Ok(expr)
             }
             _ => self.call(),
