@@ -11,9 +11,27 @@ pub struct Rune(ShortStr);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RuneId(usize);
+pub struct RuneId(pub(crate) usize);
+
+impl RuneId {
+    pub const fn get(&self) -> usize {
+        self.0
+    }
+}
+
+impl Deref for RuneId {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl Rune {
+    pub const fn zeroed() -> Self {
+        let sb = ShortStr::zeroed();
+        Self(sb)
+    }
     fn new(name: &str) -> Self {
         let s = ShortStr::new(name);
         Self(s)
@@ -29,6 +47,13 @@ impl Rune {
     }
 }
 
+impl Deref for Rune {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
 #[derive(Debug, Clone)]
 pub struct RuneTableBuilder {
     table: HashMap<String, RuneId>,
@@ -42,6 +67,7 @@ impl RuneTableBuilder {
     }
 
     pub fn add_rune(&mut self, rname: &str) {
+        println!("{rname}");
         if !self.table.contains_key(rname) {
             let id = RuneId(self.table.len());
             self.table.insert(rname.to_string(), id);
@@ -49,13 +75,13 @@ impl RuneTableBuilder {
     }
 
     pub fn build(mut self) -> RuneTable {
-        let mut rt = Vec::with_capacity(self.table.len());
+        let mut r = vec![Rune::zeroed(); self.table.len()];
 
         for (k, v) in self.table.drain() {
-            rt[v.0] = Rune::new(k.as_str())
+            r[v.0] = Rune::new(k.as_str())
         }
 
-        RuneTable { buf: rt }
+        RuneTable { buf: r }
     }
 }
 

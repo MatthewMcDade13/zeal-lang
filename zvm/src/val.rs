@@ -2,6 +2,15 @@ use std::{fmt::Display, rc::Rc};
 
 use crate::chunk::FuncChunk;
 
+// pub struct NativeFunc<T: Fn(&[Val]) -> anyhow::Result<Val>>(T);
+
+#[derive(Debug, Clone)]
+pub struct NativeFunc {
+    pub func: fn(&[Val]) -> anyhow::Result<Val>,
+    pub name: Rc<str>,
+    pub arity: usize,
+}
+
 #[derive(Debug, Default, Clone)]
 pub enum Val {
     Byte(u8),
@@ -14,6 +23,7 @@ pub enum Val {
     String(Rc<str>),
     Ptr(Box<Self>),
     Func(Rc<FuncChunk>),
+    NativeFunc(NativeFunc),
     #[default]
     Unit,
 }
@@ -56,6 +66,7 @@ impl Val {
             Val::Func(rc) => rc.chunk.len() != 0,
             Val::Unit => false,
             Val::SByte(b) => *b != 0,
+            Val::NativeFunc(_) => true,
         }
     }
 
@@ -98,6 +109,7 @@ impl Display for Val {
                 format!("{name}/{arity} ->\n\t{chunk:?}")
             }
             Val::SByte(sb) => sb.to_string(),
+            Val::NativeFunc(NativeFunc { name, .. }) => format!("__native__/{name}"),
         };
         write!(f, "{s}")
     }

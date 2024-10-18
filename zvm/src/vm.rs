@@ -1,39 +1,23 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use anyhow::{bail, Context};
-use zeal_ast::{expr::OperatorType, Ast};
+use zeal_ast::{expr::OperatorType, passes::rune::RuneTablePass, Ast};
+use zeal_core::rune::RuneTable;
 
 use crate::{
     chunk::{Chunk, FuncChunk},
     compiler::Archon,
     err::RuntimeError,
+    native::zvm_println,
     opcode::{Op, Opcode},
     stack::Stack,
-    val::Val,
+    val::{NativeFunc, Val},
 };
 
-macro_rules! num_binary_op {
-    ($stack: expr, $op: tt) => {
+// TODO: 10/17/2024 :: Execution fails when encountering println in the loops.zl test script.
+//
 
-        {
-        // TODO: Inequalities dont work... not sure why but left and right seems to
-        // get switch up somewhere. OOF
-            let right = $stack.expect_pop().expect_float64();
-            let left = $stack.expect_pop().expect_float64();
-            let res = left $op right;
-            let op = stringify!($op);
-
-            let res = ZValue::from(res);
-            $stack.push(res);
-
-
-
-        }
-
-    };
-}
-
-pub const STACK_MAX: usize = u16::MAX as usize / 2;
+pub const STACK_MAX: usize = 255; //u16::MAX as usize / 2;
 pub const CALL_STACK_MAX: usize = STACK_MAX * 2;
 #[derive(Debug, Clone)]
 pub struct VM {
@@ -44,6 +28,7 @@ pub struct VM {
     /// program counter for current running chunk. (chunk counter)
     // pc: usize,
     globals: HashMap<String, Val>, // runes: RuneTable,
+                                   // runes: RuneTable,
 }
 
 pub type VMStack = Stack<STACK_MAX, Val>;
@@ -58,12 +43,47 @@ impl VM {
         }
     }
 
-    pub fn load_from_file(&mut self, path: &str) -> anyhow::Result<()> {
-        let src = std::fs::read_to_string(path)?;
-        let f = self.compile_source(&src)?;
-        let f = Rc::new(f);
-        self.call(f);
-        Ok(())
+    pub fn load_entrypoint(path: &str) -> anyhow::Result<Self> {
+        let ast = Ast::from_file(path)?;
+
+        let runes = RuneTablePass::dopass(&ast)?;
+        let f = Archon::compile_entrypoint(&ast)?;
+
+        let stack_fn = Rc::new(f);
+        let mut stack = Stack::new();
+        stack.push(Val::Func(Rc::clone(&stack_fn)));
+
+        let arity = stack_fn.arity as isize;
+        let beg = stack.top_index().unwrap() as isize - arity - 1;
+        let start_slot = std::cmp::min(0, beg) as usize;
+        let cf = CallFrame {
+            func: Some(Rc::clone(&stack_fn)),
+            ip: 0,
+            start_slot,
+        };
+        let mut frames = Stack::new();
+
+        let globals = {
+            let mut gs: HashMap<String, Val> = HashMap::new();
+            let n = NativeFunc {
+                func: zvm_println,
+                name: Rc::from("println"),
+                arity: 255,
+            };
+            gs.insert(String::from("println"), Val::NativeFunc(n));
+            gs
+        };
+
+        frames.push(cf);
+
+        let s = Self {
+            stack,
+            frames,
+            globals,
+            // runes,
+        };
+        Ok(s)
+        // let f = self.compile_source(&src)?;
     }
 
     pub fn dump_stack(&self) -> String {
@@ -142,6 +162,25 @@ impl VM {
         let cf = self.new_frame(unit);
 
         self.frames.push(cf);
+    }
+
+    pub fn call_native(&mut self, nv: &NativeFunc, nargs: usize) -> anyhow::Result<()> {
+        // ensure!("")
+        let arg_end = self.stack.top_index().unwrap() as isize;
+        let arg_start = arg_end - nargs as isize + 1;
+        let arg_start = std::cmp::max(0, arg_start) as usize;
+        let arg_end = arg_end as usize;
+
+        let args = &self.stack[arg_start..=arg_end];
+        let retval = (nv.func)(args)?;
+
+        for _ in 0..nargs + 1 {
+            let v = self.stack.expect_pop();
+        }
+
+        self.stack.push(retval);
+
+        Ok(())
     }
 
     fn next_opcode(&mut self) -> Option<Opcode> {
@@ -346,11 +385,12 @@ impl VM {
                     // .expect(&format!("Failed to read constant from Frame: {:?}", frame));
                     // TODO: Fix this. we need to have function in stack memory BEFORE we compile
                     // its arguments and then emit Op::Call
-                    if let Some(callable) = self.stack.peekn(nargs) {
-                        match callable {
+                    if let Some(callable) = self.stack.peekn_mut(nargs) {
+                        match &callable.clone() {
                             Val::Func(f) => {
                                 self.call(Rc::clone(f));
                             }
+                            Val::NativeFunc(nv) => self.call_native(nv, nargs)?,
                             _ => todo!(),
                         }
                     }
@@ -435,9 +475,6 @@ impl VM {
         let f = self.compile_source(src)?;
         let f = Rc::new(f);
         self.call(f);
-        // let cf = self.new_frame(f);
-        // SAFETY: new_frame gaurantees that CallFrame::func is not None,
-        // so this is safe.
 
         self.exec()
     }
@@ -445,11 +482,6 @@ impl VM {
     pub fn frame_memory(&self, frame: &CallFrame) -> &[Val] {
         &self.stack[frame.start_slot..]
     }
-
-    //
-    // pub fn bytecode(&self) -> &Bytecode {
-    //     self.chunk().code()
-    // }
 
     fn read_local(&self, opcode: &Opcode) -> Option<&Val> {
         let frame = self
@@ -464,6 +496,11 @@ impl VM {
         } else {
             None
         }
+    }
+
+    pub fn dump_bytecode(&self) -> String {
+        let mut s = self.clone();
+        s.dump_bytecode_mut()
     }
 
     pub fn dump_bytecode_mut(&mut self) -> String {
@@ -579,11 +616,6 @@ impl VM {
         }
         bstr
     }
-
-    // #[inline]
-    // pub fn memfor(&self, frame: &CallFrame) -> &[ZValue] {
-    //     &self.stack[frame.mem_slots.clone()]
-    //
 }
 
 impl Default for VM {

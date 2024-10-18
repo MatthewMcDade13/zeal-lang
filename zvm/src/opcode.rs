@@ -296,6 +296,7 @@ impl Op {
             | Op::SetLocal32 => OpParamSize::Byte32,
 
             Op::PopN => OpParamSize::Byte,
+            Op::Call => OpParamSize::Byte,
             _ => return None,
         };
         Some(s)

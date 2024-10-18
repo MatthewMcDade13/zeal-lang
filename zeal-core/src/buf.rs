@@ -14,9 +14,27 @@ pub enum ShortBuffer<T, const SHORT_SIZE: usize = DEFAULT_SMALL_BUF_SIZE, Fallba
     Tall(Fallback),
 }
 
+impl ShortStr {
+    pub const fn zeroed() -> Self {
+        Self::Short(ShortVec::zeroed())
+    }
+}
+
+impl Default for ShortStr {
+    fn default() -> Self {
+        Self::zeroed()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ShortVec<T, const SIZE: usize = DEFAULT_SMALL_BUF_SIZE> {
     buf: [T; SIZE],
+}
+
+impl<const S: usize> ShortVec<u8, S> {
+    pub const fn zeroed() -> Self {
+        Self { buf: [0u8; S] }
+    }
 }
 
 impl<T, const S: usize> ShortVec<T, S>

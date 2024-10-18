@@ -1,5 +1,7 @@
 //Bytecode compiler for ZealVM bytecode
 
+use std::rc::Rc;
+
 use anyhow::{bail, ensure};
 use zeal_ast::{
     expr::{AstList, BindStmt, EscapeExpr, Expr, ExprStmt, FuncDecl, OperatorType, WhenForm},
@@ -8,6 +10,7 @@ use zeal_ast::{
 
 use crate::{
     chunk::{Chunk, ChunkBuilder, FuncChunk},
+    env::CompileEnv,
     opcode::{Op, OpParam, Opcode, VarOp},
     val::Val,
 };
@@ -16,28 +19,28 @@ pub struct Archon;
 
 impl Archon {
     pub fn compile_entrypoint(ast: &Ast) -> anyhow::Result<FuncChunk> {
-        println!("{ast}");
-        let mut ch = ChunkBuilder::default();
-        Self::compile_with(ast, &mut ch)?;
-        let ch = ch.build_func("__main__", 0);
+        let mut env = CompileEnv::root();
+        Self::compile_with(ast, &mut env)?;
+        let ch = env.state.build_func("__main__", 0);
 
         // println!("{ch}");
         Ok(ch)
     }
 
-    pub fn compile_func(decl: &FuncDecl) -> anyhow::Result<FuncChunk> {
-        let mut ch = ChunkBuilder::default();
-        ch.push_constant(Val::rune(decl.name.as_ref()));
-        Self::compile_expr_stmt(&mut ch, decl.body.as_ref())?;
+    pub fn compile_func(decl: &FuncDecl, parent: &mut ChunkBuilder) -> anyhow::Result<()> {
+        let mut cb = ChunkBuilder::default();
+        Self::compile_expr_stmt(&mut cb, decl.body.as_ref())?;
 
-        let ch = ch.build_func(&decl.name, decl.arity() as u8);
-        Ok(ch)
+        cb.build_func_in(&mut parent.0, &decl.name, decl.arity() as u8);
+        Ok(())
+
+        // ch.push_constant(Val::Func(Rc::new(fc)));
     }
 
-    pub fn compile_with(ast: &Ast, ch: &mut ChunkBuilder) -> anyhow::Result<()> {
+    pub fn compile_with(ast: &Ast, env: &mut CompileEnv) -> anyhow::Result<()> {
         if let AstList::List(l) = &ast.tree {
             for s in l.iter() {
-                Self::compile_expr_stmt(ch, s)?;
+                Self::compile_expr_stmt(env, s)?;
             }
         } else {
             bail!("Cannot compile empty AST!");
@@ -47,7 +50,7 @@ impl Archon {
     }
 
     fn compile_logical_op(
-        ch: &mut ChunkBuilder,
+        cb: &mut ChunkBuilder,
         operator: (OperatorType, &Expr, &Expr),
     ) -> anyhow::Result<()> {
         let (ty, left, right) = operator;
@@ -59,76 +62,76 @@ impl Archon {
             ),
         };
 
-        Self::compile_expr(ch, left)?;
-        let jump = ch.push_jump(op);
-        ch.push_popn(1);
-        Self::compile_expr(ch, right)?;
-        ch.patch_jump(jump);
+        Self::compile_expr(cb, left)?;
+        let jump = cb.push_jump(op);
+        cb.push_popn(1);
+        Self::compile_expr(cb, right)?;
+        cb.patch_jump(jump);
         Ok(())
     }
 
-    fn compile_expr_stmt(ch: &mut ChunkBuilder, el: &ExprStmt) -> anyhow::Result<()> {
+    fn compile_expr_stmt(cb: &mut ChunkBuilder, el: &ExprStmt) -> anyhow::Result<()> {
         match el {
             ExprStmt::Block(bl) => {
-                ch.start_scope();
+                cb.start_scope();
                 for e in bl.iter()? {
-                    Self::compile_expr_stmt(ch, e)?;
+                    Self::compile_expr_stmt(cb, e)?;
                 }
-                let pops = ch.end_scope();
+                let pops = cb.end_scope();
                 if pops > 0 {
-                    ch.push_popn(pops as u8);
+                    cb.push_popn(pops as u8);
                 }
             }
             // TODO: Right now we just have breaks and no continues....
             ExprStmt::Loop(ast_list) => {
                 let mut breaks = Vec::new();
-                ch.start_scope();
-                let top = ch.len();
+                cb.start_scope();
+                let top = cb.len();
                 for ex in ast_list.iter()? {
                     if matches!(ex, ExprStmt::Escape(EscapeExpr::Break { .. })) {
-                        let jump = ch.push_jump(Op::Jump);
+                        let jump = cb.push_jump(Op::Jump);
                         breaks.push(jump);
                     } else {
-                        Self::compile_expr_stmt(ch, ex)?;
+                        Self::compile_expr_stmt(cb, ex)?;
                     }
                 }
                 let jump_op = Opcode::WithParam {
                     op: Op::Jump,
                     param: OpParam::byte16(top as u16),
                 };
-                ch.push_opcode(jump_op);
-                let pops = ch.end_scope();
+                cb.push_opcode(jump_op);
+                let pops = cb.end_scope();
                 for b in breaks {
-                    ch.patch_jump(b);
+                    cb.patch_jump(b);
                 }
                 if pops > 0 {
-                    ch.push_popn(pops as u8);
+                    cb.push_popn(pops as u8);
                 }
             }
             ExprStmt::While { cond, body } => {
                 let mut breaks = Vec::new();
-                ch.start_scope();
-                let top = ch.len();
+                cb.start_scope();
+                let top = cb.len();
                 for ex in body.iter()? {
                     if matches!(ex, ExprStmt::Escape(EscapeExpr::Break { .. })) {
-                        let jump = ch.push_jump(Op::Jump);
+                        let jump = cb.push_jump(Op::Jump);
                         breaks.push(jump);
                     } else {
-                        Self::compile_expr_stmt(ch, ex)?;
+                        Self::compile_expr_stmt(cb, ex)?;
                     }
                 }
-                Self::compile_expr(ch, cond)?;
+                Self::compile_expr(cb, cond)?;
                 let jump_op = Opcode::WithParam {
                     op: Op::JumpTrue,
                     param: OpParam::byte16(top as u16),
                 };
-                ch.push_opcode(jump_op);
-                let pops = ch.end_scope();
+                cb.push_opcode(jump_op);
+                let pops = cb.end_scope();
                 for b in breaks {
-                    ch.patch_jump(b);
+                    cb.patch_jump(b);
                 }
                 if pops > 0 {
-                    ch.push_popn(pops as u8);
+                    cb.push_popn(pops as u8);
                 }
             }
             ExprStmt::When(ast_list) => {
@@ -136,35 +139,37 @@ impl Archon {
                 for ce in ast_list.iter()? {
                     match ce {
                         WhenForm::Branch(cond, block) => {
-                            Self::compile_expr(ch, cond)?;
-                            let cond_jump = ch.push_jump(Op::JumpFalse);
-                            ch.push_popn(1);
-                            Self::compile_expr_stmt(ch, block)?;
+                            Self::compile_expr(cb, cond)?;
+                            let cond_jump = cb.push_jump(Op::JumpFalse);
+                            cb.push_popn(1);
+                            Self::compile_expr_stmt(cb, block)?;
 
                             {
-                                let end_jump = ch.push_jump(Op::Jump);
+                                let end_jump = cb.push_jump(Op::Jump);
                                 end_patches.push(end_jump);
                             }
 
-                            ch.patch_jump(cond_jump);
-                            ch.push_popn(1);
+                            cb.patch_jump(cond_jump);
+                            cb.push_popn(1);
                         }
                         WhenForm::Else(block) => {
                             println!("Compiling Else Block: {block:?}, {}", block.type_str());
-                            Self::compile_expr_stmt(ch, block)?;
+                            Self::compile_expr_stmt(cb, block)?;
                             break;
                         }
                         WhenForm::End => break,
                     }
                 }
                 for patch in end_patches.iter() {
-                    ch.patch_jump(*patch);
+                    cb.patch_jump(*patch);
                 }
             }
-            ExprStmt::DefFunc(FuncDecl { name, params, body }) => {}
+            ExprStmt::DefFunc(decl) => {
+                let fc = Self::compile_func(decl, cb);
+            }
             ExprStmt::Binding(BindStmt { name, rhs, .. }) => {
-                Self::compile_expr(ch, rhs)?;
-                ch.declare_binding(name.as_ref())?;
+                Self::compile_expr(cb, rhs)?;
+                cb.declare_binding(name.as_ref())?;
             }
             ExprStmt::Escape(EscapeExpr::Return(e)) => {
                 todo!()
@@ -172,79 +177,88 @@ impl Archon {
             ExprStmt::Escape(es) => {
                 bail!("Illegal use of Escape Statement: {es:?}. Breaks and Continues must be inside a loop!!!");
             }
-            ExprStmt::Atom(expr) => Self::compile_expr(ch, expr)?,
+            ExprStmt::Atom(expr) => Self::compile_expr(cb, expr)?,
         }
         Ok(())
     }
 
-    fn compile_expr(ch: &mut ChunkBuilder, expr: &Expr) -> anyhow::Result<()> {
+    fn compile_expr(cb: &mut ChunkBuilder, expr: &Expr) -> anyhow::Result<()> {
         match expr {
             Expr::Assign { lhs, rhs } => {
                 if let Expr::Rune(r) = lhs.as_ref() {
-                    Self::compile_expr(ch, rhs.as_ref())?;
-                    ch.push_binding(r.as_ref(), VarOp::Set)?;
+                    Self::compile_expr(cb, rhs.as_ref())?;
+                    cb.push_binding(r.as_ref(), VarOp::Set)?;
                 } else {
                     // NOTE: For now, only identifiers can be reassigned. Eventually
                     // we will allow assignment expressions like: foo.bar() = baz;
                     bail!("Only identifiers can be assigned!")
                 }
             }
-            Expr::Rune(rc) => ch.push_binding(rc.as_ref(), VarOp::Get)?,
+            Expr::Rune(rc) => cb.push_binding(rc.as_ref(), VarOp::Get)?,
             Expr::Bool(true) => {
-                let _ = ch.push_opcode(Opcode::new(Op::True));
+                let _ = cb.push_opcode(Opcode::new(Op::True));
             }
             Expr::Bool(false) => {
-                let _ = ch.push_opcode(Opcode::new(Op::False));
+                let _ = cb.push_opcode(Opcode::new(Op::False));
             }
             Expr::Byte(b) => {
-                let _ = ch.push_constant(Val::Byte(*b));
+                let _ = cb.push_constant(Val::Byte(*b));
             }
             Expr::SByte(b) => {
-                let _ = ch.push_constant(Val::SByte(*b));
+                let _ = cb.push_constant(Val::SByte(*b));
             }
             Expr::Int(i) => {
-                let _ = ch.push_constant(Val::Num(*i));
+                let _ = cb.push_constant(Val::Num(*i));
             }
             Expr::Uint(ui) => {
-                let _ = ch.push_constant(Val::UNum(*ui));
+                let _ = cb.push_constant(Val::UNum(*ui));
             }
             Expr::Float(fl) => {
-                let _ = ch.push_constant(Val::Float(*fl));
+                let _ = cb.push_constant(Val::Float(*fl));
             }
             Expr::String(rc) => {
-                let _ = ch.push_string(rc.as_ref());
+                let _ = cb.push_string(rc.as_ref());
             }
             Expr::List(ast_list) => {
                 if let AstList::List(l) = ast_list {
                     for ex in l.iter() {
-                        Self::compile_expr(ch, ex)?;
+                        Self::compile_expr(cb, ex)?;
                     }
                 }
             }
             Expr::Pair(p) => {
-                Self::compile_expr(ch, &p[0])?;
-                Self::compile_expr(ch, &p[1])?;
+                Self::compile_expr(cb, &p[0])?;
+                Self::compile_expr(cb, &p[1])?;
             }
             Expr::Triple(tr) => {
-                Self::compile_expr(ch, &tr[0])?;
-                Self::compile_expr(ch, &tr[1])?;
-                Self::compile_expr(ch, &tr[2])?;
+                Self::compile_expr(cb, &tr[0])?;
+                Self::compile_expr(cb, &tr[1])?;
+                Self::compile_expr(cb, &tr[2])?;
             }
             Expr::Call { head, args } => {
-                // ensure!(
-                //     matches!(args.as_ref(), Expr::List(_)),
-                //     "args of call expression must be a list!"
-                // );
-                Self::compile_expr(ch, args.as_ref())?;
-
                 ensure!(
                     matches!(head.as_ref(), Expr::Rune(_)),
                     "Head of call expression must be a rune!"
                 );
-                Self::compile_expr(ch, head.as_ref())?;
+                Self::compile_expr(cb, head.as_ref())?;
+
+                // ensure!(
+                //     matches!(args.as_ref(), Expr::List(_)),
+                //     "args of call expression must be a list!"
+                // );
+                Self::compile_expr(cb, args.as_ref())?;
+                if let Some(ls) = args.try_list() {
+                    cb.push_opcode(Opcode::with_param(
+                        Op::Call,
+                        OpParam::squash(ls.len() as u64),
+                    ));
+                } else {
+                    // NOTE: This is a scalar value
+                    cb.push_opcode(Opcode::with_param(Op::Call, OpParam::Byte(1)));
+                }
             }
             Expr::Unit => {
-                let _ = ch.push_constant(Val::Unit);
+                let _ = cb.push_constant(Val::Unit);
             }
             Expr::Operator { ty, args } => {
                 let op = match ty {
@@ -268,16 +282,16 @@ impl Archon {
                             exs.len() >= 2,
                             "Cannot compile logical operator with less than 2 args!!"
                         );
-                        return Self::compile_logical_op(ch, (*ty, &exs[0], &exs[1]));
+                        return Self::compile_logical_op(cb, (*ty, &exs[0], &exs[1]));
                     }
 
                     zeal_ast::expr::OperatorType::Unknown => todo!(),
                 };
 
                 for e in args.assert_list()? {
-                    Self::compile_expr(ch, e)?;
+                    Self::compile_expr(cb, e)?;
                 }
-                ch.push_opcode(Opcode::new(op));
+                cb.push_opcode(Opcode::new(op));
             }
         }
         Ok(())

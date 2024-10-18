@@ -1,6 +1,8 @@
 pub mod chunk;
 pub mod compiler;
+pub mod env;
 pub mod err;
+pub(crate) mod native;
 pub mod opcode;
 pub mod stack;
 pub mod state;

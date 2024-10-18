@@ -2,7 +2,7 @@ use std::{fmt::Display, rc::Rc};
 
 use anyhow::bail;
 
-use crate::val::Val;
+use crate::{env::CompileEnv, val::Val};
 
 use super::{
     opcode::{Bytecode, Op, OpParam, OpParamSize, Opcode, VarOp},
@@ -56,9 +56,12 @@ impl FuncChunk {
 // }
 //
 #[derive(Debug, Clone)]
-pub struct ChunkBuilder(Chunk);
+pub struct ChunkBuilder(pub Chunk);
 
 impl ChunkBuilder {
+    pub const fn from_existing(ch: Chunk) -> Self {
+        Self(ch)
+    }
     pub fn build(self) -> Chunk {
         self.0
     }
@@ -71,12 +74,18 @@ impl ChunkBuilder {
         self.0.scope.end_scope()
     }
 
+    pub fn build_func_in(self, ch: &mut Chunk, name: &str, arity: u8) {
+        let f = self.build_func(name, arity);
+        ch.append_func(f);
+    }
+
     pub fn build_func(self, name: &str, arity: u8) -> FuncChunk {
-        FuncChunk {
+        let fc = FuncChunk {
             arity,
             name: Rc::from(name),
             chunk: self.0,
-        }
+        };
+        fc
     }
 
     pub fn push_call(&mut self, nargs: u8) {
@@ -300,6 +309,9 @@ impl Chunk {
             scope: Scope::with_capacity(Self::DEFAULT_CAPACITY),
         }
     }
+    pub fn append_func(&mut self, fc: FuncChunk) {
+        let _ = ch_push_constant(self, Val::Func(Rc::new(fc)));
+    }
 
     #[inline]
     pub fn opcode_at(&self, index: usize) -> Option<Opcode> {
@@ -363,4 +375,49 @@ impl Patch {
             Opcode::WithParam { param, .. } => param.write(addr as u64),
         }
     }
+}
+
+fn ch_push_constant(ch: &mut Chunk, v: Val) -> usize {
+    let id = ch_add_constant(ch, v);
+    let param = OpParam::squash(id as u64);
+    let op = param.as_const_op();
+
+    let op = Opcode::WithParam { op, param };
+    ch_push_opcode(ch, op);
+    param.to_u32() as usize
+}
+
+fn ch_add_constant(ch: &mut Chunk, v: Val) -> usize {
+    let id = ch.constants.len();
+    ch.constants.push(v);
+    id
+}
+
+fn ch_push_opcode<T>(ch: &mut Chunk, opcode: T) -> usize
+where
+    T: Into<Opcode>,
+{
+    let opcode = opcode.into();
+    let addr = ch.buf.len();
+    ch.buf.push(opcode.op_byte());
+    if let Some(p) = opcode.try_param() {
+        match *p {
+            OpParam::Byte(b) => {
+                ch.buf.push(b);
+            }
+            OpParam::Byte16(src) => {
+                ch.buf.extend_from_slice(&src);
+            }
+            OpParam::Byte24(src) => {
+                ch.buf.extend_from_slice(&src);
+            }
+            OpParam::Byte32(src) => {
+                ch.buf.extend_from_slice(&src);
+            }
+            OpParam::Byte64(src) => {
+                ch.buf.extend_from_slice(&src);
+            }
+        }
+    }
+    addr
 }

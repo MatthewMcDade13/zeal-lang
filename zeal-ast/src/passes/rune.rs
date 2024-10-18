@@ -87,6 +87,11 @@ impl AstWalker<Expr> for RuneTablePass {
                     ex.walk(self)?;
                 }
             }
+            Expr::Call { head, args } => {
+                if let Expr::Rune(r) = head.as_ref() {
+                    self.table.add_rune(r.as_ref());
+                }
+            }
             _ => {}
         }
         Ok(())
