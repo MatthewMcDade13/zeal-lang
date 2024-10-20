@@ -1,12 +1,3 @@
-// NOTE: Everything in this zvm project is half-broken. Im going to probably
-// redo all of this and revisit it in the future. I still want to be able to
-// compile to my own 'ZVM' bytecode for research and learning...
-// the code is still half-usable so i dont have to rewrite EVERYTHING from scratch, though i might
-// not mind that in the future. TO LLVM!!!!!!
-
-use std::str::FromStr;
-
-use zeal_ast::Ast;
 use zvm::vm::VM;
 
 const PATH: &str = "./test_scripts/loops.zl";
@@ -23,8 +14,9 @@ fn main() -> anyhow::Result<()> {
     let mut vm = VM::load_entrypoint(PATH)?;
 
     // println!("{}", vm.dump_stack());
-    println!("{}", vm.dump_bytecode());
+    println!("dump:\n {}", vm.dump_bytecode());
     vm.exec()?;
+
     // println!("{vm}");
     // println!("EXEC RESULT => {v}");
     // let x = TokBuffer::read_string(s)?;

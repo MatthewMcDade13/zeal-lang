@@ -11,11 +11,11 @@ let expected = 10
 let sum = add(5, 5)
 
 
-print "Expected: "
-println expected
+print("Expected: ")
+println(expected)
 
-print "Got: "
-println sum
+print("Got: ")
+println(sum)
 
 
 

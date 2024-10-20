@@ -44,25 +44,6 @@ impl VM {
     }
 
     pub fn load_entrypoint(path: &str) -> anyhow::Result<Self> {
-        let ast = Ast::from_file(path)?;
-
-        let runes = RuneTablePass::dopass(&ast)?;
-        let f = Archon::compile_entrypoint(&ast)?;
-
-        let stack_fn = Rc::new(f);
-        let mut stack = Stack::new();
-        stack.push(Val::Func(Rc::clone(&stack_fn)));
-
-        let arity = stack_fn.arity as isize;
-        let beg = stack.top_index().unwrap() as isize - arity - 1;
-        let start_slot = std::cmp::min(0, beg) as usize;
-        let cf = CallFrame {
-            func: Some(Rc::clone(&stack_fn)),
-            ip: 0,
-            start_slot,
-        };
-        let mut frames = Stack::new();
-
         let globals = {
             let mut gs: HashMap<String, Val> = HashMap::new();
             let n = NativeFunc {
@@ -74,14 +55,38 @@ impl VM {
             gs
         };
 
-        frames.push(cf);
-
-        let s = Self {
-            stack,
-            frames,
+        let mut s = Self {
+            stack: Stack::new(),
+            frames: Stack::new(),
             globals,
             // runes,
         };
+
+        let ast = Ast::from_file(path)?;
+        println!("{ast}");
+
+        let runes = RuneTablePass::dopass(&ast)?;
+        let f = Archon::compile_entrypoint(&ast)?;
+        let f = Rc::new(f);
+        s.call(Rc::clone(&f));
+
+        // let stack_fn = Rc::new(f);
+        // let mut stack = Stack::new();
+        // stack.push(Val::Func(Rc::clone(&stack_fn)));
+        //
+        // let arity = stack_fn.arity as isize;
+        // let beg = stack.top_index().unwrap() as isize - arity - 1;
+        // let start_slot = std::cmp::min(0, beg) as usize;
+        // let cf = CallFrame {
+        //     func: Some(Rc::clone(&stack_fn)),
+        //     ip: 0,
+        //     start_slot,
+        // };
+        // let mut frames = Stack::new();
+        //
+        // frames.push(cf);
+
+        // s.call(stack_fn);
         Ok(s)
         // let f = self.compile_source(&src)?;
     }
@@ -202,8 +207,10 @@ impl VM {
             match opcode.op() {
                 Op::Return => {
                     let retval = self.stack.expect_pop();
+
                     if let Some(frame) = self.frames.pop() {
                         self.stack.cursor.set(frame.start_slot);
+                        self.stack.pop();
                         self.stack.push(retval);
                     } else {
                         // let _ = self.stack.pop();
@@ -462,8 +469,8 @@ impl VM {
 
     pub fn new_frame(&self, func: Rc<FuncChunk>) -> CallFrame {
         let arity = func.arity as isize;
-        let beg = self.stack.top_index().unwrap() as isize - arity - 1;
-        let start_slot = std::cmp::min(0, beg) as usize;
+        let beg = self.stack.top_index().unwrap() as isize - arity;
+        let start_slot = std::cmp::max(0, beg) as usize;
         CallFrame {
             func: Some(func),
             ip: 0,
@@ -476,7 +483,16 @@ impl VM {
         let f = Rc::new(f);
         self.call(f);
 
-        self.exec()
+        match self.exec() {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                println!("RuntimeError: {e}");
+                println!(" ---- DUMP -----");
+                println!("{}", self.dump_bytecode());
+                println!("{}", self.dump_stack());
+                Err(e)
+            }
+        }
     }
     #[inline]
     pub fn frame_memory(&self, frame: &CallFrame) -> &[Val] {
@@ -490,7 +506,12 @@ impl VM {
         if let Some(param) = opcode.try_param() {
             let slot = param.to_usize();
             let slot = frame.start_slot + slot;
-            assert!(slot < self.stack.len());
+
+            assert!(
+                slot < self.stack.len(),
+                "slot is: {slot} when stack len is {}",
+                self.stack.len()
+            );
             let v = &self.stack[slot];
             Some(v)
         } else {
@@ -504,7 +525,7 @@ impl VM {
     }
 
     pub fn dump_bytecode_mut(&mut self) -> String {
-        let mut n = 0;
+        let mut i = 0;
         let mut bstr = String::new();
         while let Some(opcode) = self.next_opcode() {
             let s = match opcode.op() {
@@ -573,7 +594,10 @@ impl VM {
                 // NOTE: ----- GET LOCAL -----
                 Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
                     if let Some(local) = self.read_local(&opcode) {
-                        format!("GET_LOCAL => {local}")
+                        format!(
+                            "GET_LOCAL => {}, actual: {local}",
+                            opcode.try_param().unwrap().to_usize()
+                        )
                     } else {
                         String::from("GET_LOCAL => Unable to call GetLocal*")
                     }
@@ -581,7 +605,13 @@ impl VM {
                 // NOTE: ----- END GET LOCAL -----
 
                 // NOTE: ----- SET LOCAL -----
-                Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => todo!(),
+                Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => {
+                    if let Some(local) = self.read_local(&opcode) {
+                        format!("SET_LOCAL => {local}")
+                    } else {
+                        String::from("SET_LOCAL => Unable to call GetLocal*")
+                    }
+                }
                 Op::JumpFalse => {
                     format!("JUMP_FALSE => {}", opcode.try_param().unwrap().to_usize())
                 }
@@ -611,8 +641,8 @@ impl VM {
                 }
             };
 
-            n += 1;
-            bstr.push_str(&format!("{n}: {s}\n"));
+            bstr.push_str(&format!("{i}: {s}\n"));
+            i += opcode.offset();
         }
         bstr
     }

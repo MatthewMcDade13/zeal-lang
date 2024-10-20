@@ -67,7 +67,6 @@ impl RuneTableBuilder {
     }
 
     pub fn add_rune(&mut self, rname: &str) {
-        println!("{rname}");
         if !self.table.contains_key(rname) {
             let id = RuneId(self.table.len());
             self.table.insert(rname.to_string(), id);

@@ -1,4 +1,11 @@
 
+func add(a, b) 
+  return a + b
+end
+
+let r = add(1, 2)
+
+println(r)
 
 var x = 0
 while x <= 50 do 

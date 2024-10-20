@@ -207,6 +207,10 @@ pub enum ExprStmt {
 }
 
 impl ExprStmt {
+    pub const fn ret(val: Expr) -> Self {
+        Self::Escape(EscapeExpr::Return(val))
+    }
+
     #[inline]
     pub fn type_str(&self) -> String {
         let s = match self {

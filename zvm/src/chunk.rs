@@ -199,9 +199,9 @@ impl ChunkBuilder {
             // self.declare_local(name)
             // Ok(())
 
-            self.push_local(name.clone(), varop)
+            self.push_local(name, varop)
         } else {
-            self.push_global(name.clone(), varop);
+            self.push_global(name, varop);
             Ok(())
         }
     }
