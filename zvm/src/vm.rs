@@ -63,6 +63,16 @@ impl VM {
         s.call(Rc::clone(&f));
 
         Ok(s)
+
+        frames.push(cf);
+
+        let s = Self {
+            stack,
+            frames,
+            globals,
+            // runes,
+        };
+        Ok(s)
     }
 
     pub fn dump_stack(&self) -> String {

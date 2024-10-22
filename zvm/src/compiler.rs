@@ -36,9 +36,9 @@ pub struct Archon;
 impl Archon {
     pub fn compile_entrypoint(ast: &Ast) -> anyhow::Result<FuncChunk> {
         let mut env = CompileEnv::root();
-        // env.start_scope();
         Self::compile_with(ast, &mut env)?;
         let ch = env.state.build_func("__main__", 0);
+
 
         Ok(ch)
     }
@@ -55,7 +55,6 @@ impl Archon {
         Self::compile_expr_stmt(&mut cb, decl.body.as_ref())?;
 
         cb.build_func_in(&mut parent.0, &decl.name, decl.arity() as u8);
-
         Ok(())
 
         // ch.push_constant(Val::Func(Rc::new(fc)));
@@ -126,7 +125,7 @@ impl Archon {
                 cb.push_opcode(jump_op);
 
                 let pops = cb.end_scope();
-                println!("End loop block scope. Popping {pops} locals off stack!");
+              
                 for b in breaks {
                     cb.patch_jump(b);
                 }
