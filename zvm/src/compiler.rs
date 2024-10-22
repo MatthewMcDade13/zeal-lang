@@ -1,7 +1,5 @@
 //Bytecode compiler for ZealVM bytecode
 
-use std::rc::Rc;
-
 use anyhow::{bail, ensure};
 use zeal_ast::{
     expr::{AstList, BindStmt, EscapeExpr, Expr, ExprStmt, FuncDecl, OperatorType, WhenForm},
@@ -9,7 +7,7 @@ use zeal_ast::{
 };
 
 use crate::{
-    chunk::{Chunk, ChunkBuilder, FuncChunk},
+    chunk::{ChunkBuilder, FuncChunk},
     env::CompileEnv,
     opcode::{Op, OpParam, Opcode, VarOp},
     val::Val,
@@ -19,6 +17,19 @@ use crate::{
 // identifiers. Also when a user-defined function returns, there is an off by 1 bug somewhere that
 // keeps a call argument AND the called function on the stack. For now we just do an extra pop but
 // i need to find a way to fix this.
+
+// TODO: We need to implement modules, but first we need to implement Symbol Tables. Each module
+// will own its own symbol table. We will prob need some kind of ad-hoc 'linking' to tie moduels
+// together. Also should implement type inference since we will need to have new passes in the AST
+// to create symbol tables. Each module might track the other modules it depends on, but i havent
+// given it much thought yet.
+
+// TODO: Implement native functions for simple file io ect, start with whatever lua provides, then
+// worry about sandboxing ect.
+
+// TODO: SuperInstructions. like Op::And, Op::Or, and other branching things, but PROFILE FIRST.
+
+// NOTE: We keeping language simple as possible for now. Closures BTFO.
 
 pub struct Archon;
 
@@ -91,7 +102,6 @@ impl Archon {
                     Self::compile_expr_stmt(cb, e)?;
                 }
                 let pops = cb.end_scope();
-                println!("End block scope. Popping {pops} locals off stack!");
                 if pops > 0 {
                     cb.push_popn(pops as u8);
                 }
