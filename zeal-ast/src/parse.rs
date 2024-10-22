@@ -187,6 +187,10 @@ impl Parser {
                 self.adv(1)?;
                 self.while_expr()
             }
+            TokType::Return => {
+                self.adv(1)?;
+                self.return_expr()
+            }
             TokType::Each => {
                 todo!()
             }
@@ -281,6 +285,7 @@ impl Parser {
             "Expected ')' at end of parameter list. Got: {:?}",
             self.peek().clone()
         );
+        self.adv(1)?;
         let res = AstList::new(params);
         Ok(res)
     }
@@ -290,6 +295,16 @@ impl Parser {
         self.adv(1)?;
         let expr = ExprStmt::loop_block(loop_body);
         Ok(expr)
+    }
+
+    fn return_expr(&mut self) -> anyhow::Result<ExprStmt> {
+        if matches!(self.peek_ty(), TokType::Semicolon) {
+            self.adv(1)?;
+            Ok(ExprStmt::ret(Expr::Unit))
+        } else {
+            let val = self.expression()?;
+            Ok(ExprStmt::ret(val))
+        }
     }
 
     fn while_expr(&mut self) -> anyhow::Result<ExprStmt> {
@@ -614,6 +629,7 @@ impl Parser {
         }
         args.push(self.expression()?);
         while let TokType::Comma = self.peek_ty() {
+            self.adv(1)?;
             args.push(self.expression()?);
         }
         ensure!(

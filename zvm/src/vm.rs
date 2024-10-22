@@ -2,7 +2,6 @@ use std::{collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use anyhow::{bail, Context};
 use zeal_ast::{expr::OperatorType, passes::rune::RuneTablePass, Ast};
-use zeal_core::rune::RuneTable;
 
 use crate::{
     chunk::{Chunk, FuncChunk},
@@ -14,19 +13,12 @@ use crate::{
     val::{NativeFunc, Val},
 };
 
-// TODO: 10/17/2024 :: Execution fails when encountering println in the loops.zl test script.
-//
-
 pub const STACK_MAX: usize = 255; //u16::MAX as usize / 2;
 pub const CALL_STACK_MAX: usize = STACK_MAX * 2;
 #[derive(Debug, Clone)]
 pub struct VM {
     stack: VMStack,
     frames: Stack<CALL_STACK_MAX, CallFrame>,
-    // chunks: Vec<Chunk>,
-    // chunk: Chunk,
-    /// program counter for current running chunk. (chunk counter)
-    // pc: usize,
     globals: HashMap<String, Val>, // runes: RuneTable,
                                    // runes: RuneTable,
 }
@@ -44,25 +36,6 @@ impl VM {
     }
 
     pub fn load_entrypoint(path: &str) -> anyhow::Result<Self> {
-        let ast = Ast::from_file(path)?;
-
-        let runes = RuneTablePass::dopass(&ast)?;
-        let f = Archon::compile_entrypoint(&ast)?;
-
-        let stack_fn = Rc::new(f);
-        let mut stack = Stack::new();
-        stack.push(Val::Func(Rc::clone(&stack_fn)));
-
-        let arity = stack_fn.arity as isize;
-        let beg = stack.top_index().unwrap() as isize - arity - 1;
-        let start_slot = std::cmp::min(0, beg) as usize;
-        let cf = CallFrame {
-            func: Some(Rc::clone(&stack_fn)),
-            ip: 0,
-            start_slot,
-        };
-        let mut frames = Stack::new();
-
         let globals = {
             let mut gs: HashMap<String, Val> = HashMap::new();
             let n = NativeFunc {
@@ -74,6 +47,23 @@ impl VM {
             gs
         };
 
+        let mut s = Self {
+            stack: Stack::new(),
+            frames: Stack::new(),
+            globals,
+            // runes,
+        };
+
+        let ast = Ast::from_file(path)?;
+        println!("{ast}");
+
+        let runes = RuneTablePass::dopass(&ast)?;
+        let f = Archon::compile_entrypoint(&ast)?;
+        let f = Rc::new(f);
+        s.call(Rc::clone(&f));
+
+        Ok(s)
+
         frames.push(cf);
 
         let s = Self {
@@ -83,7 +73,6 @@ impl VM {
             // runes,
         };
         Ok(s)
-        // let f = self.compile_source(&src)?;
     }
 
     pub fn dump_stack(&self) -> String {
@@ -202,8 +191,10 @@ impl VM {
             match opcode.op() {
                 Op::Return => {
                     let retval = self.stack.expect_pop();
+
                     if let Some(frame) = self.frames.pop() {
                         self.stack.cursor.set(frame.start_slot);
+                        self.stack.pop();
                         self.stack.push(retval);
                     } else {
                         // let _ = self.stack.pop();
@@ -233,17 +224,17 @@ impl VM {
                     }
                 }
                 Op::Add => {
-                    self.binary_op_float(OperatorType::Add);
+                    self.binary_op_float(OperatorType::Add)?;
                     // let right = self.stack.pop().expect_float64();
                     // let left = self.stack.pop().expect_float64();
                     // let res = ZValue::Number(left + right);
                     // self.stack.push(res);
                 }
                 Op::Sub => {
-                    self.binary_op_float(OperatorType::Sub);
+                    self.binary_op_float(OperatorType::Sub)?;
                 }
-                Op::Div => self.binary_op_float(OperatorType::Div),
-                Op::Mul => self.binary_op_float(OperatorType::Mul),
+                Op::Div => self.binary_op_float(OperatorType::Div)?,
+                Op::Mul => self.binary_op_float(OperatorType::Mul)?,
                 Op::Neg => {
                     let val = self.stack.expect_pop().expect_float64();
                     self.stack.push(Val::Float(-val));
@@ -324,12 +315,12 @@ impl VM {
                     }
                 }
                 // NOTE: ----- END DEFINE GLOBAL -----
-                Op::Eq => self.binary_op_float(OperatorType::Eq),
-                Op::Gt => self.binary_op_float(OperatorType::Gt),
-                Op::Lt => self.binary_op_float(OperatorType::Lt),
-                Op::Ge => self.binary_op_float(OperatorType::Ge),
-                Op::Le => self.binary_op_float(OperatorType::Le),
-                Op::NotEq => self.binary_op_float(OperatorType::NotEq),
+                Op::Eq => self.binary_op_float(OperatorType::Eq)?,
+                Op::Gt => self.binary_op_float(OperatorType::Gt)?,
+                Op::Lt => self.binary_op_float(OperatorType::Lt)?,
+                Op::Ge => self.binary_op_float(OperatorType::Ge)?,
+                Op::Le => self.binary_op_float(OperatorType::Le)?,
+                Op::NotEq => self.binary_op_float(OperatorType::NotEq)?,
 
                 // NOTE: ----- GET LOCAL -----
                 Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
@@ -347,31 +338,19 @@ impl VM {
                     if let Some(top) = self.stack.peek_top() {
                         if top.is_falsey() {
                             self.jump_to(&opcode);
-                            // let jumpto = opcode
-                            //     .try_param()
-                            //     .expect("JumpFalse16 Op has no parameter!!!");
-                            //
-                            // frame.ip = jumpto.to_u32() as usize;
                         }
                     }
                 }
 
                 Op::LongJumpFalse => todo!(),
                 Op::Jump => {
-                    // let jumpto = opcode.try_param().expect("Jump16 Op has no parameter!!!");
                     self.jump_to(&opcode);
-                    // frame.ip = jumpto.to_usize();
                 }
                 Op::LongJump => todo!(),
                 Op::JumpTrue => {
                     if let Some(top) = self.stack.peek_top() {
                         if top.is_truthy() {
                             self.jump_to(&opcode);
-                            // let jumpto = opcode
-                            //     .try_param()
-                            //     .expect("JumpTrue16 Op has no parameter!!!");
-                            //
-                            // frame.ip = jumpto.to_u32() as usize;
                         }
                     }
                 }
@@ -381,8 +360,6 @@ impl VM {
                         .try_param()
                         .expect("Op::Call requires paramter and received none!!!")
                         .to_u32() as usize;
-                    // .read_constant(&opcode)
-                    // .expect(&format!("Failed to read constant from Frame: {:?}", frame));
                     // TODO: Fix this. we need to have function in stack memory BEFORE we compile
                     // its arguments and then emit Op::Call
                     if let Some(callable) = self.stack.peekn_mut(nargs) {
@@ -420,9 +397,17 @@ impl VM {
         f.read_constant(opcode)
     }
 
-    fn binary_op_float(&mut self, ty: OperatorType) {
-        let right = self.stack.expect_pop().expect_float64();
-        let left = self.stack.expect_pop().expect_float64();
+    fn binary_op_float(&mut self, ty: OperatorType) -> anyhow::Result<()> {
+        let right = self.stack.expect_pop().as_float64().context(format!(
+            "Expected float64, got: {:?}\n\t=> stack: {}",
+            self.stack.peek_top(),
+            self.dump_stack()
+        ))?;
+        let left = self.stack.expect_pop().as_float64().context(format!(
+            "Expected float64, got: {:?}\n\t=> stack: {}",
+            self.stack.peek_top(),
+            self.dump_stack()
+        ))?;
 
         let res: Val = match ty {
             OperatorType::Gt => (left > right).into(),
@@ -452,6 +437,7 @@ impl VM {
         };
 
         self.stack.push(res);
+        Ok(())
     }
 
     pub fn exec_file(&mut self, path: &str) -> anyhow::Result<Val> {
@@ -462,8 +448,8 @@ impl VM {
 
     pub fn new_frame(&self, func: Rc<FuncChunk>) -> CallFrame {
         let arity = func.arity as isize;
-        let beg = self.stack.top_index().unwrap() as isize - arity - 1;
-        let start_slot = std::cmp::min(0, beg) as usize;
+        let beg = self.stack.top_index().unwrap() as isize - arity;
+        let start_slot = std::cmp::max(0, beg) as usize;
         CallFrame {
             func: Some(func),
             ip: 0,
@@ -476,7 +462,16 @@ impl VM {
         let f = Rc::new(f);
         self.call(f);
 
-        self.exec()
+        match self.exec() {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                println!("RuntimeError: {e}");
+                println!(" ---- DUMP -----");
+                println!("{}", self.dump_bytecode());
+                println!("{}", self.dump_stack());
+                Err(e)
+            }
+        }
     }
     #[inline]
     pub fn frame_memory(&self, frame: &CallFrame) -> &[Val] {
@@ -490,7 +485,12 @@ impl VM {
         if let Some(param) = opcode.try_param() {
             let slot = param.to_usize();
             let slot = frame.start_slot + slot;
-            assert!(slot < self.stack.len());
+
+            assert!(
+                slot < self.stack.len(),
+                "slot is: {slot} when stack len is {}",
+                self.stack.len()
+            );
             let v = &self.stack[slot];
             Some(v)
         } else {
@@ -504,7 +504,7 @@ impl VM {
     }
 
     pub fn dump_bytecode_mut(&mut self) -> String {
-        let mut n = 0;
+        let mut i = 0;
         let mut bstr = String::new();
         while let Some(opcode) = self.next_opcode() {
             let s = match opcode.op() {
@@ -573,7 +573,10 @@ impl VM {
                 // NOTE: ----- GET LOCAL -----
                 Op::GetLocal8 | Op::GetLocal16 | Op::GetLocal32 => {
                     if let Some(local) = self.read_local(&opcode) {
-                        format!("GET_LOCAL => {local}")
+                        format!(
+                            "GET_LOCAL => {}, actual: {local}",
+                            opcode.try_param().unwrap().to_usize()
+                        )
                     } else {
                         String::from("GET_LOCAL => Unable to call GetLocal*")
                     }
@@ -581,7 +584,13 @@ impl VM {
                 // NOTE: ----- END GET LOCAL -----
 
                 // NOTE: ----- SET LOCAL -----
-                Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => todo!(),
+                Op::SetLocal8 | Op::SetLocal16 | Op::SetLocal32 => {
+                    if let Some(local) = self.read_local(&opcode) {
+                        format!("SET_LOCAL => {local}")
+                    } else {
+                        String::from("SET_LOCAL => Unable to call GetLocal*")
+                    }
+                }
                 Op::JumpFalse => {
                     format!("JUMP_FALSE => {}", opcode.try_param().unwrap().to_usize())
                 }
@@ -611,8 +620,8 @@ impl VM {
                 }
             };
 
-            n += 1;
-            bstr.push_str(&format!("{n}: {s}\n"));
+            bstr.push_str(&format!("{i}: {s}\n"));
+            i += opcode.offset();
         }
         bstr
     }

@@ -1,4 +1,19 @@
 
+func add(a, b) 
+  return a + b
+end
+
+func fib(n) 
+  if n < 2 then 
+    return n
+  end
+  let a = 5
+  return fib(n - 2) + fib(n - 1) 
+end
+
+let fib_res = fib(10)
+
+println(fib_res)
 
 var x = 0
 while x <= 50 do 

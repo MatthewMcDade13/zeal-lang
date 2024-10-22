@@ -183,11 +183,7 @@ impl Display for Op {
 
 impl Op {
     pub const fn is_valid(&self) -> bool {
-        if let Op::Unknown = self {
-            false
-        } else {
-            true
-        }
+        !matches!(self, Op::Unknown)
     }
 
     pub const fn set_local(size: OpParamSize) -> Self {

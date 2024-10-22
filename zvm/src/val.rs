@@ -52,6 +52,14 @@ impl Val {
         }
     }
 
+    pub fn as_float64(&self) -> Option<f64> {
+        if let Self::Float(n) = self {
+            Some(*n)
+        } else {
+            None
+        }
+    }
+
     pub fn is_truthy(&self) -> bool {
         match self {
             Val::Byte(n) => *n != 0,

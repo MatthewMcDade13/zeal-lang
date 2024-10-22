@@ -1,7 +1,5 @@
 //Bytecode compiler for ZealVM bytecode
 
-use std::rc::Rc;
-
 use anyhow::{bail, ensure};
 use zeal_ast::{
     expr::{AstList, BindStmt, EscapeExpr, Expr, ExprStmt, FuncDecl, OperatorType, WhenForm},
@@ -9,11 +7,29 @@ use zeal_ast::{
 };
 
 use crate::{
-    chunk::{Chunk, ChunkBuilder, FuncChunk},
+    chunk::{ChunkBuilder, FuncChunk},
     env::CompileEnv,
     opcode::{Op, OpParam, Opcode, VarOp},
     val::Val,
 };
+
+// TODO: We need to make sure the stack doestn linearly grow in loops when referring to global
+// identifiers. Also when a user-defined function returns, there is an off by 1 bug somewhere that
+// keeps a call argument AND the called function on the stack. For now we just do an extra pop but
+// i need to find a way to fix this.
+
+// TODO: We need to implement modules, but first we need to implement Symbol Tables. Each module
+// will own its own symbol table. We will prob need some kind of ad-hoc 'linking' to tie moduels
+// together. Also should implement type inference since we will need to have new passes in the AST
+// to create symbol tables. Each module might track the other modules it depends on, but i havent
+// given it much thought yet.
+
+// TODO: Implement native functions for simple file io ect, start with whatever lua provides, then
+// worry about sandboxing ect.
+
+// TODO: SuperInstructions. like Op::And, Op::Or, and other branching things, but PROFILE FIRST.
+
+// NOTE: We keeping language simple as possible for now. Closures BTFO.
 
 pub struct Archon;
 
@@ -23,12 +39,19 @@ impl Archon {
         Self::compile_with(ast, &mut env)?;
         let ch = env.state.build_func("__main__", 0);
 
-        // println!("{ch}");
+
         Ok(ch)
     }
 
     pub fn compile_func(decl: &FuncDecl, parent: &mut ChunkBuilder) -> anyhow::Result<()> {
         let mut cb = ChunkBuilder::default();
+        cb.start_scope();
+
+        if let AstList::List(ps) = &decl.params {
+            for p in ps.iter() {
+                cb.declare_local(p.name.as_ref())?;
+            }
+        }
         Self::compile_expr_stmt(&mut cb, decl.body.as_ref())?;
 
         cb.build_func_in(&mut parent.0, &decl.name, decl.arity() as u8);
@@ -100,7 +123,9 @@ impl Archon {
                     param: OpParam::byte16(top as u16),
                 };
                 cb.push_opcode(jump_op);
+
                 let pops = cb.end_scope();
+              
                 for b in breaks {
                     cb.patch_jump(b);
                 }
@@ -130,6 +155,7 @@ impl Archon {
                 for b in breaks {
                     cb.patch_jump(b);
                 }
+                println!("End while block scope. Popping {pops} locals off stack!");
                 if pops > 0 {
                     cb.push_popn(pops as u8);
                 }
@@ -153,7 +179,6 @@ impl Archon {
                             cb.push_popn(1);
                         }
                         WhenForm::Else(block) => {
-                            println!("Compiling Else Block: {block:?}, {}", block.type_str());
                             Self::compile_expr_stmt(cb, block)?;
                             break;
                         }
@@ -165,14 +190,16 @@ impl Archon {
                 }
             }
             ExprStmt::DefFunc(decl) => {
-                let fc = Self::compile_func(decl, cb);
+                Self::compile_func(decl, cb)?;
+                cb.declare_binding(decl.name.as_ref())?;
             }
             ExprStmt::Binding(BindStmt { name, rhs, .. }) => {
                 Self::compile_expr(cb, rhs)?;
                 cb.declare_binding(name.as_ref())?;
             }
             ExprStmt::Escape(EscapeExpr::Return(e)) => {
-                todo!()
+                Self::compile_expr(cb, e)?;
+                cb.push_opcode(Opcode::new(Op::Return));
             }
             ExprStmt::Escape(es) => {
                 bail!("Illegal use of Escape Statement: {es:?}. Breaks and Continues must be inside a loop!!!");
@@ -236,11 +263,13 @@ impl Archon {
                 Self::compile_expr(cb, &tr[2])?;
             }
             Expr::Call { head, args } => {
-                ensure!(
-                    matches!(head.as_ref(), Expr::Rune(_)),
-                    "Head of call expression must be a rune!"
-                );
-                Self::compile_expr(cb, head.as_ref())?;
+                // ensure!(matches!(head.as_ref(), Expr::Rune(_)),);
+                if let Expr::Rune(name) = head.as_ref() {
+                    // cb.push_binding(name, VarOp::Get)?;
+                    Self::compile_expr(cb, head.as_ref())?;
+                } else {
+                    bail!("Head of call expression must be a rune!, Got: {head:?}");
+                }
 
                 // ensure!(
                 //     matches!(args.as_ref(), Expr::List(_)),

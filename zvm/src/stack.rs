@@ -22,8 +22,9 @@ impl StackCursor {
         Self(-1)
     }
 
+    #[inline]
     pub const fn offset(self, offset: usize) -> Self {
-        let offset = (offset as isize) * -1;
+        let offset = -(offset as isize);
         self.addn(offset)
     }
 
@@ -40,7 +41,7 @@ impl StackCursor {
     }
 
     const fn addn(self, n: isize) -> Self {
-        let i = self.0 as isize + n;
+        let i = self.0 + n;
         if i < 0 {
             Self(-1)
         } else {
@@ -48,7 +49,7 @@ impl StackCursor {
         }
     }
 
-    pub const fn len(self) -> usize {
+    pub const fn len(&self) -> usize {
         if self.0 < 0 {
             0
         } else {
@@ -56,9 +57,13 @@ impl StackCursor {
         }
     }
 
-    /// if self.0 < 0
-    pub const fn is_end(self) -> bool {
-        self.len() == 0
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0 == -1
+    }
+
+    pub const fn is_end(&self) -> bool {
+        self.0 < -1
     }
 
     /// Unwraps index if greater than or equal to 0, otherwise returns 0
