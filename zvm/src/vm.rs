@@ -57,21 +57,11 @@ impl VM {
         let ast = Ast::from_file(path)?;
         println!("{ast}");
 
-        let runes = RuneTablePass::dopass(&ast)?;
+        let _runes = RuneTablePass::dopass(&ast)?;
         let f = Archon::compile_entrypoint(&ast)?;
         let f = Rc::new(f);
         s.call(Rc::clone(&f));
 
-        Ok(s)
-
-        frames.push(cf);
-
-        let s = Self {
-            stack,
-            frames,
-            globals,
-            // runes,
-        };
         Ok(s)
     }
 
