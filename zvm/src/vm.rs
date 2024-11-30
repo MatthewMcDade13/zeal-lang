@@ -723,6 +723,20 @@ impl CallFrame {
             bail!("Tried to get Opcode from an Option<Func> that is None!!")
         }
     }
+
+    pub fn debug_bytecode(&self) -> String {
+        if let Some(func) = &self.func {
+            let code = func.chunk.code();
+            let mut res = String::new();
+            for (i, byte) in code.iter().enumerate() {
+                let op = Op::from(*byte);
+                res.push_str(&format!("Index: {i}, Name: {op}, Byte: {byte}\n",));
+            }
+            res
+        } else {
+            String::new()
+        }
+    }
 }
 
 impl Display for CallFrame {

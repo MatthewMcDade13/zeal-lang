@@ -294,6 +294,19 @@ pub struct Chunk {
     pub scope: Scope,
 }
 
+impl Display for Chunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let code = &self.buf;
+        let mut res = String::new();
+        for (i, byte) in code.iter().enumerate() {
+            let op = Op::from(*byte);
+            res.push_str(&format!("Index: {i}, Name: {op}, Byte: {byte}\n",));
+        }
+
+        write!(f, "{res}")
+    }
+}
+
 impl Default for Chunk {
     fn default() -> Self {
         Self::with_capacity(Self::DEFAULT_CAPACITY, Self::DEFAULT_CAPACITY)
