@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 pub mod buf;
 pub mod mem;
 pub mod rune;
@@ -68,4 +70,46 @@ where
     let mut arr = [default_val; S];
     copy_slice_into(&mut arr, sl);
     arr
+}
+
+/// Unique ID Assignment. Simply increments a u64 number.
+/// This means that u64::MAX is the limit to the number of
+/// IDs 'generated'
+#[derive(Debug, Clone)]
+pub struct IDGen(Cell<u64>);
+
+impl IDGen {
+    pub const fn new() -> Self {
+        Self(Cell::new(0))
+    }
+
+    pub fn try_gen(&self) -> Option<u64> {
+        let n = self.0.get();
+        if n >= u64::MAX - 1 {
+            None
+        } else {
+            let n = n + 1;
+            self.0.set(n);
+            Some(n)
+        }
+    }
+
+    pub fn gen_or_reset(&self) -> u64 {
+        if let Some(n) = self.try_gen() {
+            n
+        } else {
+            self.reset();
+            0
+        }
+    }
+
+    pub fn reset(&self) {
+        self.0.set(0);
+    }
+
+    pub unsafe fn gen_unchecked(&self) -> u64 {
+        let n = self.0.get() + 1;
+        self.0.set(n);
+        n
+    }
 }

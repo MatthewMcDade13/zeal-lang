@@ -1,9 +1,10 @@
 use zeal_core::rune::{RuneTable, RuneTableBuilder};
 
 use crate::{
+    ast_mod::AstModule,
     ast_node,
     expr::{AstList, BindStmt, Binding, Expr, ExprStmt, FuncDecl, WhenForm},
-    Ast, AstWalker,
+    AstWalker,
 };
 
 pub struct RuneTablePass {
@@ -11,12 +12,12 @@ pub struct RuneTablePass {
 }
 
 impl RuneTablePass {
-    pub fn dopass(ast: &Ast) -> anyhow::Result<RuneTable> {
+    pub fn dopass(ast: &AstModule) -> anyhow::Result<RuneTable> {
         let mut s = Self {
             table: RuneTableBuilder::default(),
         };
 
-        if let AstList::List(al) = &ast.tree {
+        if let AstList::List(al) = &ast.ast {
             for stmt in al.iter() {
                 s.visit(stmt)?;
             }

@@ -2,10 +2,10 @@ use anyhow::{anyhow, bail, ensure, Context};
 use std::rc::Rc;
 
 use crate::{
+    ast_mod::AstModule,
     err::{ParseErrInfo, ParseError},
     expr::{AstList, AstRune, BindType, Binding, Expr, ExprStmt, OperatorType, WhenForm},
     lex::{LexTok, LineInfo, Tok, TokType},
-    Ast,
 };
 
 /// Tries to match pattern $try_start_pat and then parses
@@ -113,7 +113,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<Ast> {
+    pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<AstModule> {
         let mut p = Self {
             i: 0,
             tokens: tokens.to_vec(),
@@ -139,7 +139,7 @@ impl Parser {
             }
         }
         let tree = AstList::new(exprs);
-        let ast = Ast { tree };
+        let ast = AstModule::without_meta(tree);
         Ok(ast)
     }
     /// top level statement in Zeal. Zeal programs are (for now, until i implement modules) the

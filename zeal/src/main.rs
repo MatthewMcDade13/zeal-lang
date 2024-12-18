@@ -1,9 +1,9 @@
-use zeal_ast::Ast;
+use zeal_ast::AstModule;
 
 const PATH: &str = "../test_scripts/loops.zl";
 
 fn main() -> anyhow::Result<()> {
-    let ast = Ast::from_file(PATH)?;
+    let ast = AstModule::from_file(PATH)?;
     println!("{ast}");
     Ok(())
 }

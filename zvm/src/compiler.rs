@@ -3,7 +3,7 @@
 use anyhow::{bail, ensure};
 use zeal_ast::{
     expr::{AstList, BindStmt, EscapeExpr, Expr, ExprStmt, FuncDecl, OperatorType, WhenForm},
-    Ast,
+    AstModule,
 };
 
 use crate::{
@@ -34,7 +34,7 @@ use crate::{
 pub struct Archon;
 
 impl Archon {
-    pub fn compile_entrypoint(ast: &Ast) -> anyhow::Result<FuncChunk> {
+    pub fn compile_entrypoint(ast: &AstModule) -> anyhow::Result<FuncChunk> {
         let mut env = CompileEnv::root();
         Self::compile_with(ast, &mut env)?;
         let ch = env.state.build_func("__main__", 0);
@@ -60,8 +60,8 @@ impl Archon {
         // ch.push_constant(Val::Func(Rc::new(fc)));
     }
 
-    pub fn compile_with(ast: &Ast, env: &mut CompileEnv) -> anyhow::Result<()> {
-        if let AstList::List(l) = &ast.tree {
+    pub fn compile_with(ast: &AstModule, env: &mut CompileEnv) -> anyhow::Result<()> {
+        if let AstList::List(l) = &ast.ast {
             for s in l.iter() {
                 Self::compile_expr_stmt(env, s)?;
             }

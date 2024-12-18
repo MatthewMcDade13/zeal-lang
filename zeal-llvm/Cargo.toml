@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+zeal-ast = { path = "../zeal-ast" }
 anyhow = "1.0.82"
 bytemuck = { version = "1.16.0", features = [
   "min_const_generics",

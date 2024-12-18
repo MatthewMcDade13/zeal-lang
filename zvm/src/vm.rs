@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use anyhow::{bail, Context};
-use zeal_ast::{expr::OperatorType, passes::rune::RuneTablePass, Ast};
+use zeal_ast::{expr::OperatorType, passes::rune::RuneTablePass, AstModule};
 
 use crate::{
     chunk::{Chunk, FuncChunk},
@@ -54,7 +54,7 @@ impl VM {
             // runes,
         };
 
-        let ast = Ast::from_file(path)?;
+        let ast = AstModule::from_file(path)?;
         println!("{ast}");
 
         let runes = RuneTablePass::dopass(&ast)?;
@@ -90,12 +90,12 @@ impl VM {
     // #[inline]
     /// Compiles string of zeal source code into a single chunk and returns the depth (index) of the newly pushed chunk.
     pub fn compile_source(&mut self, src: &str) -> anyhow::Result<FuncChunk> {
-        let ast = Ast::from_str(src)?;
+        let ast = AstModule::from_str(src)?;
         self.compile_ast(&ast)
     }
 
     /// Compiles ast into a single chunk and returns the depth (index) of the newly pushed chunk.
-    pub fn compile_ast(&mut self, ast: &Ast) -> anyhow::Result<FuncChunk> {
+    pub fn compile_ast(&mut self, ast: &AstModule) -> anyhow::Result<FuncChunk> {
         Archon::compile_entrypoint(ast)
     }
 

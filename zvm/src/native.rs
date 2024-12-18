@@ -11,3 +11,14 @@ pub fn zvm_println(vals: &[Val]) -> anyhow::Result<Val> {
     println!("{s}");
     Ok(Val::Unit)
 }
+#[no_mangle]
+pub fn zvm_print(vals: &[Val]) -> anyhow::Result<Val> {
+    let mut s = String::new();
+    for v in vals.iter() {
+        let ss = format!("{v} ");
+        s.push_str(&ss);
+    }
+    let s = s.trim_end();
+    print!("{s} ");
+    Ok(Val::Unit)
+}
