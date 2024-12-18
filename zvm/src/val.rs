@@ -114,7 +114,7 @@ impl Display for Val {
                 let arity = rc.arity;
                 let chunk = &rc.chunk;
 
-                format!("{name}/{arity} ->\n\t{chunk:?}")
+                format!("{name}/{arity} ->\n\t{chunk}")
             }
             Val::SByte(sb) => sb.to_string(),
             Val::NativeFunc(NativeFunc { name, .. }) => format!("__native__/{name}"),

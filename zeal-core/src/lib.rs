@@ -1,6 +1,7 @@
 pub mod buf;
 pub mod mem;
 pub mod rune;
+pub mod slab;
 
 #[inline]
 pub fn clamp<T>(lower: T, val: T, higher: T) -> T

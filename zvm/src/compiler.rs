@@ -39,7 +39,6 @@ impl Archon {
         Self::compile_with(ast, &mut env)?;
         let ch = env.state.build_func("__main__", 0);
 
-
         Ok(ch)
     }
 
@@ -125,7 +124,7 @@ impl Archon {
                 cb.push_opcode(jump_op);
 
                 let pops = cb.end_scope();
-              
+
                 for b in breaks {
                     cb.patch_jump(b);
                 }
