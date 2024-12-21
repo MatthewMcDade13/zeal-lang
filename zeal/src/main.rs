@@ -1,4 +1,4 @@
-use zeal_ast::AstModule;
+use zeal_ast::ast_mod::AstModule;
 
 const PATH: &str = "../test_scripts/loops.zl";
 

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use zeal_ast::AstModule;
+use zeal_ast::ast_mod::AstModule;
 use zvm::{
     native::{zvm_print, zvm_println},
     val::{NativeFunc, Val},

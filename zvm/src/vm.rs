@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use anyhow::{bail, Context};
-use zeal_ast::{expr::OperatorType, passes::rune::RuneTablePass, AstModule};
+use zeal_ast::{ast_mod::AstModule, expr::OperatorType, passes::rune::RuneTablePass};
 
 use crate::{
     chunk::{Chunk, FuncChunk},
