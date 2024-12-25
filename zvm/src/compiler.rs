@@ -7,8 +7,7 @@ use zeal_ast::{
 };
 
 use crate::{
-    chunk::{ChunkBuilder, FuncChunk},
-    env::CompileEnv,
+    code::{CodeBlockBuilder, FuncBlock},
     opcode::{Op, OpParam, Opcode, VarOp},
     val::Val,
 };
@@ -34,16 +33,16 @@ use crate::{
 pub struct Archon;
 
 impl Archon {
-    pub fn compile_entrypoint(ast: &Ast) -> anyhow::Result<FuncChunk> {
-        let mut env = CompileEnv::root();
-        Self::compile_with(ast, &mut env)?;
-        let ch = env.state.build_func("__main__", 0);
+    pub fn compile_entrypoint(ast: &Ast) -> anyhow::Result<FuncBlock> {
+        let mut cbb = CodeBlockBuilder::default();
+        Self::compile_with(ast, &mut cbb)?;
+        let ch = cbb.build_func("__main__", 0);
 
         Ok(ch)
     }
 
-    pub fn compile_func(decl: &FuncDecl, parent: &mut ChunkBuilder) -> anyhow::Result<()> {
-        let mut cb = ChunkBuilder::default();
+    pub fn compile_func(decl: &FuncDecl, parent: &mut CodeBlockBuilder) -> anyhow::Result<()> {
+        let mut cb = CodeBlockBuilder::default();
         cb.start_scope();
 
         if let AstList::List(ps) = &decl.params {
@@ -59,7 +58,7 @@ impl Archon {
         // ch.push_constant(Val::Func(Rc::new(fc)));
     }
 
-    pub fn compile_with(ast: &Ast, env: &mut CompileEnv) -> anyhow::Result<()> {
+    pub fn compile_with(ast: &Ast, env: &mut CodeBlockBuilder) -> anyhow::Result<()> {
         if let AstList::List(l) = &ast.tree {
             for s in l.iter() {
                 Self::compile_expr_stmt(env, s)?;
@@ -72,7 +71,7 @@ impl Archon {
     }
 
     fn compile_logical_op(
-        cb: &mut ChunkBuilder,
+        cb: &mut CodeBlockBuilder,
         operator: (OperatorType, &Expr, &Expr),
     ) -> anyhow::Result<()> {
         let (ty, left, right) = operator;
@@ -92,7 +91,7 @@ impl Archon {
         Ok(())
     }
 
-    fn compile_expr_stmt(cb: &mut ChunkBuilder, el: &ExprStmt) -> anyhow::Result<()> {
+    fn compile_expr_stmt(cb: &mut CodeBlockBuilder, el: &ExprStmt) -> anyhow::Result<()> {
         match el {
             ExprStmt::Block(bl) => {
                 cb.start_scope();
@@ -208,7 +207,7 @@ impl Archon {
         Ok(())
     }
 
-    fn compile_expr(cb: &mut ChunkBuilder, expr: &Expr) -> anyhow::Result<()> {
+    fn compile_expr(cb: &mut CodeBlockBuilder, expr: &Expr) -> anyhow::Result<()> {
         match expr {
             Expr::Assign { lhs, rhs } => {
                 if let Expr::Rune(r) = lhs.as_ref() {

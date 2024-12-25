@@ -1,6 +1,8 @@
-use std::{fmt::Display, rc::Rc};
+use std::{fmt::Display, ops::Deref, rc::Rc};
 
-use crate::chunk::FuncChunk;
+use zeal_core::string::StrBuf;
+
+use crate::code::FuncBlock;
 
 // pub struct NativeFunc<T: Fn(&[Val]) -> anyhow::Result<Val>>(T);
 
@@ -9,6 +11,102 @@ pub struct NativeFunc {
     pub func: fn(&[Val]) -> anyhow::Result<Val>,
     pub name: Rc<str>,
     pub arity: usize,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct SymbolName(Rc<str>);
+
+impl SymbolName {
+    pub fn new(string: &str) -> Self {
+        Self(Rc::from(string))
+    }
+
+    pub fn unwrap(self) -> Rc<str> {
+        Rc::clone(&self.0)
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
+impl PartialEq<str> for SymbolName {
+    fn eq(&self, other: &str) -> bool {
+        self.0.as_ref() == other
+    }
+}
+
+impl PartialEq for SymbolName {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_ref() == other.0.as_ref()
+    }
+}
+
+impl Eq for SymbolName {}
+
+impl PartialOrd for SymbolName {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let a = self.0.as_ref();
+        let b = other.as_str();
+        a.partial_cmp(b)
+    }
+}
+
+impl PartialOrd<str> for SymbolName {
+    fn partial_cmp(&self, other: &str) -> Option<std::cmp::Ordering> {
+        let s = self.0.as_ref();
+        s.partial_cmp(other)
+    }
+}
+
+impl Ord for SymbolName {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let a = self.0.as_ref();
+        let b = other.as_str();
+        a.cmp(b)
+    }
+}
+
+impl From<String> for SymbolName {
+    fn from(value: String) -> Self {
+        Self(Rc::from(value))
+    }
+}
+
+impl From<&String> for SymbolName {
+    fn from(value: &String) -> Self {
+        Self::new(value.as_ref())
+    }
+}
+
+impl From<Rc<str>> for SymbolName {
+    fn from(value: Rc<str>) -> Self {
+        Self(Rc::clone(&value))
+    }
+}
+
+impl Display for SymbolName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self.0.as_ref().to_string();
+        write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ValLiteral {
+    Byte(u8),
+    SByte(i8),
+    Bool(bool),
+    UNum(usize),
+    Num(isize),
+    Float(f64),
+    String(StrBuf),
+}
+
+#[derive(Debug, Clone)]
+pub enum FuncVal {
+    Native(NativeFunc),
+    Zeal(FuncBlock),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -22,7 +120,7 @@ pub enum Val {
     Rune(Rc<str>),
     String(Rc<str>),
     Ptr(Box<Self>),
-    Func(Rc<FuncChunk>),
+    Func(Rc<FuncBlock>),
     NativeFunc(NativeFunc),
     #[default]
     Unit,
@@ -71,7 +169,7 @@ impl Val {
             Val::Rune(rc) => rc.len() != 0,
             Val::String(rc) => rc.len() != 0,
             Val::Ptr(val) => val.is_truthy(),
-            Val::Func(rc) => rc.chunk.len() != 0,
+            Val::Func(rc) => rc.code.len() != 0,
             Val::Unit => false,
             Val::SByte(b) => *b != 0,
             Val::NativeFunc(_) => true,
@@ -112,7 +210,7 @@ impl Display for Val {
             Val::Func(rc) => {
                 let name = rc.name();
                 let arity = rc.arity;
-                let chunk = &rc.chunk;
+                let chunk = &rc.code;
 
                 format!("{name}/{arity} ->\n\t{chunk}")
             }

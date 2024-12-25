@@ -1,68 +1,155 @@
-use std::{fmt::Display, rc::Rc};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    rc::{Rc, Weak},
+};
 
 use anyhow::bail;
+use zeal_core::{rune::RuneTable, string::StrBuf};
 
-use crate::{env::CompileEnv, val::Val};
+use crate::val::{SymbolName, Val};
 
 use super::{
     opcode::{Bytecode, Op, OpParam, OpParamSize, Opcode, VarOp},
     state::Scope,
 };
 
-// #[derive(Debug, Clone, Copy)]
-// pub struct ChunkIter {
-//     begin: *const u8,
-//     i: usize,
-//     len: usize,
-// }
-//
-// impl Iterator for ChunkIter {
-//     type Item = Opcode;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.len == 0 || self.i >= self.len {
-//             None
-//         } else {
-//             let opcode = unsafe { read_raw_slice_as_bytecode(self.begin, self.i, self.len) }
-//                 .expect(&format!("cant get opcode from chunk! {:?}", self));
-//             let offset = opcode.offset();
-//             self.i += offset;
-//             Some(opcode)
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone)]
-pub struct FuncChunk {
-    pub arity: u8,
-    pub chunk: Chunk,
-    name: Rc<str>,
+pub enum CodeBlock {
+    Module(ModuleBlock),
+    Func(FuncBlock),
+    Basic(BasicBlock),
 }
 
-impl FuncChunk {
-    pub fn name(&self) -> &str {
-        self.name.as_ref()
+pub mod sym {
+    use super::*;
+    pub type FuncTable = HashMap<SymbolName, FuncBlock>;
+    pub type ModuleTable = HashMap<SymbolName, Rc<ModuleBlock>>;
+    pub type DependencyTable = HashMap<SymbolName, Weak<ModuleBlock>>;
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleTreeNode {
+    pub id: ModuleId,
+    pub parent: ModuleId,
+    pub val: ModuleBlock,
+    pub children: Rc<[ModuleId]>,
+}
+
+#[derive(Debug,Clone,Copy,PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct ModuleId(usize);
+
+#[derive(Debug, Clone, Default)]
+pub struct ModuleTree {
+    pub modules: Vec<ModuleTreeNode>,
+}
+
+impl ModuleTree {
+    pub const fn empty() -> Self {
+        Self {
+            modules: Vec::new(),
+        }
+    }
+
+    pub fn with_root() -> Self {
+        let root = ModuleTreeNode {
+            id: 0,
+            parent: 0,
+        }
+        // let mut modules
     }
 }
 
-// impl Display for FuncChunk {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let name = self.name();
-//         let chunk = &self.chunk;
-//         let arity = self.arity as usize;
-//         let s = format!("{name}/{arity} =>\n\t{chunk}");
-//         write!(f, "{s}")
-//     }
-// }
-//
 #[derive(Debug, Clone)]
-pub struct ChunkBuilder(pub Chunk);
+pub struct ModuleBlock {
+    pub name: StrBuf, 
+    
+}
 
-impl ChunkBuilder {
-    pub const fn from_existing(ch: Chunk) -> Self {
+impl ModuleBlock {
+    pub const RUNTIME_ROOT_NAME: &str = "__RUNTIME_ROOT__";
+
+    pub fn new_root() -> Self {
+        let deps = sym::DependencyTable::new();
+        let parent = None;
+        let name = SymbolName::new(Self::RUNTIME_ROOT_NAME);
+        let exports = ExportSymbols::empty();
+        let internal = InternalSymbols::empty();
+        Self {
+            deps,
+            parent,
+            name,
+            exports,
+            internal,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportSymbols {
+    pub funcs: sym::FuncTable,
+    pub modules: sym::ModuleTable,
+    pub constants: Vec<usize>,
+}
+
+impl ExportSymbols {
+    pub fn empty() -> Self {
+        Self {
+            funcs: sym::FuncTable::new(),
+            modules: sym::ModuleTable::new(),
+            constants: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InternalSymbols {
+    pub funcs: sym::FuncTable,
+    pub modules: sym::ModuleTable,
+    pub constants: Vec<usize>,
+}
+
+impl InternalSymbols {
+    pub fn empty() -> Self {
+        Self {
+            funcs: sym::FuncTable::new(),
+            modules: sym::ModuleTable::new(),
+            constants: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncBlock {
+    pub arity: u8,
+    pub code: BasicBlock,
+    name: SymbolName,
+}
+
+impl FuncBlock {
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ConstSlot(usize);
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FuncSlot(usize);
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ModuleSlot(usize);
+
+#[derive(Debug, Clone)]
+pub struct CodeBlockBuilder(pub BasicBlock);
+
+impl CodeBlockBuilder {
+    pub const fn from_existing(ch: BasicBlock) -> Self {
         Self(ch)
     }
-    pub fn build(self) -> Chunk {
+    pub fn build(self) -> BasicBlock {
         self.0
     }
 
@@ -74,16 +161,17 @@ impl ChunkBuilder {
         self.0.scope.end_scope()
     }
 
-    pub fn build_func_in(self, ch: &mut Chunk, name: &str, arity: u8) {
+    pub fn build_func_in(self, ch: &mut BasicBlock, name: &str, arity: u8) {
         let f = self.build_func(name, arity);
-        ch.append_func(f);
+        todo!();
+        // ch.append_func(f);
     }
 
-    pub fn build_func(self, name: &str, arity: u8) -> FuncChunk {
-        let fc = FuncChunk {
+    pub fn build_func(self, name: &str, arity: u8) -> FuncBlock {
+        let fc = FuncBlock {
             arity,
-            name: Rc::from(name),
-            chunk: self.0,
+            name: SymbolName::new(name),
+            code: self.0,
         };
         fc
     }
@@ -97,21 +185,22 @@ impl ChunkBuilder {
         self.push_opcode(op);
     }
 
-    pub fn push_constant(&mut self, v: Val) -> usize {
+    pub fn push_constant(&mut self, v: Val) -> ConstSlot {
         let id = self.add_constant(v);
         let param = OpParam::squash(id as u64);
         let op = param.as_const_op();
 
         let op = Opcode::WithParam { op, param };
         self.push_opcode(op);
-        param.to_u32() as usize
+        let id = param.to_u32() as usize;
+        ConstSlot(id)
     }
 
-    pub fn push_float(&mut self, n: f64) -> usize {
+    pub fn push_float(&mut self, n: f64) -> ConstSlot {
         self.push_constant(Val::float(n))
     }
 
-    pub fn append_chunk(&mut self, other: &Chunk) {
+    pub fn append_chunk(&mut self, other: &BasicBlock) {
         self.0.buf.append_bytes(other.buf.slice());
         self.0.constants.extend_from_slice(&other.constants);
     }
@@ -126,12 +215,12 @@ impl ChunkBuilder {
     }
 
     #[inline]
-    pub fn push_string(&mut self, string: &str) -> usize {
+    pub fn push_string(&mut self, string: &str) -> ConstSlot {
         self.push_constant(Val::string(string))
     }
 
     #[inline]
-    pub fn push_rune(&mut self, ident: &str) -> usize {
+    pub fn push_rune(&mut self, ident: &str) -> ConstSlot {
         self.push_constant(Val::rune(ident))
     }
 
@@ -188,7 +277,6 @@ impl ChunkBuilder {
     pub fn declare_binding(&mut self, name: &str) -> anyhow::Result<()> {
         if self.0.scope.depth().is_local() {
             self.declare_local(name)
-            // Ok(())
         } else {
             self.declare_global(name)
         }
@@ -281,20 +369,25 @@ impl ChunkBuilder {
     }
 }
 
-impl Default for ChunkBuilder {
+impl Default for CodeBlockBuilder {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Chunk {
+pub struct SymbolConsts {
+    runes: RuneTable,
+}
+
+#[derive(Debug, Clone)]
+pub struct BasicBlock {
     pub buf: Bytecode,
     pub constants: Vec<Val>,
     pub scope: Scope,
 }
 
-impl Display for Chunk {
+impl Display for BasicBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let code = &self.buf;
         let mut res = String::new();
@@ -307,13 +400,13 @@ impl Display for Chunk {
     }
 }
 
-impl Default for Chunk {
+impl Default for BasicBlock {
     fn default() -> Self {
         Self::with_capacity(Self::DEFAULT_CAPACITY, Self::DEFAULT_CAPACITY)
     }
 }
 
-impl Chunk {
+impl BasicBlock {
     pub const DEFAULT_CAPACITY: usize = 255;
     pub fn with_capacity(buf_cap: usize, const_cap: usize) -> Self {
         Self {
@@ -322,10 +415,19 @@ impl Chunk {
             scope: Scope::with_capacity(Self::DEFAULT_CAPACITY),
         }
     }
-    pub fn append_func(&mut self, fc: FuncChunk) {
-        let _ = ch_push_constant(self, Val::Func(Rc::new(fc)));
-    }
-
+    // pub fn append_func(&mut self, fc: FuncBlock) -> FuncSlot {
+    //     let id = self.children.funcs_len();
+    //     self.children.push_func(fc);
+    //     FuncSlot(id)
+    //     // let _ = ch_push_constant(self, Val::Func(Rc::new(fc)));
+    // }
+    //
+    // pub fn append_module(&mut self, mb: ModuleBlock) -> ModuleSlot {
+    //     let id = self.children.modules_len();
+    //     self.children.push_module(mb);
+    //     ModuleSlot(id)
+    // }
+    //
     #[inline]
     pub fn opcode_at(&self, index: usize) -> Option<Opcode> {
         self.buf.opcode_at(index)
@@ -390,7 +492,7 @@ impl Patch {
     }
 }
 
-fn ch_push_constant(ch: &mut Chunk, v: Val) -> usize {
+fn ch_push_constant(ch: &mut BasicBlock, v: Val) -> usize {
     let id = ch_add_constant(ch, v);
     let param = OpParam::squash(id as u64);
     let op = param.as_const_op();
@@ -400,13 +502,13 @@ fn ch_push_constant(ch: &mut Chunk, v: Val) -> usize {
     param.to_u32() as usize
 }
 
-fn ch_add_constant(ch: &mut Chunk, v: Val) -> usize {
+fn ch_add_constant(ch: &mut BasicBlock, v: Val) -> usize {
     let id = ch.constants.len();
     ch.constants.push(v);
     id
 }
 
-fn ch_push_opcode<T>(ch: &mut Chunk, opcode: T) -> usize
+fn ch_push_opcode<T>(ch: &mut BasicBlock, opcode: T) -> usize
 where
     T: Into<Opcode>,
 {

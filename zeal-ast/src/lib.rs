@@ -2,6 +2,7 @@ pub mod env;
 pub mod err;
 pub mod expr;
 pub mod lex;
+pub mod module;
 pub mod parse;
 pub mod passes;
 

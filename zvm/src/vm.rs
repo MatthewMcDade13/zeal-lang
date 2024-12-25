@@ -4,7 +4,7 @@ use anyhow::{bail, Context};
 use zeal_ast::{expr::OperatorType, passes::rune::RuneTablePass, Ast};
 
 use crate::{
-    chunk::{Chunk, FuncChunk},
+    code::{BasicBlock, FuncBlock},
     compiler::Archon,
     err::RuntimeError,
     native::zvm_println,
@@ -89,13 +89,13 @@ impl VM {
 
     // #[inline]
     /// Compiles string of zeal source code into a single chunk and returns the depth (index) of the newly pushed chunk.
-    pub fn compile_source(&mut self, src: &str) -> anyhow::Result<FuncChunk> {
+    pub fn compile_source(&mut self, src: &str) -> anyhow::Result<FuncBlock> {
         let ast = Ast::from_str(src)?;
         self.compile_ast(&ast)
     }
 
     /// Compiles ast into a single chunk and returns the depth (index) of the newly pushed chunk.
-    pub fn compile_ast(&mut self, ast: &Ast) -> anyhow::Result<FuncChunk> {
+    pub fn compile_ast(&mut self, ast: &Ast) -> anyhow::Result<FuncBlock> {
         Archon::compile_entrypoint(ast)
     }
 
@@ -134,7 +134,7 @@ impl VM {
 
     /// Pushes ZBalue::Func onto stack memory, also crates a new CallFrame
     /// and pushes that onto Call Stack.
-    pub fn call(&mut self, unit: Rc<FuncChunk>) {
+    pub fn call(&mut self, unit: Rc<FuncBlock>) {
         let stack_fn = Rc::clone(&unit);
         self.stack.push(Val::Func(stack_fn));
 
@@ -363,6 +363,8 @@ impl VM {
                     }
                 }
                 Op::Rune8 | Op::Rune16 | Op::Rune32 | Op::Rune64 => {}
+                Op::GetFuncLocal => todo!(),
+                Op::GetFuncGlobal => todo!(),
             };
         }
 
@@ -436,7 +438,7 @@ impl VM {
         self.exec_source(&source)
     }
 
-    pub fn new_frame(&self, func: Rc<FuncChunk>) -> CallFrame {
+    pub fn new_frame(&self, func: Rc<FuncBlock>) -> CallFrame {
         let arity = func.arity as isize;
         let beg = self.stack.top_index().unwrap() as isize - arity;
         let start_slot = std::cmp::max(0, beg) as usize;
@@ -635,7 +637,7 @@ impl Display for VM {
 pub struct CallFrame {
     // TODO: For now this is an Rc, but when i implement my
     // dynanuc stack for the VM, this will changed since the entire Func will live on the stack
-    func: Option<Rc<FuncChunk>>,
+    func: Option<Rc<FuncBlock>>,
     ip: usize,
     /// index offset from top of stack that
     /// this call frames variables live at.
@@ -657,13 +659,13 @@ impl CallFrame {
         }
     }
 
-    pub fn code(&self) -> &Chunk {
+    pub fn code(&self) -> &BasicBlock {
         self.try_code().expect("Cannot get code from empty Chunk!")
     }
 
-    pub fn try_code(&self) -> Option<&Chunk> {
+    pub fn try_code(&self) -> Option<&BasicBlock> {
         if let Some(c) = self.func.as_ref() {
-            Some(&c.chunk)
+            Some(&c.code)
         } else {
             None
         }
@@ -726,7 +728,7 @@ impl CallFrame {
 
     pub fn debug_bytecode(&self) -> String {
         if let Some(func) = &self.func {
-            let code = func.chunk.code();
+            let code = func.code.code();
             let mut res = String::new();
             for (i, byte) in code.iter().enumerate() {
                 let op = Op::from(*byte);

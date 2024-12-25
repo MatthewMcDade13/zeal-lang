@@ -11,11 +11,13 @@ pub enum VarOp {
     Declare,
     Get,
     Set,
+    Call,
 }
 
 impl Display for VarOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
+            VarOp::Call => "call",
             VarOp::Declare => "decl",
             VarOp::Get => "getvar",
             VarOp::Set => "setvar,",
@@ -122,6 +124,11 @@ pub enum Op {
     Jump,
     /// u32 param
     LongJump,
+
+    /// u16 param
+    GetFuncLocal,
+    /// u16 parm
+    GetFuncGlobal,
 
     Unknown,
 }
@@ -236,11 +243,13 @@ impl Op {
         }
     }
 
+
     pub const fn global(size: OpParamSize, varop: VarOp) -> Self {
         match varop {
             VarOp::Declare => Self::declare_global(size),
             VarOp::Get => Self::get_global(size),
             VarOp::Set => Self::set_global(size),
+            VarOp::Call => Op::GetFuncGlobal,
         }
     }
 
@@ -249,6 +258,7 @@ impl Op {
             VarOp::Declare => panic!("No opcode exists for declaring a local binding!!!"),
             VarOp::Get => Self::get_local(size),
             VarOp::Set => Self::set_local(size),
+            VarOp::Call => Op::GetFuncLocal,
         }
     }
 
@@ -642,6 +652,9 @@ impl Opcode {
     }
 }
 
+/// Wrapper for a u8 buffer that contains zvm bytecode.
+/// This wrapper struct is mainly used for interfacing with 
+/// opcodes and reading bytes as bytecode
 #[repr(transparent)]
 #[derive(Debug, Clone)]
 pub struct Bytecode {
