@@ -610,6 +610,8 @@ impl VM {
                         .to_usize();
                     format!("RUNE => {arg}")
                 }
+                Op::GetFuncLocal => todo!(),
+                Op::GetFuncGlobal => todo!(),
             };
 
             bstr.push_str(&format!("{i}: {s}\n"));

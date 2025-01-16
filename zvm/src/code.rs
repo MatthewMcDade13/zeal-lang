@@ -36,7 +36,7 @@ pub struct ModuleTreeNode {
     pub children: Rc<[ModuleId]>,
 }
 
-#[derive(Debug,Clone,Copy,PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct ModuleId(usize);
 
@@ -52,38 +52,37 @@ impl ModuleTree {
         }
     }
 
-    pub fn with_root() -> Self {
-        let root = ModuleTreeNode {
-            id: 0,
-            parent: 0,
-        }
-        // let mut modules
-    }
+    // pub fn with_root() -> Self {
+    //     let root = ModuleTreeNode {
+    //         id: 0,
+    //         parent: 0,
+    //     }
+    //     // let mut modules
+    // }
 }
 
 #[derive(Debug, Clone)]
 pub struct ModuleBlock {
-    pub name: StrBuf, 
-    
+    pub name: StrBuf,
 }
 
 impl ModuleBlock {
     pub const RUNTIME_ROOT_NAME: &str = "__RUNTIME_ROOT__";
-
-    pub fn new_root() -> Self {
-        let deps = sym::DependencyTable::new();
-        let parent = None;
-        let name = SymbolName::new(Self::RUNTIME_ROOT_NAME);
-        let exports = ExportSymbols::empty();
-        let internal = InternalSymbols::empty();
-        Self {
-            deps,
-            parent,
-            name,
-            exports,
-            internal,
-        }
-    }
+    //
+    // pub fn new_root() -> Self {
+    //     let deps = sym::DependencyTable::new();
+    //     let parent = None;
+    //     let name = SymbolName::new(Self::RUNTIME_ROOT_NAME);
+    //     let exports = ExportSymbols::empty();
+    //     let internal = InternalSymbols::empty();
+    //     Self {
+    //         deps,
+    //         parent,
+    //         name,
+    //         exports,
+    //         internal,
+    //     }
+    // }
 }
 
 #[derive(Debug, Clone)]

@@ -1,10 +1,10 @@
-use std::{cell::RefCell, mem::MaybeUninit, rc::Rc};
+use std::{borrow::BorrowMut, cell::RefCell, mem::MaybeUninit, rc::Rc};
 
 /// Heap-Allocated, Referenc-Counted, Regrowable and Reassignable,
 /// Array. Array Items are immutable.
 pub struct ConstArray<T> {
     count: usize,
-    buf: Option<Rc<RefCell<[T]>>>,
+    buf: Option<Rc<[T]>>,
 }
 
 impl<T> ConstArray<T> {
@@ -18,6 +18,15 @@ impl<T> ConstArray<T> {
         let count = 0;
         let mut buf: Vec<T> = Vec::new();
         let b = buf.into_boxed_slice();
+        todo!()
+    }
+
+    pub fn t(&mut self) {
+        if let Some(rc) = self.buf.as_mut() {
+            for i in rc.iter_mut() {}
+        } else {
+            todo!()
+        }
     }
 }
 
@@ -26,14 +35,19 @@ where
     T: bytemuck::Zeroable,
 {
     pub fn zeroed_cap(len: usize) -> Self {
-        let mut buf = Vec::with_capacity(len);
-        for c in buf.spare_capacity_mut().iter_mut() {
+        let buf = RefCell::new(Vec::with_capacity(len));
+        for c in buf.borrow_mut().spare_capacity_mut().iter_mut() {
             c.write(T::zeroed());
         }
         unsafe {
-            buf.set_len(len);
+            buf.borrow_mut().set_len(len);
         }
 
-        let buf = Rc::from(RefCell::new(*buf));
+        todo!()
+        // let buf: Rc<RefCell<[T]>> = Rc::from(buf.borrow_mut().into_boxed_slice());
+        // Self {
+        //     count: 0,
+        //     buf: Some(buf.into()),
+        // }
     }
 }

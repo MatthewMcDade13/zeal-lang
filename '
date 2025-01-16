@@ -1,6 +1,0 @@
-use std::rc::Rc;
-
-pub struct ConstArray([u8]);
-pub struct Item {
-    buf: Rc<ConstArray>,
-}
