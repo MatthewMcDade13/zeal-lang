@@ -4,19 +4,63 @@ use anyhow::{bail, ensure, Context};
 use bytes::Bytes;
 
 /// ZealVM Bytecode Object format
+/**
+*    =====================================
+*    === Bytecode format memory layout ===
+*    =====================================
+*
+*    +----------------------------+
+*    |       Module Header        |
+*    |  (e.g., magic, version)    |
+*    +----------------------------+
+*    |      String Pool           |
+*    |                            |
+*    +----------------------------+
+*    |      Symbol Table          |
+*    |   (import/export info)     |
+*    +----------------------------+
+*    |     Type/Structure Info    |
+*    | (optional custom metadata) |
+*    +----------------------------+
+*    |      Function Table        |
+*    | (function descriptors)     |
+*    +----------------------------+
+*    |   Bytecode Instructions    |
+*    | (function bodies, etc.)    |
+*    +----------------------------+
+*
+*
+*
+*
+* */
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, PartialEq, Eq)]
 #[repr(C)]
-pub struct ByteRange {
+pub struct ByteChunk {
     pub begin: u32,
     pub len_bytes: u32,
 }
 
-impl ByteRange {
+impl ByteChunk {
+    const PLACEHOLDER_IMPORT: u32 = u32::MAX - 1;
+
+    pub const PLACEHOLDER: Self = Self {
+        begin: 0,
+        len_bytes: Self::PLACEHOLDER_IMPORT,
+    };
+
+    pub const fn placeholder() -> Self {
+        Self::PLACEHOLDER
+    }
+
     pub const fn new(begin: usize, len_bytes: usize) -> Self {
         let begin = begin as u32;
         let len_bytes = len_bytes as u32;
         Self { begin, len_bytes }
+    }
+
+    pub const fn is_import(&self) -> bool {
+        self == Self::PLACEHOLDER
     }
 
     pub const fn is_emtpy(&self) -> bool {
@@ -51,29 +95,31 @@ impl ZealId {
 pub struct ObjHeader {
     pub magic: ZealId,
 
-    pub imports_loc: ByteRange,
+    pub imports_loc: ByteChunk,
     pub imports_len: u32,
 
-    pub exports_loc: ByteRange,
+    pub exports_loc: ByteChunk,
     pub exports_len: u32,
 
-    pub labels_loc: ByteRange,
-    pub labels_len: u32,
+    pub strings_loc: ByteChunk,
+    pub strings_len: u32,
 
-    pub symbols_loc: ByteRange,
+    pub symbols_loc: ByteChunk,
     pub symbols_len: u32,
 
-    pub typeinfo_loc: ByteRange,
-    pub typeinfo_len: u32,
+    pub typedefs_loc: ByteChunk,
+    pub typedefs_loc: u32,
 
-    pub struct_fields_loc: ByteRange,
-    pub struct_fields_len: u32,
+    pub type_fields_loc: ByteChunk,
+    pub type_fields_len: u32,
 
-    pub constants_loc: ByteRange,
+    pub constants_loc: ByteChunk,
     pub constants_len: u32,
 
-    pub functions_loc: ByteRange,
+    pub functions_loc: ByteChunk,
     pub functions_len: u32,
+
+    pub bytecode_loc: ByteChunk,
 }
 
 impl ObjHeader {
@@ -84,7 +130,7 @@ impl ObjHeader {
         size += self.imports_loc.len_bytes;
         size += self.exports_loc.len_bytes;
         size += self.symbols_loc.len_bytes;
-        size += self.typeinfo_loc.len_bytes;
+        size += self.typedefs_loc.len_bytes;
         size += self.constants_loc.len_bytes;
         size += self.functions_loc.len_bytes;
         size as usize
@@ -104,27 +150,42 @@ impl ObjHeader {
 #[derive(Debug, Clone)]
 pub struct ObjectView<'a> {
     pub header: &'a ObjHeader,
-    pub imports: &'a [Import],
-    pub exports: &'a [Export],
-    pub labels: Rc<[&'a str]>,
-    pub constants: Rc<[ConstantView<'a>]>,
+    pub string_pool: &'a str,
     pub symbols: &'a [SymbolEntry],
-    pub typeinfo: &'a [TypeInfo],
-    pub struct_fields: &'a [StructField],
-    pub funcs: Rc<[FuncView<'a>]>,
+    pub typedefs: &'a [TypeEntry],
+    pub type_fields: &'a [TypeFieldInfo],
+    pub functions: &'a [FuncEntry],
+    pub bytecode: &'a [u8],
 }
 
 impl<'a> ObjectView<'a> {
     pub fn new(buf: &'a [u8]) -> anyhow::Result<Self> {
+        ensure!(
+            buf.len() >= ObjHeader::SIZE_BYTES,
+            "Given buffer to small to interpret as Bytecode Module Object"
+        );
         let header: &ObjHeader = bytemuck::from_bytes(&buf[..ObjHeader::SIZE_BYTES]);
-        let imports: &[Import] = Self::section_list(buf, header.imports_loc);
-        let exports: &[Export] = Self::section_list(buf, header.exports_loc);
-        let labels: &[&str] = Self::section_list(buf, header.labels_loc);
+        ensure!(buf.len() >= header.module_size_bytes());
+        let string_pool: &str = Self::section_list(buf, header.strings_loc);
+        let symbols: &[SymbolEntry] = Self::section_list(buf, header.symbols_loc);
+        let typedefs: &[TypeEntry] = Self::section_list(buf, header.typedefs_loc);
+        let type_fields: &[TypeFieldInfo] = Self::section_list(buf, header.type_fields_loc);
+        let functions: &[FuncEntry] = Self::section_list(buf, header.functions_loc);
+        let bytecode: &[u8] = &buf[header.bytecode_loc..];
 
-        todo!()
+        let s = Self {
+            header,
+            string_pool,
+            symbols,
+            typedefs,
+            type_fields,
+            functions,
+            bytecode,
+        };
+        Ok(s)
     }
 
-    pub fn section_list<T>(buf: &[u8], range: ByteRange) -> &[T]
+    pub fn section_list<T>(buf: &[u8], range: ByteChunk) -> &[T]
     where
         T: bytemuck::Pod + bytemuck::Zeroable,
     {
@@ -148,12 +209,47 @@ pub struct ObjectBuf {
     pub buf: Rc<[u8]>,
 }
 
+#[derive(Debug, Clone)]
+pub struct StringPool(bytes::Bytes);
+
+impl StringPool {
+    pub const DELIM: char = '|';
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StringPoolView<'a> {
+    pub pool: &'a str,
+    pub strings: Vec<&'a str>,
+}
+
+impl<'a> StringPoolView<'a> {
+    pub fn split(&self) -> Vec<&'a str> {
+        self.pool.split(StringPool::DELIM).collect::<Vec<&'a str>>()
+    }
+}
+
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct SymbolInfo {
+    pub value_ty: ValueType,
+    pub location: SymbolLocation,
+}
+
+impl SymbolInfo {
+    pub const fn is_import(&self) -> bool {
+        self.location.is_import()
+    }
+    pub const fn is_module_local(&self) -> bool {
+        !self.is_import()
+    }
+}
+
 /// Value Type Primitive of symbol
 /// NOTE: Was going to have this be a u8, but making it a u32 for
 /// bytemuck and alignment reasons.
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(transparent)]
-pub struct ValueType(u32);
+pub struct ValueType(u16);
 
 impl ValueType {
     pub const DYNAMIC: Self = Self(0);
@@ -196,6 +292,14 @@ impl SymbolLocation {
         Some(s)
     }
 
+    pub const fn is_import(&self) -> bool {
+        self.0 == Self::IMPORT.0
+    }
+
+    pub const fn is_module_local(&self) -> bool {
+        !self.is_import()
+    }
+
     pub const fn is_valid(&self) -> bool {
         self.0 > 0 && self.0 < Self::END_RANGE.0
     }
@@ -220,14 +324,15 @@ impl SymbolLocation {
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
-pub struct StructField {
-    pub parent: u32,
+pub struct TypeFieldInfo {
+    pub parent_entry: u32,
     /// Position of field in struct. i.e. the first field in struct definiton, is position 0
     pub position: u32,
     // pub visibility: Visibility,
-    pub name_loc: ByteRange,
+    pub name_loc: ByteChunk,
     pub byte_offset: u32,
-    pub type_loc: ByteRange,
+    pub value_ty: ValueType,
+    pub type_symbol_loc: u32,
     /// Only valid values are 0 (for private) or 1 (for public)
     /// needs to be u32 for alignment reasons...
     pub is_public: u32,
@@ -235,37 +340,36 @@ pub struct StructField {
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
-pub struct TypeInfo {
-    pub value_ty: ValueType,
+pub struct TypeEntry {
+    pub name_loc: ByteChunk,
+    pub symbol_loc: ByteChunk,
     pub size_bytes: u32,
-    pub name_loc: ByteRange,
-    pub fields_loc: ByteRange,
+
+    pub fields_loc: ByteChunk,
 }
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
-pub struct FuncHeader {
-    pub name_loc: ByteRange,
-    pub params_loc: ByteRange,
-    pub return_ty_loc: ByteRange,
-    pub opcodes_loc: ByteRange,
+pub struct FuncEntry {
+    pub name_loc: ByteChunk,
+    pub bytecode_loc: ByteChunk,
+    pub params_loc: ByteChunk,
 }
-
-impl FuncHeader {
+impl FuncEntry {
     /// Gets size of full function definiton in bytes. Includes params and bytecode instructions
     pub const fn size_bytes(&self) -> usize {
         let param_len = self.params_loc.len_bytes as usize;
-        let bytecode_len = self.opcodes_loc.len_bytes as usize;
+        let bytecode_len = self.bytecode_loc.len_bytes as usize;
         param_len + bytecode_len
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct FuncView<'a> {
-    pub header: &'a FuncHeader,
+    pub header: &'a FuncEntry,
     pub name: &'a str,
     pub params: &'a [FuncParam],
-    pub return_ty: &'a TypeInfo,
+    pub return_ty: &'a TypeEntry,
     pub bytecode: &'a [u8],
 }
 
@@ -273,56 +377,32 @@ pub struct FuncView<'a> {
 #[repr(C)]
 pub struct FuncParam {
     pub position: u32,
-    pub type_loc: ByteRange,
-    pub name_loc: ByteRange,
-}
-
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)]
-pub struct Export {
-    pub name_loc: ByteRange,
-    pub symbol_loc: ByteRange,
-}
-
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)]
-pub struct Import {
-    pub path_loc: ByteRange,
-    pub name_loc: ByteRange,
+    pub value_ty: ValueType,
+    pub type_symbol_loc: u32,
+    pub name_loc: ByteChunk,
 }
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 pub struct SymbolEntry {
-    pub name_loc: ByteRange,
-    /// Section type this symbol resides in
-    pub section_ty: SectionType,
-    pub location_ty: SymbolLocation,
-    pub typeinfo: TypeInfo,
-    // pub typeinfo_loc: ByteRange,
-    pub value_loc: ByteRange,
+    pub name_loc: ByteChunk,
+    pub info: SymbolInfo,
+    pub value_loc: ByteChunk,
 }
 
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)]
-pub struct SectionType(u16);
+impl SymbolEntry {
+    pub const fn is_module_import(&self) -> bool {
+        self.info.is_module_local()
+    }
 
-impl SectionType {
-    pub const HEADER: Self = Self(0);
-    pub const IMPORTS: Self = Self(1);
-    pub const EXPORTS: Self = Self(2);
-    pub const CONSTANTS: Self = Self(3);
-    pub const SYMBOLS: Self = Self(4);
-    pub const TYPEINFO: Self = Self(5);
-    pub const STRUCT_FIELDS: Self = Self(6);
-    pub const FUNCS: Self = Self(7);
+    pub const fn is_import(&self) -> bool {
+        self.info.is_import()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Module {
-    header: ObjHeader,
     buf: bytes::Bytes,
-    imports: ImportSection,
 }
 
 impl Module {
@@ -367,7 +447,7 @@ impl<'a> ModuleView<'a> {
         &self.header
     }
 
-    pub fn section_list<T>(&self, range: ByteRange) -> &[T]
+    pub fn section_list<T>(&self, range: ByteChunk) -> &[T]
     where
         T: bytemuck::Pod + bytemuck::Zeroable,
     {
@@ -395,12 +475,12 @@ impl<'a> ModuleView<'a> {
 
     #[inline]
     pub fn typeinfo(&self) -> &[TypeInfo] {
-        self.section_list(self.header.typeinfo_loc)
+        self.section_list(self.header.typedefs_loc)
     }
 
     #[inline]
-    pub fn struct_fields(&self) -> &[StructField] {
-        self.section_list(self.header.struct_fields_loc)
+    pub fn struct_fields(&self) -> &[TypeFieldInfo] {
+        self.section_list(self.header.type_fields_loc)
     }
 
     pub fn get_func_view(&self, index: usize) -> Option<FuncView> {
@@ -443,73 +523,59 @@ impl<'a> ModuleView<'a> {
             Some(fv)
         }
     }
-
-    // pub fn funcs(&self) -> Rc<[FuncView]> {
-    //     let mut views = Vec::new();
-    //     let begin = self.header.functions_loc.begin;
-    //     let end = self.buf.len();
-    //     let bytes = &self.buf[begin..end];
-    // }
 }
-
-#[derive(Debug, Clone, Copy)]
-struct FuncIter<'a> {
-    iter: usize,
-    end: usize,
-    module_buf: &'a [u8],
-}
-
-impl<'a> Iterator for FuncIter<'a> {
-    type Item = FuncView<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.iter >= self.end {
-            None
-        } else {
-            let header = unsafe {
-                self.iter
-                    .cast::<FuncHeader>()
-                    .as_ref()
-                    .expect("Invalid pointer cast!")
-            };
-
-            let begin = header.params_loc.begin as usize;
-            let end = begin + header.params_loc.len_bytes as usize;
-            let params = &self.buf[begin..end];
-            let params: &[FuncParam] = bytemuck::cast_slice(params);
-
-            let begin = header.name_loc.begin as usize;
-            let end = header.name_loc.len_bytes as usize;
-            let name = &self.buf[begin..end];
-            let name = std::str::from_utf8(name)
-                .expect("Failed to convert byte slice: {name:?} into string!");
-
-            let begin = header.return_ty_loc.begin as usize;
-            let end = begin + header.return_ty_loc.len_bytes as usize;
-            let return_ty = &self.buf[begin..end];
-            let return_ty: &TypeInfo = bytemuck::from_bytes(return_ty);
-
-            let begin = header.opcodes_loc.begin as usize;
-            let end = begin + header.opcodes_loc.len_bytes as usize;
-            let bytecode = &self.buf[begin..end];
-
-            let fv = FuncView {
-                header,
-                name,
-                params,
-                return_ty,
-                bytecode,
-            };
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ImportSection {
-    buf: bytes::Bytes,
-    loc: ByteRange,
-    num_imports: usize,
-}
+//
+// #[derive(Debug, Clone, Copy)]
+// struct FuncIter<'a> {
+//     iter: usize,
+//     end: usize,
+//     module_buf: &'a [u8],
+// }
+//
+// impl<'a> Iterator for FuncIter<'a> {
+//     type Item = FuncView<'a>;
+//
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.iter >= self.end {
+//             None
+//         } else {
+//             let header = unsafe {
+//                 self.iter
+//                     .cast::<FuncHeader>()
+//                     .as_ref()
+//                     .expect("Invalid pointer cast!")
+//             };
+//
+//             let begin = header.params_loc.begin as usize;
+//             let end = begin + header.params_loc.len_bytes as usize;
+//             let params = &self.buf[begin..end];
+//             let params: &[FuncParam] = bytemuck::cast_slice(params);
+//
+//             let begin = header.name_loc.begin as usize;
+//             let end = header.name_loc.len_bytes as usize;
+//             let name = &self.buf[begin..end];
+//             let name = std::str::from_utf8(name)
+//                 .expect("Failed to convert byte slice: {name:?} into string!");
+//
+//             let begin = header.return_ty_loc.begin as usize;
+//             let end = begin + header.return_ty_loc.len_bytes as usize;
+//             let return_ty = &self.buf[begin..end];
+//             let return_ty: &TypeInfo = bytemuck::from_bytes(return_ty);
+//
+//             let begin = header.opcodes_loc.begin as usize;
+//             let end = begin + header.opcodes_loc.len_bytes as usize;
+//             let bytecode = &self.buf[begin..end];
+//
+//             let fv = FuncView {
+//                 header,
+//                 name,
+//                 params,
+//                 return_ty,
+//                 bytecode,
+//             };
+//         }
+//     }
+// }
 
 fn bytes_to_u32(buf: &[u8]) -> anyhow::Result<u32> {
     if buf.len() != std::mem::size_of::<u32>() {
