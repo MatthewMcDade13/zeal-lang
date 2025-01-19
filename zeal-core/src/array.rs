@@ -20,14 +20,6 @@ impl<T> ConstArray<T> {
         let b = buf.into_boxed_slice();
         todo!()
     }
-
-    pub fn t(&mut self) {
-        if let Some(rc) = self.buf.as_mut() {
-            for i in rc.iter_mut() {}
-        } else {
-            todo!()
-        }
-    }
 }
 
 impl<T> ConstArray<T>

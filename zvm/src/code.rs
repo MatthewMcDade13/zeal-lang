@@ -5,12 +5,13 @@ use std::{
 };
 
 use anyhow::bail;
+use bytes::BufMut;
 use zeal_core::{rune::RuneTable, string::StrBuf};
 
 use crate::val::{SymbolName, Val};
 
 use super::{
-    opcode::{Bytecode, Op, OpParam, OpParamSize, Opcode, VarOp},
+    opcode::{Op, OpParam, OpParamSize, Opcode, OpcodeBuf, VarOp},
     state::Scope,
 };
 
@@ -68,21 +69,6 @@ pub struct ModuleBlock {
 
 impl ModuleBlock {
     pub const RUNTIME_ROOT_NAME: &str = "__RUNTIME_ROOT__";
-    //
-    // pub fn new_root() -> Self {
-    //     let deps = sym::DependencyTable::new();
-    //     let parent = None;
-    //     let name = SymbolName::new(Self::RUNTIME_ROOT_NAME);
-    //     let exports = ExportSymbols::empty();
-    //     let internal = InternalSymbols::empty();
-    //     Self {
-    //         deps,
-    //         parent,
-    //         name,
-    //         exports,
-    //         internal,
-    //     }
-    // }
 }
 
 #[derive(Debug, Clone)]
@@ -133,16 +119,11 @@ impl FuncBlock {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+#[repr(transparent)]
 pub struct ConstSlot(usize);
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct FuncSlot(usize);
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ModuleSlot(usize);
-
 #[derive(Debug, Clone)]
-pub struct CodeBlockBuilder(pub BasicBlock);
+pub struct CodeBlockBuilder(pub(crate) BasicBlock);
 
 impl CodeBlockBuilder {
     pub const fn from_existing(ch: BasicBlock) -> Self {
@@ -299,13 +280,13 @@ impl CodeBlockBuilder {
     where
         T: Into<Opcode>,
     {
-        let opcode = opcode.into();
+        let opcode: Opcode = opcode.into();
         let addr = self.0.buf.len();
-        self.0.buf.push(opcode.op_byte());
+        self.0.buf.put_u8(opcode.op_byte());
         if let Some(p) = opcode.try_param() {
             match *p {
                 OpParam::Byte(b) => {
-                    self.0.buf.push(b);
+                    self.0.buf.put_u8(b);
                 }
                 OpParam::Byte16(src) => {
                     self.0.buf.extend_from_slice(&src);
@@ -375,13 +356,8 @@ impl Default for CodeBlockBuilder {
 }
 
 #[derive(Debug, Clone)]
-pub struct SymbolConsts {
-    runes: RuneTable,
-}
-
-#[derive(Debug, Clone)]
 pub struct BasicBlock {
-    pub buf: Bytecode,
+    pub buf: OpcodeBuf,
     pub constants: Vec<Val>,
     pub scope: Scope,
 }
@@ -409,24 +385,12 @@ impl BasicBlock {
     pub const DEFAULT_CAPACITY: usize = 255;
     pub fn with_capacity(buf_cap: usize, const_cap: usize) -> Self {
         Self {
-            buf: Bytecode::from(Vec::with_capacity(buf_cap)),
+            buf: OpcodeBuf::from(Vec::with_capacity(buf_cap)),
             constants: Vec::with_capacity(const_cap),
             scope: Scope::with_capacity(Self::DEFAULT_CAPACITY),
         }
     }
-    // pub fn append_func(&mut self, fc: FuncBlock) -> FuncSlot {
-    //     let id = self.children.funcs_len();
-    //     self.children.push_func(fc);
-    //     FuncSlot(id)
-    //     // let _ = ch_push_constant(self, Val::Func(Rc::new(fc)));
-    // }
-    //
-    // pub fn append_module(&mut self, mb: ModuleBlock) -> ModuleSlot {
-    //     let id = self.children.modules_len();
-    //     self.children.push_module(mb);
-    //     ModuleSlot(id)
-    // }
-    //
+
     #[inline]
     pub fn opcode_at(&self, index: usize) -> Option<Opcode> {
         self.buf.opcode_at(index)
@@ -453,7 +417,7 @@ impl BasicBlock {
         self.buf.slice()
     }
 
-    pub const fn code(&self) -> &Bytecode {
+    pub const fn code(&self) -> &OpcodeBuf {
         &self.buf
     }
 
@@ -489,49 +453,4 @@ impl Patch {
             Opcode::WithParam { param, .. } => param.write(addr as u64),
         }
     }
-}
-
-fn ch_push_constant(ch: &mut BasicBlock, v: Val) -> usize {
-    let id = ch_add_constant(ch, v);
-    let param = OpParam::squash(id as u64);
-    let op = param.as_const_op();
-
-    let op = Opcode::WithParam { op, param };
-    ch_push_opcode(ch, op);
-    param.to_u32() as usize
-}
-
-fn ch_add_constant(ch: &mut BasicBlock, v: Val) -> usize {
-    let id = ch.constants.len();
-    ch.constants.push(v);
-    id
-}
-
-fn ch_push_opcode<T>(ch: &mut BasicBlock, opcode: T) -> usize
-where
-    T: Into<Opcode>,
-{
-    let opcode = opcode.into();
-    let addr = ch.buf.len();
-    ch.buf.push(opcode.op_byte());
-    if let Some(p) = opcode.try_param() {
-        match *p {
-            OpParam::Byte(b) => {
-                ch.buf.push(b);
-            }
-            OpParam::Byte16(src) => {
-                ch.buf.extend_from_slice(&src);
-            }
-            OpParam::Byte24(src) => {
-                ch.buf.extend_from_slice(&src);
-            }
-            OpParam::Byte32(src) => {
-                ch.buf.extend_from_slice(&src);
-            }
-            OpParam::Byte64(src) => {
-                ch.buf.extend_from_slice(&src);
-            }
-        }
-    }
-    addr
 }

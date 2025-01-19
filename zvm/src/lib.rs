@@ -1,4 +1,3 @@
-pub mod bc_object;
 pub mod code;
 pub mod compiler;
 pub mod env;
@@ -9,3 +8,4 @@ pub mod stack;
 pub mod state;
 pub mod val;
 pub mod vm;
+pub mod zom;

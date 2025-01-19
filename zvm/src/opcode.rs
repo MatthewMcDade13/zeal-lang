@@ -1,5 +1,6 @@
 use std::{fmt::Display, ops::{Deref, DerefMut, Index, IndexMut}};
 
+use bytes::{Bytes, BytesMut};
 use zeal_ast::expr::OperatorType;
 use zeal_core::copy_slice_into;
 
@@ -655,40 +656,32 @@ impl Opcode {
 /// Wrapper for a u8 buffer that contains zvm bytecode.
 /// This wrapper struct is mainly used for interfacing with 
 /// opcodes and reading bytes as bytecode
-#[repr(transparent)]
 #[derive(Debug, Clone)]
-pub struct Bytecode {
-    buf: Vec<u8>,
+pub struct OpcodeBuf {
+    buf: BytesMut, 
 }
 
-impl Deref for Bytecode {
-    type Target = Vec<u8>;
+impl Deref for OpcodeBuf {
+    type Target = BytesMut; 
 
     fn deref(&self) -> &Self::Target {
-        self.buf.as_ref()
+        &self.buf
     }
 }
-impl DerefMut for Bytecode {
+impl DerefMut for OpcodeBuf {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.buf.as_mut()
+       &mut self.buf 
     }
 }
 
-impl From<Vec<u8>> for Bytecode {
+impl From<Vec<u8>> for OpcodeBuf {
     fn from(value: Vec<u8>) -> Self {
-        Self { buf: value }
+        let buf = BytesMut::from_iter(value.into_iter());
+        Self { buf }
     }
 }
 
-impl From<&[u8]> for Bytecode {
-    fn from(value: &[u8]) -> Self {
-        Self {
-            buf: value.to_vec(),
-        }
-    }
-}
-
-impl Index<usize> for Bytecode {
+impl Index<usize> for OpcodeBuf {
     type Output = u8;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -696,13 +689,13 @@ impl Index<usize> for Bytecode {
     }
 }
 
-impl IndexMut<usize> for Bytecode {
+impl IndexMut<usize> for OpcodeBuf {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.buf[index]
     }
 }
 
-impl Bytecode {
+impl OpcodeBuf {
     pub fn slice(&self) -> &[u8] {
         &self.buf
     }
@@ -711,7 +704,8 @@ impl Bytecode {
         &mut self.buf
     }
     pub fn zeroed(len: usize) -> Self {
-        Self { buf: vec![0; len] }
+        let buf = BytesMut::zeroed(len);
+        Self { buf }
     }
 
     pub fn len(&self) -> usize {
