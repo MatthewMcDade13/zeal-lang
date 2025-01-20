@@ -1,12 +1,14 @@
 use bytes::BytesMut;
 use zeal_core::string::{ShortBuf, StrBuf};
 
-use crate::{code::CodeBlockBuilder, opcode::OpcodeBuf};
+use crate::code::CodeBlockBuilder;
 
 #[derive(Debug, Clone)]
 pub struct ModuleBuilder {
     name: String,
-    typedefs: Vec<StructDef>,
+    structdefs: Vec<TypeDef>,
+    funcdefs: Vec<TypeDef>,
+    strings: Vec<StrBuf>,
 
     bytecode: CodeBlockBuilder,
 }
