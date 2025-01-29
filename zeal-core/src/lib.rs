@@ -2,7 +2,6 @@ pub mod array;
 pub mod buf;
 pub mod mem;
 pub mod rune;
-pub mod slab;
 pub mod string;
 pub mod typeinfo;
 

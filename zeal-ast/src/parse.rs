@@ -108,16 +108,15 @@ pub enum BlockType {
 
 #[derive(Debug, Clone)]
 pub struct Parser {
-    pub i: usize,
-    pub tokens: Vec<Tok>,
+    i: usize,
+    tokens: Rc<[Tok]>,
 }
 
 impl Parser {
     pub fn parse_ast(tokens: &[Tok]) -> anyhow::Result<Ast> {
-        let mut p = Self {
-            i: 0,
-            tokens: tokens.to_vec(),
-        };
+        let tokens: Rc<[Tok]> = Rc::from(tokens.to_vec().into_boxed_slice());
+        let mut p = Self { i: 0, tokens };
+
         let mut exprs = Vec::new();
         while !p.is_eof() {
             match p.expression_stmt() {
