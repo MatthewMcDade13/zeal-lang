@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, path::Path, rc::Rc};
+use std::{fmt::Display, marker::PhantomData, path::Path, rc::Rc};
 
 use anyhow::{bail, ensure, Context};
 use bytes::Bytes;
@@ -120,10 +120,34 @@ impl ZealId {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, Default, bytemuck::Zeroable, bytemuck::Pod, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[repr(C)]
+pub struct ZOMVersion {
+    pub number: u8,
+    pub major: u8,
+    pub minor: u8,
+    pub patch: u8,
+}
+
+impl Display for ZOMVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            number,
+            major,
+            minor,
+            patch,
+        } = *self;
+        write!(f, "v{number}.{major}.{minor}.{patch}")
+    }
+}
+
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 pub struct ObjHeader {
     pub magic: ZealId,
+    pub version: ZOMVersion,
 
     pub name_loc: ByteChunk,
 

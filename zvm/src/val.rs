@@ -13,7 +13,7 @@ pub struct NativeFunc {
     pub arity: usize,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct SymbolName(Rc<str>);
 
 impl SymbolName {
@@ -46,16 +46,14 @@ impl Eq for SymbolName {}
 
 impl PartialOrd for SymbolName {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        let a = self.0.as_ref();
-        let b = other.as_str();
-        a.partial_cmp(b)
+        Some(self.cmp(other))
     }
 }
 
 impl PartialOrd<str> for SymbolName {
     fn partial_cmp(&self, other: &str) -> Option<std::cmp::Ordering> {
         let s = self.0.as_ref();
-        s.partial_cmp(other)
+        Some(s.cmp(other))
     }
 }
 

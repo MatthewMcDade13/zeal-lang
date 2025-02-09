@@ -2,7 +2,7 @@ pub mod env;
 pub mod err;
 pub mod expr;
 pub mod lex;
-pub mod node;
+pub mod meta;
 pub mod parse;
 pub mod passes;
 

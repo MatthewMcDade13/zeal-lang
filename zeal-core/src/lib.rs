@@ -1,3 +1,5 @@
+use std::ops::{Deref, Index};
+
 pub mod array;
 pub mod buf;
 pub mod mem;
