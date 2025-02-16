@@ -68,11 +68,13 @@ pub trait ScopedZalloc: Sized {
 /// TODO: Implement this...
 pub struct AnyAddr {}
 
-pub struct ArrayPtr<T: ZealMemMut> {
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, bytemuck::Zeroable)]
+pub struct SizedPtr<T> {
     begin: Ptr<T>,
-    len: usize,
-    cap: usize,
+    size_bytes: usize,
 }
+
+impl<T> SizedPtr<T> where T: ZealMemMut {}
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, bytemuck::Zeroable)]
 #[repr(transparent)]
@@ -190,32 +192,45 @@ impl AnyPtr {
     }
 }
 
-pub unsafe fn zalloc_buffer(size_bytes: usize) -> () {
-    todo!()
-}
+pub mod global {
+    use std::{alloc::Layout, ptr::NonNull};
 
-pub unsafe fn zalloc_zeroed<T>() -> NonNull<T>
-where
-    T: bytemuck::Zeroable,
-{
-    let layout = Layout::new::<T>();
-    let v = std::alloc::alloc_zeroed(layout) as *mut _;
-    NonNull::new(v).expect("Global Allocator out of memory!!!")
-}
+    #[inline]
+    pub unsafe fn zalloc_buffer_zeroed(size_bytes: usize) -> NonNull<u8> {
+        zalloc_array_zeroed::<u8>(size_bytes)
+    }
 
-pub unsafe fn zalloc<T>(val: T) -> NonNull<T> {
-    let layout = Layout::new::<T>();
-    let v = std::alloc::alloc_zeroed(layout) as *mut _;
-    let vptr = NonNull::new(v).expect("Global Allocator out of memory!!!");
-    NonNull::write(vptr, val);
-    vptr
-}
+    pub unsafe fn zalloc_buffer<const SIZE: usize>(src: [u8; SIZE]) -> NonNull<u8> {
+        let buf = zalloc_buffer_zeroed(src.len());
+        let psrc = NonNull::new(src.as_ref().as_ptr() as *mut _)
+            .expect("Given source buffer is null or invalid!!");
+        std::ptr::copy(psrc.as_ptr(), buf.as_ptr(), src.len());
+        buf
+    }
 
-pub unsafe fn zalloc_array_zeroed<T>(array_len: usize) -> NonNull<T>
-where
-    T: bytemuck::Zeroable,
-{
-    let layout = Layout::array::<T>(array_len).expect("Array length size too large!!!");
-    let arr = std::alloc::alloc_zeroed(layout);
-    todo!()
+    pub unsafe fn zalloc_zeroed<T>() -> NonNull<T>
+    where
+        T: bytemuck::Zeroable,
+    {
+        let layout = Layout::new::<T>();
+        let v = std::alloc::alloc_zeroed(layout) as *mut _;
+        NonNull::new(v).expect("Global Allocator out of memory!!!")
+    }
+
+    pub unsafe fn zalloc<T>(val: T) -> NonNull<T> {
+        let layout = Layout::new::<T>();
+        let v = std::alloc::alloc_zeroed(layout) as *mut _;
+        let vptr = NonNull::new(v).expect("Global Allocator out of memory!!!");
+        NonNull::write(vptr, val);
+        vptr
+    }
+
+    pub unsafe fn zalloc_array_zeroed<T>(array_len: usize) -> NonNull<T>
+    where
+        T: bytemuck::Zeroable,
+    {
+        let layout = Layout::array::<T>(array_len).expect("Array length size too large!!!");
+        let arr = std::alloc::alloc_zeroed(layout);
+        todo!()
+    }
 }

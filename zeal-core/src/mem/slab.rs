@@ -8,6 +8,8 @@ use std::{
 
 use anyhow::Context;
 
+use super::alloc::Zallocator;
+
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(transparent)]
 pub struct SlabCell<const SIZE: usize>([u8; SIZE]);
@@ -91,6 +93,40 @@ impl<const S: usize> Slab<S> {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.memory() == Self::NONE_PTR
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    bytemuck::Pod,
+    bytemuck::Zeroable,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
+#[repr(C)]
+pub struct SlabAddr {
+    slot: u32,
+}
+
+impl<const S: usize> Zallocator for Slab<S> {
+    type PtrType = SlabAddr;
+
+    fn alloc<T>(&self, val: T) -> Self::PtrType {
+        todo!()
+    }
+
+    fn free<T>(&self, ptr: Self::PtrType) {
+        todo!()
+    }
+
+    fn instance() -> &'static Self {
+        todo!()
     }
 }
 
