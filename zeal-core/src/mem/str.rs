@@ -8,6 +8,8 @@ use std::{
     rc::Rc,
 };
 
+use rkyv::{Archive, Deserialize, Serialize};
+
 use crate::{append_byte_slice, copy_slice_into};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -216,9 +218,8 @@ impl Deref for PoolStr<'_> {
 /// Byte-Index / Address of the start of a String in the StringPool
 /// index points to the first character of the string
 /// in reference.
-#[derive(
-    Debug, Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable, PartialEq, Eq, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug, Clone, Copy, Default), compare(PartialEq, PartialOrd))]
 #[repr(C)]
 pub struct PoolStringAddr {
     pub address: u32,

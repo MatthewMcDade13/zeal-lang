@@ -22,6 +22,7 @@ thiserror = "1.0.58"
 inkwell = { version = "0.5.0", features = ["llvm18-0-prefer-static"] }
 log = "0.4.22"
 num-traits = "0.2.19"
+rkyv = "0.8.10"
 
 [dev-dependencies]
 env_logger = "0.11.5"
