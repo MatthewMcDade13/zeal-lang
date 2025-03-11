@@ -1,0 +1,20 @@
+[package]
+name = "zvm_bytecode"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zeal-ast = { path = "../zeal-ast" }
+zeal-core = { path = "../zeal-core" }
+anyhow = "1.0.82"
+clap = "4.5.4"
+env_logger = "0.11.5"
+
+log = "0.4.22"
+thiserror = "1.0.58"
+zerocopy = "0.8.23"
+zerocopy-derive = "0.8.23"
+bytes = "1.10.1"
+
+[dev-dependencies]
+env_logger = "0.11.5"
