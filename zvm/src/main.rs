@@ -1,4 +1,3 @@
-
 use zvm::vm::VM;
 
 const PATH: &str = "./test_scripts/loops.zl";

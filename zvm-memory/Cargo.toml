@@ -2,16 +2,16 @@
 name = "zvm-memory"
 version = "0.1.0"
 edition = "2024"
+authors = ["Matthew McDade Matthew.McDade13@tuta.io"]
+repository = "https://github.com/MatthewMcDade13/zeal-lang"
 
 [dependencies]
-anyhow = "1.0.97"
-thiserror = "2.0.12"
+anyhow = { version = "1.0.97", default-features = false }
 zerocopy = "0.8.23"
 zerocopy-derive = "0.8.23"
-env_logger = "0.11.5"
 
-log = "0.4.22"
+log = { version = "0.4.22", default-features = false }
+libc = { version = "0.2.171", default-features = false }
+thiserror-no-std = "2.0.2"
+typeid = "1.0.3"
 
-
-[dev-dependencies]
-env_logger = "0.11.5"
