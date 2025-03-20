@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = { version = "1.0.97", default-features = false }
+bytemuck = { version = "1.22.0", features = ["const_zeroed", "must_cast", "must_cast_extra", "min_const_generics", "derive", "bytemuck_derive", "zeroable_atomics", "zeroable_maybe_uninit", "pod_saturating", "transparentwrapper_extra", "align_offset"] }
+libc = { version = "0.2.171", default-features = false }
+log = { version = "0.4.26", default-features = false }
+thiserror-no-std = "2.0.2"
+typeid = "1.0.3"
+
+[dev-dependencies]
+env_logger = "0.11.7"
