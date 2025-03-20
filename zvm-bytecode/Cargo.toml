@@ -6,15 +6,19 @@ edition = "2021"
 [dependencies]
 zeal-ast = { path = "../zeal-ast" }
 zeal-core = { path = "../zeal-core" }
-anyhow = "1.0.82"
+anyhow = { version = "1.0.82", default-features = false }
 clap = "4.5.4"
 env_logger = "0.11.5"
 
-log = "0.4.22"
+log = { version = "0.4.22", default-features = false }
 thiserror = "1.0.58"
 zerocopy = "0.8.23"
 zerocopy-derive = "0.8.23"
 bytes = "1.10.1"
+bytemuck = { version = "1.22.0", default-features = false, features = ["align_offset", "bytemuck_derive", "const_zeroed", "derive", "min_const_generics", "must_cast", "must_cast_extra", "pod_saturating", "transparentwrapper_extra", "zeroable_atomics", "zeroable_maybe_uninit"] }
+libc = { version = "0.2.171", default-features = false }
+thiserror-no-std = "2.0.2"
+typeid = "1.0.3"
 
 [dev-dependencies]
 env_logger = "0.11.5"
