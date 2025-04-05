@@ -1,36 +1,43 @@
-use core::{cell::Cell, ptr::NonNull};
+use core::{alloc::Layout, cell::Cell, marker::PhantomData, ptr::NonNull};
 
-use crate::block::MemBlock;
+use alloc::alloc::alloc_zeroed;
 
-pub struct SlabLayer<const SIZE: usize> {
-    len: usize,
-    mem: NonNull<ByteBlock<SIZE>>,
+use crate::ptr::{Mem, MemSize, Memory, RcMeta, RefCount};
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct SlabMeta {
+    rc: RefCount,
+    size_bytes: MemSize,
+    next: usize,
 }
 
+#[derive(Debug, Clone)]
 #[repr(C)]
-struct SlabMemory {}
+pub struct SlimMeta {
+    rc: RefCount,
+    next: usize,
+}
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct ByteBlock<const SIZE: usize> {
-    next: Cell<u32>,
-    rc: Cell<u32>,
-    bytes: MemBlock<SIZE>,
+pub struct SizedSlab<const SIZE: usize> {
+    mem: NonNull<u8>,
+    len: usize,
+    // We use a slimmed meta struct for this, since SIZE is static
+    _phantom: PhantomData<[Memory<[u8; SIZE], SlimMeta>]>,
 }
 
-impl<const S: usize> ByteBlock<S> {
-    #[inline]
-    pub(crate) fn next(&self) -> usize {
-        self.next.get() as usize
+impl<const S: usize> SizedSlab<S> {
+    pub fn new(len: usize) -> Self {
+        todo!()
     }
+}
 
-    #[inline]
-    pub(crate) fn ref_count(&self) -> usize {
-        self.rc.get() as usize
-    }
-
-    #[inline]
-    pub fn is_alive(&self) -> bool {
-        self.ref_count() > 0
-    }
+#[derive(Debug)]
+#[repr(C)]
+pub struct Slab {
+    mem: NonNull<u8>,
+    len: usize,
+    _phantom: PhantomData<[Mem<[u8], SlabMeta>]>,
 }
