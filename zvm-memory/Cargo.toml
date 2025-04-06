@@ -15,4 +15,6 @@ libc = { version = "0.2.171", default-features = false }
 thiserror-no-std = "2.0.2"
 typeid = "1.0.3"
 bytemuck = { version = "1.22.0", default-features = false, features = ["align_offset", "bytemuck_derive", "const_zeroed", "derive", "min_const_generics", "must_cast", "must_cast_extra", "pod_saturating", "transparentwrapper_extra", "zeroable_atomics", "zeroable_maybe_uninit"] }
+num-traits = { version = "0.2.19", default-features = false }
+num-derive = { version = "0.4.2", default-features = false }
 

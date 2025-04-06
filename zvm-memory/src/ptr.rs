@@ -1,21 +1,46 @@
 use core::{
-    alloc::GlobalAlloc,
-    cell::Cell,
     marker::PhantomData,
-    mem::transmute,
     ops::Deref,
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
-use anyhow::Context;
+use crate::Byteable;
 
-use crate::{Byteable, util_lite};
+pub trait Cast<To: ?Sized, From: ?Sized = To> {
+    fn cast(&self) -> &To;
+    fn cast_from(other: &From) -> &Self;
+}
 
-#[repr(C)]
-pub struct Memory<T: Byteable + ?Sized, Meta> {
-    meta: Meta,
-    val: T,
+impl<T> Cast<[u8]> for T
+where
+    T: Byteable,
+{
+    fn cast(&self) -> &[u8] {
+        self.as_bytes()
+    }
+
+    fn cast_from(other: &[u8]) -> &Self {
+        Self::ref_from_bytes(other)
+    }
+}
+
+pub trait CastMut<To: ?Sized, From: ?Sized = To> {
+    fn cast_mut(&mut self) -> &mut To;
+    fn cast_from_mut(other: &mut From) -> &mut Self;
+}
+
+impl<T> CastMut<[u8]> for T
+where
+    T: Byteable,
+{
+    fn cast_mut(&mut self) -> &mut [u8] {
+        self.as_bytes_mut()
+    }
+
+    fn cast_from_mut(other: &mut [u8]) -> &mut Self {
+        Self::mut_from_bytes(other)
+    }
 }
 
 impl Byteable for [u8] {
@@ -36,183 +61,6 @@ impl Byteable for [u8] {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct Mem<T: Byteable + ?Sized, Meta: MemMeta = MemSize> {
-    ptr: NonNull<u8>,
-    _phantom: PhantomData<Memory<T, Meta>>,
-}
-
-// pub struct MemBytes {
-//     ptr: NonNull<u8>,
-//     _phantom: PhantomData<Memory<[u8], MemSize>>,
-// }
-pub type MemBytes = Mem<[u8], MemSize>;
-
-impl MemBytes {
-    // pub fn alloc<Alloc>(len: usize) -> Self {
-    //     unsafe {
-    //         let ptr = libc::calloc(size_of::<u8>(), len + size_of::<MemSize>()) as *mut u8;
-    //         let ptr = NonNull::new(ptr).expect("Failed to allocate!");
-    //         let mptr = ptr.cast::<MemSize>();
-
-    //         let meta = MemSize::new(len);
-    //         NonNull::write(mptr, meta);
-    //         Self {
-    //             ptr,
-    //             _phantom: PhantomData,
-    //         }
-    //     }
-    // }
-}
-
-impl<T, M> Deref for Mem<T, M>
-where
-    T: Byteable,
-    M: MemMeta,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner()
-    }
-}
-
-// impl<T, M> Deref for Mem<T, M>
-// where
-//     T: Byteable + ?Sized,
-// {
-//     type Target = ;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.ptr
-//     }
-// }
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct MemSize(usize);
-
-impl MemSize {
-    pub const fn new(size: usize) -> Self {
-        Self(size)
-    }
-
-    pub const fn get(self) -> usize {
-        self.0
-    }
-}
-
-impl<T, M> Mem<T, M>
-where
-    T: Byteable + ?Sized,
-    M: MemMeta,
-{
-    pub(crate) const fn from_ptr(ptr: NonNull<u8>) -> Self {
-        Self {
-            ptr,
-            _phantom: PhantomData,
-        }
-    }
-    pub const fn read_meta(&self) -> M {
-        unsafe {
-            let ptr = self.ptr.cast::<M>();
-            NonNull::read(ptr)
-        }
-    }
-
-    pub const fn meta_ref(&self) -> &M {
-        unsafe { self.ptr.cast::<M>().as_ref() }
-    }
-}
-
-#[repr(C)]
-pub struct RcMeta {
-    rc: RefCount,
-    size_bytes: MemSize,
-}
-
-pub type RcMem<T> = Mem<T, RcMeta>;
-
-pub trait MemMeta {
-    fn size_bytes(&self) -> usize;
-}
-
-impl<T, M> Mem<T, M>
-where
-    T: Byteable,
-    M: MemMeta,
-{
-    pub fn write(&self, val: T) {
-        unsafe {
-            let ptr = self.ptr.as_ptr().cast::<T>();
-            if core::mem::needs_drop::<T>() {
-                *ptr = val;
-            } else {
-                core::ptr::write(ptr, val);
-            }
-        }
-    }
-
-    pub fn mem_begin_aligned(&self) -> NonNull<u8> {
-        unsafe {
-            let ptr = self.ptr.cast::<M>();
-            let ptr = ptr.add(1).cast::<u8>();
-            let offset = ptr.align_offset(core::mem::align_of::<T>());
-            ptr.add(offset)
-        }
-    }
-
-    #[inline]
-    pub fn inner_bytes(&self) -> &[u8] {
-        unsafe {
-            let meta = self.read_meta();
-            let begin = self.mem_begin_aligned();
-
-            core::slice::from_raw_parts(begin.as_ptr(), meta.size_bytes())
-        }
-    }
-
-    #[inline]
-    pub fn inner_bytes_mut(&self) -> &mut [u8] {
-        unsafe {
-            let meta = self.read_meta();
-            let begin = self.mem_begin_aligned();
-
-            core::slice::from_raw_parts_mut(begin.as_ptr(), meta.size_bytes())
-        }
-    }
-
-    #[inline]
-    pub fn inner(&self) -> &T {
-        let bytes = self.inner_bytes();
-        T::ref_from_bytes(bytes)
-    }
-
-    #[inline]
-    pub fn inner_mut(&self) -> &mut T {
-        let bytes = self.inner_bytes_mut();
-        T::mut_from_bytes(bytes)
-    }
-
-    pub fn inner_size_bytes(&self) -> usize {
-        self.read_meta().size_bytes()
-    }
-}
-
-impl<T> RcMem<T>
-where
-    T: Byteable,
-{
-    pub const fn ref_count(&self) -> &RefCount {
-        &self.meta_ref().rc
-    }
-
-    pub const fn size_bytes(&self) -> usize {
-        self.read_meta().size_bytes.get()
-    }
-}
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct RefCount {
@@ -221,6 +69,12 @@ pub struct RefCount {
 }
 
 impl RefCount {
+    pub const fn zeroed() -> Self {
+        Self {
+            rc: AtomicUsize::new(0),
+            wc: AtomicUsize::new(0),
+        }
+    }
     /// Increments storng reference count by 1.
     /// returns new reference count as as usize
     pub fn inc_strong(&self) -> usize {
@@ -265,82 +119,355 @@ impl Clone for RefCount {
     }
 }
 
-impl MemMeta for RcMeta {
-    fn size_bytes(&self) -> usize {
-        self.size_bytes.get()
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(C)]
+pub struct Slice<T = u8> {
+    ptr: NonNull<T>,
+    len: u32,
+}
+
+impl<T> Slice<T> {
+    pub const fn as_ref(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.ptr.as_ptr() as _, self.len as usize) }
+    }
+
+    pub const fn as_ptr(&self) -> NonNull<T> {
+        self.ptr
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
-impl MemMeta for MemSize {
-    fn size_bytes(&self) -> usize {
-        self.get()
+pub type Any = NonNull<libc::c_void>;
+pub type Bytes = Slice<u8>;
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    num_derive::Num,
+    num_derive::NumOps,
+    num_derive::Zero,
+    num_derive::One,
+    Hash,
+    bytemuck::Zeroable,
+    bytemuck::Pod,
+)]
+#[repr(transparent)]
+pub struct Offset(pub i32);
+
+impl Offset {
+    pub const fn new(val: i32) -> Self {
+        Self(val)
+    }
+
+    pub const fn from_isize(val: isize) -> Self {
+        Self(val as i32)
+    }
+
+    pub const fn usize(self) -> usize {
+        self.get() as usize
+    }
+
+    pub const fn get(self) -> i32 {
+        self.0
+    }
+
+    pub const fn sized<T>() -> Self {
+        Self(size_of::<T>() as i32)
+    }
+
+    pub const unsafe fn add_ptr(self, ptr: Any) -> Any {
+        ptr.add(self.usize())
+    }
+
+    pub unsafe fn add_aligned_to<T>(self, ptr: Any) -> Any {
+        self.add_aligned(ptr, align_of::<T>())
+    }
+    pub unsafe fn add_aligned(self, ptr: Any, align: usize) -> Any {
+        let ptr = ptr.add(self.usize());
+        let offset = ptr.align_offset(align);
+        ptr.add(offset)
     }
 }
 
-pub type Any = NonNull<u8>;
-pub type Void = NonNull<libc::c_void>;
+pub mod cast {
+    use core::ptr::NonNull;
 
-pub trait MemoryCell {
-    type Meta;
-    type Cell;
+    use super::Any;
 
-    fn meta(&self) -> &Self::Meta;
-    fn cell(&self) -> &Self::Cell;
-
-    fn write_meta(&self, meta: Self::Meta);
-    fn write_cell(&self, cell: Self::Cell);
-
-    fn size_bytes() -> usize {
-        Self::meta_size() + Self::cell_size()
+    pub const fn to_any<T: ?Sized>(ptr: NonNull<T>) -> Any {
+        ptr.cast::<libc::c_void>()
     }
-
-    fn meta_size() -> usize {
-        core::mem::size_of::<Self::Meta>()
+    pub const fn from_any<T>(ptr: Any) -> NonNull<T> {
+        ptr.cast::<T>()
     }
-
-    fn cell_size() -> usize {
-        core::mem::size_of::<Self::Cell>()
-    }
-
-    // fn meta(&self) -> Self::Meta;
-
-    // fn cell(&self) -> &Self::Cell;
-    // fn cell_bytes(&self) -> &[u8];
 }
 
-impl<T, M> MemoryCell for Mem<T, M>
+/// A pointer to any memory allcoated by Zeal runtime
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct ZPtr<T: Byteable + ?Sized, Meta = ()> {
+    inner: Any,
+    _pd: PhantomData<(*mut T, Meta)>,
+}
+
+impl<T, M> ZPtr<T, M> where T: Byteable {}
+
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct Thin<T: Byteable + ?Sized> {
+    inner: Any,
+    _pd: PhantomData<T>,
+}
+
+impl<T> AnyPointer for Thin<T>
 where
     T: Byteable,
-    M: MemMeta,
+{
+    type Meta = Anchor;
+    type Pointee = T;
+
+    fn root_ptr(&self) -> Any {
+        self.inner
+    }
+}
+
+impl<T, M> AnyPointer for ZPtr<T, M>
+where
+    T: Byteable,
 {
     type Meta = M;
 
-    type Cell = T;
+    type Pointee = T;
 
-    fn write_meta(&self, meta: M) {
-        let mptr = self.ptr.cast::<M>();
-        unsafe { NonNull::write(mptr, meta) };
-    }
-
-    fn meta(&self) -> &Self::Meta {
-        self.meta_ref()
-    }
-
-    fn cell(&self) -> &Self::Cell {
-        self.inner()
-    }
-
-    fn write_cell(&self, mut cell: Self::Cell) {
-        let bytes = T::as_bytes_mut(&mut cell);
-        util_lite::copy_slice_into(self.inner_bytes_mut(), bytes);
+    fn root_ptr(&self) -> Any {
+        self.inner
     }
 }
 
-pub fn cast_cell<T>(mem: crate::ptr::Any) -> Mem<T::Cell, T::Meta>
+impl<T> Deref for ZPtr<T>
 where
-    T: MemoryCell,
-    T::Cell: Byteable,
-    T::Meta: MemMeta,
+    T: Byteable,
 {
-    Mem::from_ptr(mem)
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner()
+    }
+}
+
+pub trait ZPointer<Meta, Pointee>: AnyPointer
+where
+    Pointee: Byteable,
+{
+}
+
+pub trait Pointerz<T>: AnyPointer
+where
+    T: Byteable,
+{
+}
+
+impl<T, M, P> ZPointer<M, P> for T
+where
+    T: AnyPointer,
+    P: Byteable,
+{
+}
+
+impl<T, P> Pointerz<P> for T
+where
+    T: AnyPointer,
+    P: Byteable,
+{
+}
+
+/// Memory Layout of allocated data
+/// [Anchor 8 bytes][Metadata 4 + bytes][BlockT Allocated Block]
+///
+/// Min Size: Anchor + sizeof(pointer) ~ 12 bytes
+pub trait AnyPointer {
+    type Meta;
+    type Pointee: Byteable;
+
+    // pub trait ZallocMem<T, Meta> {
+    /// At least an i32
+    const MIN_META_SIZE: usize = core::mem::size_of::<i32>();
+    const MIN_MEMORY_SIZE: usize = size_of::<Anchor>() + size_of::<isize>();
+
+    /// Byte offset from root poitner to begin of Metadata
+    const OFFSET_META: usize = size_of::<Anchor>();
+    const OFFSET_POINTEE: usize = Self::OFFSET_META + size_of::<Self::Meta>();
+
+    // fn meta_begin()
+
+    #[inline]
+    fn meta_begin(&self) -> NonNull<Self::Meta> {
+        unsafe {
+            let ptr = self.root_ptr();
+            let ptr = ptr.add(Self::OFFSET_META);
+            let offset = ptr.align_offset(align_of::<Self::Meta>());
+            ptr.add(offset).cast::<Self::Meta>()
+        }
+    }
+
+    fn anchor(&self) -> Anchor {
+        unsafe { self.root_ptr().cast::<Anchor>().read() }
+    }
+
+    #[inline]
+    fn meta(&self) -> &Self::Meta {
+        unsafe { self.meta_mut().as_ref() }
+    }
+
+    #[inline]
+    fn meta_mut(&self) -> NonNull<Self::Meta> {
+        self.meta_begin()
+    }
+
+    fn data(&self) -> Any {
+        self.root_ptr()
+    }
+
+    fn root_ptr(&self) -> Any;
+
+    #[inline]
+    fn is_valid(&self) -> bool {
+        let base = self.root_ptr();
+        let anchor = self.as_anchor();
+        base.addr() == anchor.addr()
+    }
+
+    #[inline]
+    fn expect_valid(s: &Self) {
+        if !s.is_valid() {
+            panic!(
+                "Zalloc Memory pointer is not valid!!!. is_valid() returned false! Ensure return values of base_ptr and meta are the same address in memory!!!"
+            );
+        }
+    }
+
+    #[inline]
+    fn static_size_bytes() -> usize {
+        size_of::<Self::Meta>() + size_of::<Self::Pointee>()
+    }
+
+    #[inline]
+    fn size_bytes(&self) -> usize {
+        Self::meta_size() + self.inner_size()
+    }
+
+    #[inline]
+    fn inner(&self) -> &Self::Pointee {
+        unsafe { self.inner_begin().as_ref() }
+    }
+
+    #[inline]
+    fn inner_begin(&self) -> NonNull<Self::Pointee> {
+        let anch = self.anchor();
+        let ptr = unsafe { anch.jump_aligned::<Self::Pointee>(self.root_ptr()) };
+        ptr.cast::<Self::Pointee>()
+    }
+
+    #[inline]
+    fn inner_end(&self) -> Any {
+        unsafe { crate::ptr::cast::to_any(self.inner_begin().add(1)) }
+    }
+
+    #[inline]
+    fn inner_size(&self) -> usize {
+        self.anchor().inner_size as usize
+    }
+
+    #[inline]
+    fn meta_size() -> usize {
+        core::cmp::max(Self::MIN_META_SIZE, size_of::<Self::Meta>())
+    }
+
+    #[inline]
+    fn as_anchor(&self) -> NonNull<Anchor> {
+        self.root_ptr().cast::<Anchor>()
+    }
+}
+
+/// @brief First byte of any memory allocated by zallocator/zvm.
+/// @details works similarly to flatbuffers, where the first 8  btyes of every pointed to memory contains a
+/// i32 offset (always positive, but use negative value later on as a flag to mean something else, maybe useful for pointers to pointers/marker types ect...)
+/// followed by a u32 containing the allocations specific inner size in bytes, not including the size of header
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, bytemuck::Pod, bytemuck::Zeroable,
+)]
+#[repr(C)]
+pub struct Anchor {
+    offset: Offset,
+    inner_size: u32,
+}
+
+impl Default for Anchor {
+    fn default() -> Self {
+        Self::new_unsized()
+    }
+}
+
+pub struct ThinMem<T: Byteable + ?Sized> {
+    anchor: Anchor,
+    data: T,
+}
+
+impl Anchor {
+    pub const SIZE: usize = size_of::<Self>();
+    pub const OFFSET_SIZE: Offset = Offset::sized::<Self>();
+
+    pub const fn with_meta<T, M>() -> Self {
+        Self {
+            offset: Offset(size_of::<M>() as i32 + Self::SIZE as i32),
+            inner_size: size_of::<T>() as u32,
+        }
+    }
+
+    pub const fn with_meta_unsized<M>() -> Self {
+        Self {
+            offset: Offset(size_of::<M>() as i32 + Self::SIZE as i32),
+            inner_size: 0,
+        }
+    }
+
+    pub const fn new<T>() -> Self {
+        Self {
+            offset: Offset::new(size_of::<Self>() as i32),
+            inner_size: size_of::<T>() as u32,
+        }
+    }
+
+    pub const fn new_unsized() -> Self {
+        Self {
+            offset: Offset::new(size_of::<Self>() as i32),
+            inner_size: 0,
+        }
+    }
+
+    pub unsafe fn jump_aligned<T>(&self, ptr: Any) -> Any {
+        self.offset.add_aligned_to::<T>(ptr)
+    }
+}
+
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, bytemuck::Pod, bytemuck::Zeroable,
+)]
+#[repr(C)]
+pub struct SizedAnchor {
+    base: Anchor,
+    size_bytes: u32,
 }
