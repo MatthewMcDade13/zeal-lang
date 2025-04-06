@@ -1,8 +1,13 @@
-use core::{alloc::Layout, cell::Cell, marker::PhantomData, ptr::NonNull};
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    cell::Cell,
+    marker::PhantomData,
+    ptr::NonNull,
+};
 
 use alloc::alloc::alloc_zeroed;
 
-use crate::Byteable;
+use crate::{Byteable, ty::Zallocator};
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -65,4 +70,33 @@ pub struct Slab {
     mem: NonNull<u8>,
     len: usize,
     // _phantom: PhantomData<[Mem<[u8], SlabMeta>]>,
+}
+
+unsafe impl Zallocator for Slab {
+    type Meta = SlabMeta;
+
+    fn zalloc_bytes(&self, size: usize) -> crate::ptr::Thin<u8, Self> {
+        todo!()
+    }
+
+    fn zalloc<T>(&self) -> crate::ptr::Zptr<T, Self::Meta, Self>
+    where
+        T: Byteable,
+    {
+        todo!()
+    }
+
+    fn free(&self, ptr: crate::ptr::Any) {
+        todo!()
+    }
+}
+
+unsafe impl GlobalAlloc for Slab {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        todo!()
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        todo!()
+    }
 }

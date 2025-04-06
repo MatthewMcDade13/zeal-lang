@@ -5,7 +5,10 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::Byteable;
+use crate::{
+    Byteable,
+    ty::{ClassTag, Zallocator},
+};
 
 pub trait Cast<To: ?Sized, From: ?Sized = To> {
     fn cast(&self) -> &To;
@@ -177,7 +180,15 @@ impl Offset {
     }
 
     pub const fn usize(self) -> usize {
-        self.get() as usize
+        if self.get() < 0 {
+            0
+        } else {
+            self.get() as usize
+        }
+    }
+
+    pub const fn is_neg(self) -> bool {
+        self.0 < 0
     }
 
     pub const fn get(self) -> i32 {
@@ -215,90 +226,187 @@ pub mod cast {
     }
 }
 
-/// A pointer to any memory allcoated by Zeal runtime
-#[derive(Debug)]
+/// A pointer to memory allocated by Zeal runtime
+/// with no metadata (only anchor and data) @see [ThinMem]
+/// because we have no metadata, this pointer must be treated like a raw pointer. the alternative
+/// being that Thin uniquely owns its data it points to, and therefore would only be used with move semantics
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct ZPtr<T: Byteable + ?Sized, Meta = ()> {
+pub struct Thin<T: Byteable + ?Sized, Alloc: Zallocator> {
     inner: Any,
-    _pd: PhantomData<(*mut T, Meta)>,
+    _pd: PhantomData<ThinMem<T, Alloc>>,
 }
 
-impl<T, M> ZPtr<T, M> where T: Byteable {}
-
+/// A pointer to memory allocated by Zeal runtime
+/// with metadata. @see [WideMem]
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct Thin<T: Byteable + ?Sized> {
+pub struct Zptr<T: Byteable + ?Sized, Meta, Alloc: Zallocator> {
     inner: Any,
-    _pd: PhantomData<T>,
+    _pd: PhantomData<WideMem<T, Meta, Alloc>>,
 }
 
-impl<T> AnyPointer for Thin<T>
+impl<T, M, A> Zptr<T, M, A>
 where
     T: Byteable,
+    A: Zallocator,
 {
-    type Meta = Anchor;
-    type Pointee = T;
-
-    fn root_ptr(&self) -> Any {
-        self.inner
+    pub const fn thin(self) -> Thin<T, A> {
+        Thin {
+            inner: self.inner,
+            _pd: PhantomData,
+        }
     }
 }
 
-impl<T, M> AnyPointer for ZPtr<T, M>
+// impl<T, A> Drop for Thin<T, A>
+// where
+//     T: Byteable + ?Sized,
+//     A: Zallocator,
+// {
+//     fn drop(&mut self) {
+//         let alloc: &A = todo!();
+//         alloc.free(self.inner);
+//     }
+// }
+impl<T, A> Thin<T, A>
 where
     T: Byteable,
+    A: Zallocator,
 {
-    type Meta = M;
+    pub const MIN_META_SIZE: usize = core::mem::size_of::<i32>();
+    pub const MIN_MEMORY_SIZE: usize = size_of::<Anchor>() + size_of::<isize>();
 
-    type Pointee = T;
+    /// Byte offset from root poitner to begin of Metadata or pointee data
+    pub const OFFSET_ANCHOR: usize = size_of::<Anchor>();
 
-    fn root_ptr(&self) -> Any {
+    // fn meta_begin()
+
+    // #[inline]
+    // fn meta_begin(&self) -> NonNull<Self::Meta> {
+    //     unsafe {
+    //         let ptr = self.root_ptr();
+    //         let ptr = ptr.add(Self::OFFSET_META);
+    //         let offset = ptr.align_offset(align_of::<Self::Meta>());
+    //         ptr.add(offset).cast::<Self::Meta>()
+    //     }
+    // }
+
+    pub const fn anchor(&self) -> Anchor {
+        unsafe { self.root().cast::<Anchor>().read() }
+    }
+
+    pub fn new(alloc: &A) -> Self {
+        alloc.zalloc().thin()
+    }
+
+    pub fn init(alloc: &A, val: T) -> Self {
+        let s = Self::new(alloc);
+        s.write(val);
+        s
+    }
+
+    pub fn write(&self, val: T) {
+        let p = self.inner_begin().as_ptr();
+        if core::mem::needs_drop::<T>() {
+            unsafe { *p = val };
+        } else {
+            unsafe { core::ptr::write(p, val) };
+        }
+    }
+
+    // #[inline]
+    // fn meta(&self) -> &Self::Meta {
+    //     unsafe { self.meta_mut().as_ref() }
+    // }
+
+    // #[inline]
+    // fn meta_mut(&self) -> NonNull<Self::Meta> {
+    //     self.meta_begin()
+    // }
+
+    pub const fn data(&self) -> Any {
+        self.root()
+    }
+
+    pub const fn root(&self) -> Any {
         self.inner
+    }
+
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        let base = self.root();
+        let anchor = self.as_anchor();
+        base.addr() == anchor.addr()
+    }
+
+    #[inline]
+    pub fn expect_valid(s: &Self) {
+        if !s.is_valid() {
+            panic!(
+                "Zalloc Memory pointer is not valid!!!. is_valid() returned false! Ensure return values of base_ptr and meta are the same address in memory!!!"
+            );
+        }
+    }
+
+    #[inline]
+    pub fn inner(&self) -> &T {
+        unsafe { self.inner_begin().as_ref() }
+    }
+
+    #[inline]
+    pub fn inner_begin(&self) -> NonNull<T> {
+        let anch = self.anchor();
+        let ptr = unsafe { anch.jump_aligned::<T>(self.root()) };
+        ptr.cast::<T>()
+    }
+
+    #[inline]
+    pub fn inner_end(&self) -> Any {
+        unsafe { crate::ptr::cast::to_any(self.inner_begin().add(1)) }
+    }
+
+    pub const fn inner_size(&self) -> usize {
+        self.anchor().inner_size as usize
+    }
+
+    // pub const fn meta_size() -> usize {
+    //     core::cmp::max(Self::MIN_META_SIZE, size_of::<Self::Meta>())
+    // }
+
+    pub const fn as_anchor(&self) -> NonNull<Anchor> {
+        self.root().cast::<Anchor>()
+    }
+
+    pub const fn wide(self) -> Zptr<T, (), A> {
+        self.wide_meta::<()>()
+    }
+
+    pub const fn wide_meta<Meta>(self) -> Zptr<T, Meta, A> {
+        Zptr {
+            inner: self.inner,
+            _pd: PhantomData,
+        }
     }
 }
 
-impl<T> Deref for ZPtr<T>
+impl<T, A> Deref for Thin<T, A>
 where
     T: Byteable,
+    A: Zallocator,
 {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.inner()
+        todo!()
     }
-}
-
-pub trait ZPointer<Meta, Pointee>: AnyPointer
-where
-    Pointee: Byteable,
-{
-}
-
-pub trait Pointerz<T>: AnyPointer
-where
-    T: Byteable,
-{
-}
-
-impl<T, M, P> ZPointer<M, P> for T
-where
-    T: AnyPointer,
-    P: Byteable,
-{
-}
-
-impl<T, P> Pointerz<P> for T
-where
-    T: AnyPointer,
-    P: Byteable,
-{
 }
 
 /// Memory Layout of allocated data
 /// [Anchor 8 bytes][Metadata 4 + bytes][BlockT Allocated Block]
 ///
 /// Min Size: Anchor + sizeof(pointer) ~ 12 bytes
-pub trait AnyPointer {
+pub trait Pointerlike {
     type Meta;
     type Pointee: Byteable;
 
@@ -421,14 +529,29 @@ impl Default for Anchor {
     }
 }
 
-pub struct ThinMem<T: Byteable + ?Sized> {
+pub struct ThinMem<T: Byteable + ?Sized, Alloc: Zallocator> {
+    _ph: PhantomData<ClassTag<Alloc>>,
     anchor: Anchor,
+    data: T,
+}
+
+pub struct WideMem<T: Byteable + ?Sized, Meta, Alloc: Zallocator> {
+    _pd: PhantomData<ClassTag<Alloc>>,
+    anchor: Anchor,
+    meta: Meta,
     data: T,
 }
 
 impl Anchor {
     pub const SIZE: usize = size_of::<Self>();
     pub const OFFSET_SIZE: Offset = Offset::sized::<Self>();
+
+    pub const fn no_meta(inner_size: u32) -> Self {
+        Self {
+            offset: Offset::new(-1),
+            inner_size,
+        }
+    }
 
     pub const fn with_meta<T, M>() -> Self {
         Self {

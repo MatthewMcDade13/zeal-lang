@@ -8,7 +8,7 @@ use core::{
 
 use crate::{
     Byteable,
-    ptr::{AnyPointer, Offset, ZPointer},
+    ptr::{Offset, Pointerlike},
 };
 
 // pub fn zalloc_bytes(size: usize) -> impl AnyPointer {

@@ -41,10 +41,11 @@ where
 pub type Nothing = ();
 pub type VoidT = libc::c_void;
 
+// pub const DYN_GLOBAL l
 pub mod ty {
     use bytemuck::{ByteEq, ByteHash};
 
-    use crate::ptr::{Any, ZPointer};
+    use crate::ptr::{Any, Thin, Zptr};
 
     use super::*;
     use core::{marker::PhantomData, ptr::NonNull};
@@ -60,15 +61,15 @@ pub mod ty {
         Count,
     }
 
-    pub unsafe trait Zallocator {
+    pub unsafe trait Zallocator: Sized {
         type Meta;
 
-        fn zalloc_bytes(size: usize) -> impl ZPointer<Self::Meta, u8>;
-        fn zalloc<T>() -> impl ZPointer<Self::Meta, T>
+        fn zalloc_bytes(&self, size: usize) -> Thin<u8, Self>;
+        fn zalloc<T>(&self) -> Zptr<T, Self::Meta, Self>
         where
             T: Byteable;
 
-        fn dealloc(ptr: Any);
+        fn free(&self, ptr: Any);
     }
 
     struct MemClass<Allocator: Zallocator + ?Sized> {
