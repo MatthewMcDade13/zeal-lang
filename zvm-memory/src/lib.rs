@@ -4,6 +4,7 @@ extern crate alloc;
 
 pub mod block;
 pub mod heap;
+pub mod mem;
 pub mod ptr;
 pub mod slab;
 pub mod util_lite;
@@ -64,15 +65,15 @@ pub mod ty {
     pub unsafe trait Zallocator: Sized {
         type Meta;
 
-        fn zalloc_bytes(&self, size: usize) -> Thin<u8, Self>;
+        fn free(&self, ptr: Any);
         fn zalloc<T>(&self) -> Zptr<T, Self::Meta, Self>
         where
             T: Byteable;
 
-        fn free(&self, ptr: Any);
+        fn zalloc_bytes(&self, size: usize) -> Zptr<u8, Self::Meta, Self>;
     }
 
-    struct MemClass<Allocator: Zallocator + ?Sized> {
+    pub struct MemClass<Allocator: Zallocator> {
         meta: Allocator::Meta,
         alloc: Allocator,
     }

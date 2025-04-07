@@ -6,10 +6,7 @@ use core::{
     ptr::{NonNull, addr_of, addr_of_mut},
 };
 
-use crate::{
-    Byteable,
-    ptr::{Offset, Pointerlike},
-};
+use crate::{Byteable, ptr::Offset};
 
 // pub fn zalloc_bytes(size: usize) -> impl AnyPointer {
 //     unsafe {

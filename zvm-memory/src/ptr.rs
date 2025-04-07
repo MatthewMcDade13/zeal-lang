@@ -1,12 +1,13 @@
 use core::{
     marker::PhantomData,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crate::{
     Byteable,
+    mem::{Anchor, ThinMem, WideMem},
     ty::{ClassTag, Zallocator},
 };
 
@@ -124,18 +125,110 @@ impl Clone for RefCount {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(C)]
-pub struct Slice<T = u8> {
-    ptr: NonNull<T>,
+pub struct RawSlice<T = u8> {
+    ptr: *mut T,
     len: u32,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bytemuck::Zeroable)]
+#[repr(C, u32)]
+pub enum Slice<T> {
+    #[default]
+    Empty = 0,
+    Data(RawSlice<T>),
+}
+
 impl<T> Slice<T> {
-    pub const fn as_ref(&self) -> &[T] {
-        unsafe { core::slice::from_raw_parts(self.ptr.as_ptr() as _, self.len as usize) }
+    pub const fn empty() -> Self {
+        Self::Empty
     }
 
-    pub const fn as_ptr(&self) -> NonNull<T> {
+    pub const fn from_raw(rslice: RawSlice<T>) -> Self {
+        Self::Data(rslice)
+    }
+
+    pub const fn from_raw_parts(root: *mut T, len: usize) -> Self {
+        let sl = RawSlice::<T>::from_raw_parts(root, len);
+        match sl {
+            Some(raw) => Self::Data(raw),
+            None => Self::Empty,
+        }
+    }
+
+    pub const fn into_raw(self) -> Option<RawSlice<T>> {
+        match self {
+            Slice::Empty => None,
+            Slice::Data(raw_slice) => Some(raw_slice),
+        }
+    }
+
+    pub const fn into_raw_parts(self) -> Option<(NonNull<T>, usize)> {
+        if let Self::Data(raw) = self {
+            if let Some(p) = NonNull::new(raw.ptr) {
+                Some((p, raw.len()))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl<T> RawSlice<T> {
+    pub const fn from_raw_parts(ptr: *mut T, len: usize) -> Option<Self> {
+        if len == 0 || ptr.is_null() {
+            None
+        } else {
+            Some(Self {
+                ptr,
+                len: len as u32,
+            })
+        }
+    }
+
+    pub const fn into_raw_parts(self) -> Option<(NonNull<T>, usize)> {
+        if self.len == 0 {
+            None
+        } else {
+            match NonNull::new(self.ptr) {
+                Some(ptr) => Some((ptr, self.len())),
+                None => None,
+            }
+        }
+    }
+
+    pub const fn size_bytes(&self) -> usize {
+        self.len() * size_of::<T>()
+    }
+
+    /// We cant construct a new instance of RawSlice that is empty, so this is safe.
+    /// @see [Slice] for a datatype that can be empty
+    pub const fn as_ref(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.ptr as _, self.len()) }
+    }
+
+    /// We cant construct a new instance of RawSlice that is empty, so this is safe.
+    /// @see [Slice] for a datatype that can be empty
+    pub const fn as_mut(&mut self) -> &mut [T] {
+        unsafe { core::slice::from_raw_parts_mut(self.ptr as *mut _, self.len()) }
+    }
+
+    /// Unsafe if len == 0, as ptr will be null.
+    /// use try_ptr for safe version
+    pub const unsafe fn as_ptr(&self) -> *mut T {
         self.ptr
+    }
+
+    pub const fn try_ptr(&self) -> Option<NonNull<T>> {
+        if self.is_empty() {
+            None
+        } else {
+            match NonNull::new(self.ptr) {
+                Some(ptr) => Some(ptr),
+                None => None,
+            }
+        }
     }
 
     pub const fn len(&self) -> usize {
@@ -147,8 +240,42 @@ impl<T> Slice<T> {
     }
 }
 
+impl<T> Deref for Slice<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Slice::Empty => &[],
+            Slice::Data(raw_slice) => raw_slice.as_ref(),
+        }
+    }
+}
+
+impl<T> DerefMut for Slice<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Slice::Empty => &mut [],
+            Slice::Data(raw_slice) => raw_slice.as_mut(),
+        }
+    }
+}
+
+impl<T> Deref for RawSlice<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<T> DerefMut for RawSlice<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
 pub type Any = NonNull<libc::c_void>;
-pub type Bytes = Slice<u8>;
+pub type Bytes = RawSlice<u8>;
 
 #[derive(
     Debug,
@@ -233,8 +360,8 @@ pub mod cast {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Thin<T: Byteable + ?Sized, Alloc: Zallocator> {
-    inner: Any,
-    _pd: PhantomData<ThinMem<T, Alloc>>,
+    pub(crate) inner: NonNull<ThinMem<T>>,
+    _pd: ClassTag<Alloc>,
 }
 
 /// A pointer to memory allocated by Zeal runtime
@@ -242,8 +369,8 @@ pub struct Thin<T: Byteable + ?Sized, Alloc: Zallocator> {
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct Zptr<T: Byteable + ?Sized, Meta, Alloc: Zallocator> {
-    inner: Any,
-    _pd: PhantomData<WideMem<T, Meta, Alloc>>,
+    pub(crate) inner: NonNull<WideMem<T, Meta>>,
+    _pd: ClassTag<Alloc>,
 }
 
 impl<T, M, A> Zptr<T, M, A>
@@ -253,22 +380,38 @@ where
 {
     pub const fn thin(self) -> Thin<T, A> {
         Thin {
-            inner: self.inner,
+            inner: self.inner.cast::<ThinMem<T>>(),
             _pd: PhantomData,
         }
     }
 }
 
-// impl<T, A> Drop for Thin<T, A>
-// where
-//     T: Byteable + ?Sized,
-//     A: Zallocator,
-// {
-//     fn drop(&mut self) {
-//         let alloc: &A = todo!();
-//         alloc.free(self.inner);
-//     }
-// }
+impl<T, M, A> From<Thin<T, A>> for Zptr<T, M, A>
+where
+    T: Byteable,
+    A: Zallocator,
+{
+    fn from(value: Thin<T, A>) -> Self {
+        Self {
+            inner: value.inner.cast::<WideMem<T, M>>(),
+            _pd: PhantomData,
+        }
+    }
+}
+
+impl<T, M, A> From<Zptr<T, M, A>> for Thin<T, A>
+where
+    T: Byteable,
+    A: Zallocator,
+{
+    fn from(value: Zptr<T, M, A>) -> Self {
+        Self {
+            inner: value.inner.cast(),
+            _pd: PhantomData,
+        }
+    }
+}
+
 impl<T, A> Thin<T, A>
 where
     T: Byteable,
@@ -315,6 +458,16 @@ where
         }
     }
 
+    #[inline]
+    pub unsafe fn read(self) -> T {
+        self.inner_begin().read()
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> T {
+        unsafe { self.read() }
+    }
+
     // #[inline]
     // fn meta(&self) -> &Self::Meta {
     //     unsafe { self.meta_mut().as_ref() }
@@ -330,7 +483,7 @@ where
     }
 
     pub const fn root(&self) -> Any {
-        self.inner
+        self.inner.cast()
     }
 
     #[inline]
@@ -384,7 +537,7 @@ where
 
     pub const fn wide_meta<Meta>(self) -> Zptr<T, Meta, A> {
         Zptr {
-            inner: self.inner,
+            inner: self.inner.cast(),
             _pd: PhantomData,
         }
     }
@@ -400,197 +553,4 @@ where
     fn deref(&self) -> &Self::Target {
         todo!()
     }
-}
-
-/// Memory Layout of allocated data
-/// [Anchor 8 bytes][Metadata 4 + bytes][BlockT Allocated Block]
-///
-/// Min Size: Anchor + sizeof(pointer) ~ 12 bytes
-pub trait Pointerlike {
-    type Meta;
-    type Pointee: Byteable;
-
-    // pub trait ZallocMem<T, Meta> {
-    /// At least an i32
-    const MIN_META_SIZE: usize = core::mem::size_of::<i32>();
-    const MIN_MEMORY_SIZE: usize = size_of::<Anchor>() + size_of::<isize>();
-
-    /// Byte offset from root poitner to begin of Metadata
-    const OFFSET_META: usize = size_of::<Anchor>();
-    const OFFSET_POINTEE: usize = Self::OFFSET_META + size_of::<Self::Meta>();
-
-    // fn meta_begin()
-
-    #[inline]
-    fn meta_begin(&self) -> NonNull<Self::Meta> {
-        unsafe {
-            let ptr = self.root_ptr();
-            let ptr = ptr.add(Self::OFFSET_META);
-            let offset = ptr.align_offset(align_of::<Self::Meta>());
-            ptr.add(offset).cast::<Self::Meta>()
-        }
-    }
-
-    fn anchor(&self) -> Anchor {
-        unsafe { self.root_ptr().cast::<Anchor>().read() }
-    }
-
-    #[inline]
-    fn meta(&self) -> &Self::Meta {
-        unsafe { self.meta_mut().as_ref() }
-    }
-
-    #[inline]
-    fn meta_mut(&self) -> NonNull<Self::Meta> {
-        self.meta_begin()
-    }
-
-    fn data(&self) -> Any {
-        self.root_ptr()
-    }
-
-    fn root_ptr(&self) -> Any;
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        let base = self.root_ptr();
-        let anchor = self.as_anchor();
-        base.addr() == anchor.addr()
-    }
-
-    #[inline]
-    fn expect_valid(s: &Self) {
-        if !s.is_valid() {
-            panic!(
-                "Zalloc Memory pointer is not valid!!!. is_valid() returned false! Ensure return values of base_ptr and meta are the same address in memory!!!"
-            );
-        }
-    }
-
-    #[inline]
-    fn static_size_bytes() -> usize {
-        size_of::<Self::Meta>() + size_of::<Self::Pointee>()
-    }
-
-    #[inline]
-    fn size_bytes(&self) -> usize {
-        Self::meta_size() + self.inner_size()
-    }
-
-    #[inline]
-    fn inner(&self) -> &Self::Pointee {
-        unsafe { self.inner_begin().as_ref() }
-    }
-
-    #[inline]
-    fn inner_begin(&self) -> NonNull<Self::Pointee> {
-        let anch = self.anchor();
-        let ptr = unsafe { anch.jump_aligned::<Self::Pointee>(self.root_ptr()) };
-        ptr.cast::<Self::Pointee>()
-    }
-
-    #[inline]
-    fn inner_end(&self) -> Any {
-        unsafe { crate::ptr::cast::to_any(self.inner_begin().add(1)) }
-    }
-
-    #[inline]
-    fn inner_size(&self) -> usize {
-        self.anchor().inner_size as usize
-    }
-
-    #[inline]
-    fn meta_size() -> usize {
-        core::cmp::max(Self::MIN_META_SIZE, size_of::<Self::Meta>())
-    }
-
-    #[inline]
-    fn as_anchor(&self) -> NonNull<Anchor> {
-        self.root_ptr().cast::<Anchor>()
-    }
-}
-
-/// @brief First byte of any memory allocated by zallocator/zvm.
-/// @details works similarly to flatbuffers, where the first 8  btyes of every pointed to memory contains a
-/// i32 offset (always positive, but use negative value later on as a flag to mean something else, maybe useful for pointers to pointers/marker types ect...)
-/// followed by a u32 containing the allocations specific inner size in bytes, not including the size of header
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, bytemuck::Pod, bytemuck::Zeroable,
-)]
-#[repr(C)]
-pub struct Anchor {
-    offset: Offset,
-    inner_size: u32,
-}
-
-impl Default for Anchor {
-    fn default() -> Self {
-        Self::new_unsized()
-    }
-}
-
-pub struct ThinMem<T: Byteable + ?Sized, Alloc: Zallocator> {
-    _ph: PhantomData<ClassTag<Alloc>>,
-    anchor: Anchor,
-    data: T,
-}
-
-pub struct WideMem<T: Byteable + ?Sized, Meta, Alloc: Zallocator> {
-    _pd: PhantomData<ClassTag<Alloc>>,
-    anchor: Anchor,
-    meta: Meta,
-    data: T,
-}
-
-impl Anchor {
-    pub const SIZE: usize = size_of::<Self>();
-    pub const OFFSET_SIZE: Offset = Offset::sized::<Self>();
-
-    pub const fn no_meta(inner_size: u32) -> Self {
-        Self {
-            offset: Offset::new(-1),
-            inner_size,
-        }
-    }
-
-    pub const fn with_meta<T, M>() -> Self {
-        Self {
-            offset: Offset(size_of::<M>() as i32 + Self::SIZE as i32),
-            inner_size: size_of::<T>() as u32,
-        }
-    }
-
-    pub const fn with_meta_unsized<M>() -> Self {
-        Self {
-            offset: Offset(size_of::<M>() as i32 + Self::SIZE as i32),
-            inner_size: 0,
-        }
-    }
-
-    pub const fn new<T>() -> Self {
-        Self {
-            offset: Offset::new(size_of::<Self>() as i32),
-            inner_size: size_of::<T>() as u32,
-        }
-    }
-
-    pub const fn new_unsized() -> Self {
-        Self {
-            offset: Offset::new(size_of::<Self>() as i32),
-            inner_size: 0,
-        }
-    }
-
-    pub unsafe fn jump_aligned<T>(&self, ptr: Any) -> Any {
-        self.offset.add_aligned_to::<T>(ptr)
-    }
-}
-
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, bytemuck::Pod, bytemuck::Zeroable,
-)]
-#[repr(C)]
-pub struct SizedAnchor {
-    base: Anchor,
-    size_bytes: u32,
 }

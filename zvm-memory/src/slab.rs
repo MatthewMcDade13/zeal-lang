@@ -7,7 +7,7 @@ use core::{
 
 use alloc::alloc::alloc_zeroed;
 
-use crate::{Byteable, ty::Zallocator};
+use crate::{Byteable, mem::WideMem, ty::Zallocator};
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -23,7 +23,7 @@ pub struct SlabMem<T: Byteable + ?Sized> {
     cell: T,
 }
 
-pub type SlabBytes<const SIZE: usize> = SlabMem<[u8; SIZE]>;
+pub type SlabBytes<const SIZE: usize> = WideMem<[u8; SIZE], SlabMeta>;
 pub type AnyCell = SlabMem<[u8]>;
 
 pub struct HeapMeta {
@@ -75,7 +75,7 @@ pub struct Slab {
 unsafe impl Zallocator for Slab {
     type Meta = SlabMeta;
 
-    fn zalloc_bytes(&self, size: usize) -> crate::ptr::Thin<u8, Self> {
+    fn free(&self, ptr: crate::ptr::Any) {
         todo!()
     }
 
@@ -86,7 +86,7 @@ unsafe impl Zallocator for Slab {
         todo!()
     }
 
-    fn free(&self, ptr: crate::ptr::Any) {
+    fn zalloc_bytes(&self, size: usize) -> crate::ptr::Zptr<u8, Self::Meta, Self> {
         todo!()
     }
 }
