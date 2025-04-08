@@ -10,6 +10,18 @@ use crate::{
 /// @details works similarly to flatbuffers, where the first 8  btyes of every pointed to memory contains a
 /// i32 offset (always positive, but use negative value later on as a flag to mean something else, maybe useful for pointers to pointers/marker types ect...)
 /// followed by a u32 containing the allocations specific inner size in bytes, not including the size of header
+///
+///
+/// @details This is what allows us to cast between @ref [Thin] and @ref [Zptr] pointers.
+/// Since allocators implementing @ref [Zallocator] must allocate with
+/// @ref [ThinMem]
+///     or
+/// @ref [WideMem]
+/// and both of these memory types have a field of type @ref [Anchor] as its first field
+///
+/// Because of this, when we deref a @ref [Thin] or @ref [Zptr], the first 4 bytes are always
+/// an integer offset (negative is ignored for now but may be used later)
+/// that tell us the byte offset to where the inner allocated data resides, regardless if there is metadata or not.
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, bytemuck::Pod, bytemuck::Zeroable,
 )]
@@ -40,6 +52,7 @@ pub struct WideMem<T: ?Sized, Meta> {
     pub data: T,
 }
 
+// NOTE: look at Box::into_boxed_slice for converting ThinMem<T> to ThinMem<[T]> (DST!!!)
 impl<T, M> Clone for WideMem<T, M>
 where
     T: Clone,
@@ -62,31 +75,31 @@ where
 }
 
 // TODO: Verify this works... WRITE TESTS
-impl<T, M> Byteable for WideMem<T, M>
-where
-    T: bytemuck::AnyBitPattern + bytemuck::NoUninit,
-    M: bytemuck::AnyBitPattern + bytemuck::NoUninit,
-{
-    fn as_bytes(&self) -> &[u8] {
-        let s = self as *const Self;
-        let ptr = s.cast::<u8>();
-        unsafe { core::slice::from_raw_parts(ptr, size_of::<Self>()) }
-    }
+// impl<T, M> Byteable for WideMem<T, M>
+// where
+//     T: bytemuck::AnyBitPattern + bytemuck::NoUninit,
+//     M: bytemuck::AnyBitPattern + bytemuck::NoUninit,
+// {
+//     fn as_bytes(&self) -> &[u8] {
+//         let s = self as *const Self;
+//         let ptr = s.cast::<u8>();
+//         unsafe { core::slice::from_raw_parts(ptr, size_of::<Self>()) }
+//     }
 
-    fn as_bytes_mut(&mut self) -> &mut [u8] {
-        let s = self as *mut Self;
-        let ptr = s.cast::<u8>();
-        unsafe { core::slice::from_raw_parts_mut(ptr, size_of::<Self>()) }
-    }
+//     fn as_bytes_mut(&mut self) -> &mut [u8] {
+//         let s = self as *mut Self;
+//         let ptr = s.cast::<u8>();
+//         unsafe { core::slice::from_raw_parts_mut(ptr, size_of::<Self>()) }
+//     }
 
-    fn ref_from_bytes(bytes: &[u8]) -> &Self {
-        todo!()
-    }
+//     fn ref_from_bytes(bytes: &[u8]) -> &Self {
+//         todo!()
+//     }
 
-    fn mut_from_bytes(bytes: &mut [u8]) -> &mut Self {
-        todo!()
-    }
-}
+//     fn mut_from_bytes(bytes: &mut [u8]) -> &mut Self {
+//         todo!()
+//     }
+// }
 
 impl<T, M> WideMem<T, M>
 where

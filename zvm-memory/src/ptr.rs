@@ -520,7 +520,7 @@ where
     }
 
     pub const fn inner_size(&self) -> usize {
-        self.anchor().inner_size as usize
+        self.anchor().elem_len as usize
     }
 
     // pub const fn meta_size() -> usize {

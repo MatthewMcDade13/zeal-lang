@@ -1,14 +1,15 @@
-#![no_std]
-
 extern crate alloc;
 
 pub mod block;
+pub mod buff;
 pub mod heap;
 pub mod mem;
 pub mod ptr;
 pub mod slab;
 pub mod util_lite;
 pub mod zalloc;
+
+pub unsafe trait ZealMemoryLayout {}
 
 pub trait Byteable {
     fn as_bytes(&self) -> &[u8];
