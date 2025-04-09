@@ -26,28 +26,176 @@ use crate::{
     Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, bytemuck::Pod, bytemuck::Zeroable,
 )]
 #[repr(C)]
-pub struct Anchor {
+pub struct _Root {
     pub offset: Offset,
     pub inner_size: u32,
 }
 
-impl Default for Anchor {
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    num_derive::Unsigned,
+    num_derive::Num,
+    num_derive::NumOps,
+    num_derive::One,
+    num_derive::Zero,
+)]
+#[repr(transparent)]
+pub struct RootOffset(usize);
+
+impl RootOffset {
+    pub const fn empty() -> Self {
+        Self::new(0)
+    }
+
+    pub const fn new(extra: usize) -> Self {
+        Self(size_of::<Root>() + extra)
+    }
+
+    pub const fn with_meta<M>() -> Self {
+        Self::new(size_of::<M>())
+    }
+
+    pub const fn extend(self, extra: usize) -> Self {
+        Self(self.0 + extra)
+    }
+}
+
+impl Default for RootOffset {
     fn default() -> Self {
-        Self::new_unsized()
+        Self::empty()
+    }
+}
+
+impl From<RootOffset> for usize {
+    fn from(value: RootOffset) -> Self {
+        value.0
+    }
+}
+
+impl AsRef<usize> for RootOffset {
+    fn as_ref(&self) -> &usize {
+        &self.0
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(C)]
+pub enum Root {
+    /// This will always be the same as
+    /// Self::Offset(RootOffset::default()) or Self::Offset(size_of::<Self>())
+    Empty,
+    Offset(RootOffset),
+    Sizeof {
+        offset: RootOffset,
+        inner_size: usize,
+    },
+    Count {
+        offset: RootOffset,
+        elem_len: usize,
+    },
+    Extended {
+        offset: RootOffset,
+        user_data: [u8; size_of::<usize>()],
+    },
+}
+
+impl Root {
+    const EMPTY: Self = Self::Offset(RootOffset::empty());
+
+    pub const fn empty() -> Self {
+        Self::Empty
+    }
+
+    pub const fn empty_val() -> &'static Self {
+        &Self::EMPTY
+    }
+
+    pub const fn new(val: usize) -> Self {
+        Self::Offset(RootOffset(val))
+    }
+
+    pub const fn new_with<M>(val: usize) -> Self {
+        Self::new(val).extend::<M>()
+    }
+
+    pub const fn sizeof<T>() -> Self {
+        Self::Sizeof {
+            offset: RootOffset::empty(),
+            inner_size: size_of::<T>(),
+        }
+    }
+
+    pub const fn sizeof_with<T, M>() -> Self {
+        Self::sizeof::<T>().extend::<M>()
+    }
+
+    pub const fn array(len: usize) -> Self {
+        Self::Count {
+            offset: RootOffset::empty(),
+            elem_len: len,
+        }
+    }
+
+    pub const fn array_with<M>(len: usize) -> Self {
+        Self::array(len).extend::<M>()
+    }
+
+    pub const fn userdata(data: [u8; size_of::<usize>()]) -> Self {
+        Self::Extended {
+            offset: RootOffset::empty(),
+            user_data: data,
+        }
+    }
+
+    pub const fn userdata_with<M>(data: [u8; size_of::<usize>()]) -> Self {
+        Self::userdata(data).extend::<M>()
+    }
+
+    pub const fn extend<M>(self) -> Self {
+        let size: usize = const { size_of::<M>() };
+        match self {
+            Root::Empty => Self::Offset(RootOffset::new(size)),
+            Root::Offset(root_offset) => Self::Offset(root_offset.extend(size)),
+            Root::Sizeof { offset, inner_size } => Self::Sizeof {
+                offset: offset.extend(size),
+                inner_size,
+            },
+            Root::Count { offset, elem_len } => Self::Count {
+                offset: offset.extend(size),
+                elem_len,
+            },
+            Root::Extended { offset, user_data } => Self::Extended {
+                offset: offset.extend(size),
+                user_data,
+            },
+        }
+    }
+}
+
+impl Default for Root {
+    fn default() -> Self {
+        Self::Empty
     }
 }
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct ThinMem<T: ?Sized> {
-    pub anchor: Anchor,
+    pub root: Root,
     pub data: T,
 }
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct WideMem<T: ?Sized, Meta> {
-    pub anchor: Anchor,
+    pub root: Root,
     pub meta: Meta,
     pub data: T,
 }
@@ -60,7 +208,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            anchor: self.anchor,
+            root: self.root,
             meta: self.meta.clone(),
             data: self.data.clone(),
         }
@@ -115,7 +263,7 @@ where
             .expect("Failed to Allocate more memory! Out of Memory!!")
             .cast::<Self>();
         ptr.write(Self {
-            anchor: Anchor::with_meta::<T, M>(),
+            root: todo!(),
             meta,
             data: val,
         });
@@ -172,7 +320,7 @@ where
             .expect("Failed to Allocate more memory! Out of Memory!!")
             .cast::<Self>();
         ptr.write(Self {
-            anchor: Anchor::no_meta::<T>(),
+            root: Root::no_meta::<T>(),
             data: val,
         });
         ptr
@@ -198,7 +346,7 @@ where
 {
     pub const fn zeroed() -> Self {
         Self {
-            anchor: Anchor::no_meta::<T>(),
+            root: Root::no_meta::<T>(),
             data: bytemuck::zeroed::<T>(),
         }
     }
@@ -211,7 +359,7 @@ where
 {
     pub const fn zeroed() -> Self {
         Self {
-            anchor: Anchor::with_meta::<T, M>(),
+            root: Root::extend::<T, M>(),
             meta: bytemuck::zeroed::<M>(),
             data: bytemuck::zeroed::<T>(),
         }
@@ -224,7 +372,7 @@ where
 {
     fn default() -> Self {
         Self {
-            anchor: Anchor::no_meta::<T>(),
+            root: Root::no_meta::<T>(),
             data: T::default(),
         }
     }
@@ -237,7 +385,7 @@ where
 {
     fn default() -> Self {
         Self {
-            anchor: Anchor::with_meta::<T, M>(),
+            root: Root::extend::<T, M>(),
             meta: M::default(),
             data: T::default(),
         }
@@ -253,40 +401,3 @@ where
 //         todo!()
 //     }
 // }
-
-impl Anchor {
-    pub const SIZE: usize = size_of::<Self>();
-    pub const OFFSET_SIZE: Offset = Offset::sized::<Self>();
-
-    pub const fn with_meta<T, M>() -> Self {
-        Self {
-            offset: Offset(size_of::<M>() as i32 + Self::SIZE as i32),
-            inner_size: size_of::<T>() as u32,
-        }
-    }
-
-    pub const fn with_meta_unsized<M>() -> Self {
-        Self {
-            offset: Offset(size_of::<M>() as i32 + Self::SIZE as i32),
-            inner_size: 0,
-        }
-    }
-
-    pub const fn no_meta<T>() -> Self {
-        Self {
-            offset: Offset::new(size_of::<Self>() as i32),
-            inner_size: size_of::<T>() as u32,
-        }
-    }
-
-    pub const fn new_unsized() -> Self {
-        Self {
-            offset: Offset::new(size_of::<Self>() as i32),
-            inner_size: 0,
-        }
-    }
-
-    pub unsafe fn jump_aligned<T>(&self, ptr: Any) -> Any {
-        self.offset.add_aligned_to::<T>(ptr)
-    }
-}

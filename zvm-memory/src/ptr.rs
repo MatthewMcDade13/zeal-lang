@@ -7,7 +7,7 @@ use core::{
 
 use crate::{
     Byteable,
-    mem::{Anchor, ThinMem, WideMem},
+    mem::{RootWith, ThinMem, WideMem},
     ty::{ClassTag, Zallocator},
 };
 
@@ -418,10 +418,10 @@ where
     A: Zallocator,
 {
     pub const MIN_META_SIZE: usize = core::mem::size_of::<i32>();
-    pub const MIN_MEMORY_SIZE: usize = size_of::<Anchor>() + size_of::<isize>();
+    pub const MIN_MEMORY_SIZE: usize = size_of::<RootWith>() + size_of::<isize>();
 
     /// Byte offset from root poitner to begin of Metadata or pointee data
-    pub const OFFSET_ANCHOR: usize = size_of::<Anchor>();
+    pub const OFFSET_ANCHOR: usize = size_of::<RootWith>();
 
     // fn meta_begin()
 
@@ -435,8 +435,8 @@ where
     //     }
     // }
 
-    pub const fn anchor(&self) -> Anchor {
-        unsafe { self.root().cast::<Anchor>().read() }
+    pub const fn anchor(&self) -> RootWith {
+        unsafe { self.root().cast::<RootWith>().read() }
     }
 
     pub fn new(alloc: &A) -> Self {
@@ -519,16 +519,12 @@ where
         unsafe { crate::ptr::cast::to_any(self.inner_begin().add(1)) }
     }
 
-    pub const fn inner_size(&self) -> usize {
-        self.anchor().elem_len as usize
-    }
-
     // pub const fn meta_size() -> usize {
     //     core::cmp::max(Self::MIN_META_SIZE, size_of::<Self::Meta>())
     // }
 
-    pub const fn as_anchor(&self) -> NonNull<Anchor> {
-        self.root().cast::<Anchor>()
+    pub const fn as_anchor(&self) -> NonNull<RootWith> {
+        self.root().cast::<RootWith>()
     }
 
     pub const fn wide(self) -> Zptr<T, (), A> {
