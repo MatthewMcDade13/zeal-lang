@@ -12,4 +12,4 @@
     bytemuck::Zeroable,
 )]
 #[repr(transparent)]
-pub struct Opcode(u64);
+pub struct Opcode([u8; 4]);
