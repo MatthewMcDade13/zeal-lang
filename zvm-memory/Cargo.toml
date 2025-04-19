@@ -1,0 +1,8 @@
+[package]
+name = "zvm-memory"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { version = "1.0.98", default-features = false }
+bytemuck = { version = "1.22.0", default-features = false, features = ["align_offset", "alloc_uninit", "bytemuck_derive", "derive", "min_const_generics", "must_cast", "must_cast_extra", "nightly_docs", "pod_saturating", "transparentwrapper_extra", "unsound_ptr_pod_impl", "wasm_simd", "zeroable_atomics", "zeroable_maybe_uninit"] }
