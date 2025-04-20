@@ -1,18 +1,22 @@
-use std::{
+use core::{
+    marker::{PhantomData, PhantomPinned},
+    mem::ManuallyDrop,
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
 
 use anyhow::Context;
 
+/// non-owning slice, pointer + length
+// NOTE: May want to change this from a pointer to a handle... hmmm
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-pub struct RawSlice<T> {
+pub struct Slice<T> {
     begin: NonNull<T>,
     len: u32,
 }
 
-impl<T> RawSlice<T> {
+impl<T> Slice<T> {
     #[inline]
     pub fn new(begin: NonNull<T>, len: u32) -> anyhow::Result<Self> {
         Self::try_new(begin, len).context("Cannot create RawSlice of len 0!!!")
@@ -44,11 +48,11 @@ impl<T> RawSlice<T> {
     }
 
     pub const fn as_bytes(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.begin.as_ptr(), self.len as usize) }
+        unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len as usize) }
     }
 
     pub const fn as_bytes_mut(&mut self) -> &mut [T] {
-        unsafe { std::slice::from_raw_parts_mut(self.begin.as_ptr(), self.len as usize) }
+        unsafe { core::slice::from_raw_parts_mut(self.begin.as_ptr(), self.len as usize) }
     }
 
     pub const fn len(&self) -> usize {
@@ -60,7 +64,7 @@ impl<T> RawSlice<T> {
     }
 }
 
-impl<T> Deref for RawSlice<T> {
+impl<T> Deref for Slice<T> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
@@ -68,10 +72,58 @@ impl<T> Deref for RawSlice<T> {
     }
 }
 
-impl<T> DerefMut for RawSlice<T> {
+impl<T> DerefMut for Slice<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_bytes_mut()
     }
 }
 
-pub type RawBytes = RawSlice<u8>;
+pub type RawBytes = Slice<u8>;
+#[repr(transparent)]
+pub struct Own<T> {
+    ptr: NonNull<T>,
+    _pd: PhantomData<ManuallyDrop<T>>,
+}
+
+impl<T> Deref for Own<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.ptr.as_ref() }
+    }
+}
+
+impl<T> DerefMut for Own<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.ptr.as_mut() }
+    }
+}
+
+impl<T> Own<T> {
+    pub fn new(val: T) -> Self {
+        let ptr = unsafe {
+            let p = libc::calloc(1, size_of::<T>()).cast::<T>();
+            let p = NonNull::new(p).expect("Out of memory!!");
+            p.write(val);
+            p
+        };
+        Self {
+            ptr,
+            _pd: PhantomData,
+        }
+    }
+}
+
+impl<T> Drop for Own<T> {
+    fn drop(&mut self) {
+        unsafe { libc::free(self.ptr.as_ptr().cast::<libc::c_void>()) }
+    }
+}
+
+/// Owning pointer to contiguous block of T
+#[repr(C)]
+pub struct Chunk<T> {
+    begin: NonNull<T>,
+    cap: u32,
+    len: u32,
+}

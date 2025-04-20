@@ -1,26 +1,15 @@
-use std::{alloc::Layout, boxed::ThinBox, ptr::NonNull};
+use core::cell::UnsafeCell;
 
-use anyhow::Context;
-
-struct Meta {
-    rc: u32,
-}
-
-#[derive(Debug)]
 #[repr(C)]
-pub struct Bytes {
-    ptr: ThinBox<[u8]>,
+pub struct MemCell<T: ?Sized, Meta = ()> {
+    pub meta: Meta,
+    pub data: UnsafeCell<T>,
 }
 
-impl Bytes {
-    pub const fn layout_of(cap: usize) -> Layout {
-        match Layout::array::<u8>(cap) {
-            Ok(l) => l,
-            Err(_) => panic!("cannot create layout!"),
-        }
-    }
-    pub fn new(cap: usize) -> Self {
-        let ptr: ThinBox<[u8]> = ThinBox::new_unsize([]);
-        Self { ptr }
-    }
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct StackMeta {
+    prev: u32,
 }
+
+pub type StackCell<T> = MemCell<StackMeta, T>;
