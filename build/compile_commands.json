@@ -16,5 +16,11 @@
   "command": "clang++  -I/home/zzealot/sauce/priv/zeal-lang/libs/alloc/include -I/home/zzealot/sauce/priv/zeal-lang/libs/alloc/src -std=c++20 -Wall -Wextra -Wpedantic -Werror -o CMakeFiles/alloc.dir/src/lib.cpp.o -c /home/zzealot/sauce/priv/zeal-lang/libs/alloc/src/lib.cpp",
   "file": "/home/zzealot/sauce/priv/zeal-lang/libs/alloc/src/lib.cpp",
   "output": "libs/alloc/CMakeFiles/alloc.dir/src/lib.cpp.o"
+},
+{
+  "directory": "/home/zzealot/sauce/priv/zeal-lang/build/libs/runtime",
+  "command": "clang++  -I/home/zzealot/sauce/priv/zeal-lang/libs/runtime/include -I/home/zzealot/sauce/priv/zeal-lang/libs/runtime/src -std=c++20 -Wall -Wextra -Wpedantic -Werror -o CMakeFiles/runtime.dir/src/lib.cpp.o -c /home/zzealot/sauce/priv/zeal-lang/libs/runtime/src/lib.cpp",
+  "file": "/home/zzealot/sauce/priv/zeal-lang/libs/runtime/src/lib.cpp",
+  "output": "libs/runtime/CMakeFiles/runtime.dir/src/lib.cpp.o"
 }
 ]

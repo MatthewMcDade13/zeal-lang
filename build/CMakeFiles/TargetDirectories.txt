@@ -11,5 +11,8 @@
 /home/zzealot/sauce/priv/zeal-lang/build/libs/alloc/CMakeFiles/alloc.dir
 /home/zzealot/sauce/priv/zeal-lang/build/libs/alloc/CMakeFiles/edit_cache.dir
 /home/zzealot/sauce/priv/zeal-lang/build/libs/alloc/CMakeFiles/rebuild_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/runtime/CMakeFiles/runtime.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/runtime/CMakeFiles/edit_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/runtime/CMakeFiles/rebuild_cache.dir
 /home/zzealot/sauce/priv/zeal-lang/build/tests/CMakeFiles/edit_cache.dir
 /home/zzealot/sauce/priv/zeal-lang/build/tests/CMakeFiles/rebuild_cache.dir

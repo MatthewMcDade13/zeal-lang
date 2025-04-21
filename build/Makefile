@@ -155,6 +155,19 @@ alloc/fast:
 	$(MAKE) $(MAKESILENT) -f libs/alloc/CMakeFiles/alloc.dir/build.make libs/alloc/CMakeFiles/alloc.dir/build
 .PHONY : alloc/fast
 
+#=============================================================================
+# Target rules for targets named runtime
+
+# Build rule for target.
+runtime: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 runtime
+.PHONY : runtime
+
+# fast build rule for target.
+runtime/fast:
+	$(MAKE) $(MAKESILENT) -f libs/runtime/CMakeFiles/runtime.dir/build.make libs/runtime/CMakeFiles/runtime.dir/build
+.PHONY : runtime/fast
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -165,6 +178,7 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... alloc"
 	@echo "... core"
+	@echo "... runtime"
 	@echo "... zvm"
 .PHONY : help
 

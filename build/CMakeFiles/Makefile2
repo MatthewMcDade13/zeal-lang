@@ -92,21 +92,25 @@ clean: tests/clean
 # Recursive "all" directory target.
 libs/all: libs/core/all
 libs/all: libs/alloc/all
+libs/all: libs/runtime/all
 .PHONY : libs/all
 
 # Recursive "codegen" directory target.
 libs/codegen: libs/core/codegen
 libs/codegen: libs/alloc/codegen
+libs/codegen: libs/runtime/codegen
 .PHONY : libs/codegen
 
 # Recursive "preinstall" directory target.
 libs/preinstall: libs/core/preinstall
 libs/preinstall: libs/alloc/preinstall
+libs/preinstall: libs/runtime/preinstall
 .PHONY : libs/preinstall
 
 # Recursive "clean" directory target.
 libs/clean: libs/core/clean
 libs/clean: libs/alloc/clean
+libs/clean: libs/runtime/clean
 .PHONY : libs/clean
 
 #=============================================================================
@@ -146,6 +150,25 @@ libs/core/preinstall:
 # Recursive "clean" directory target.
 libs/core/clean: libs/core/CMakeFiles/core.dir/clean
 .PHONY : libs/core/clean
+
+#=============================================================================
+# Directory level rules for directory libs/runtime
+
+# Recursive "all" directory target.
+libs/runtime/all: libs/runtime/CMakeFiles/runtime.dir/all
+.PHONY : libs/runtime/all
+
+# Recursive "codegen" directory target.
+libs/runtime/codegen: libs/runtime/CMakeFiles/runtime.dir/codegen
+.PHONY : libs/runtime/codegen
+
+# Recursive "preinstall" directory target.
+libs/runtime/preinstall:
+.PHONY : libs/runtime/preinstall
+
+# Recursive "clean" directory target.
+libs/runtime/clean: libs/runtime/CMakeFiles/runtime.dir/clean
+.PHONY : libs/runtime/clean
 
 #=============================================================================
 # Directory level rules for directory src
@@ -193,7 +216,7 @@ src/CMakeFiles/zvm.dir/all: libs/core/CMakeFiles/core.dir/all
 src/CMakeFiles/zvm.dir/all: libs/alloc/CMakeFiles/alloc.dir/all
 	$(MAKE) $(MAKESILENT) -f src/CMakeFiles/zvm.dir/build.make src/CMakeFiles/zvm.dir/depend
 	$(MAKE) $(MAKESILENT) -f src/CMakeFiles/zvm.dir/build.make src/CMakeFiles/zvm.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles --progress-num=5,6 "Built target zvm"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles --progress-num=7,8 "Built target zvm"
 .PHONY : src/CMakeFiles/zvm.dir/all
 
 # Build rule for subdir invocation for target.
@@ -210,7 +233,7 @@ zvm: src/CMakeFiles/zvm.dir/rule
 # codegen rule for target.
 src/CMakeFiles/zvm.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f src/CMakeFiles/zvm.dir/build.make src/CMakeFiles/zvm.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles --progress-num=5,6 "Finished codegen for target zvm"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles --progress-num=7,8 "Finished codegen for target zvm"
 .PHONY : src/CMakeFiles/zvm.dir/codegen
 
 # clean rule for target.
@@ -281,6 +304,38 @@ libs/alloc/CMakeFiles/alloc.dir/codegen:
 libs/alloc/CMakeFiles/alloc.dir/clean:
 	$(MAKE) $(MAKESILENT) -f libs/alloc/CMakeFiles/alloc.dir/build.make libs/alloc/CMakeFiles/alloc.dir/clean
 .PHONY : libs/alloc/CMakeFiles/alloc.dir/clean
+
+#=============================================================================
+# Target rules for target libs/runtime/CMakeFiles/runtime.dir
+
+# All Build rule for target.
+libs/runtime/CMakeFiles/runtime.dir/all:
+	$(MAKE) $(MAKESILENT) -f libs/runtime/CMakeFiles/runtime.dir/build.make libs/runtime/CMakeFiles/runtime.dir/depend
+	$(MAKE) $(MAKESILENT) -f libs/runtime/CMakeFiles/runtime.dir/build.make libs/runtime/CMakeFiles/runtime.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles --progress-num=5,6 "Built target runtime"
+.PHONY : libs/runtime/CMakeFiles/runtime.dir/all
+
+# Build rule for subdir invocation for target.
+libs/runtime/CMakeFiles/runtime.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles 2
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 libs/runtime/CMakeFiles/runtime.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles 0
+.PHONY : libs/runtime/CMakeFiles/runtime.dir/rule
+
+# Convenience name for target.
+runtime: libs/runtime/CMakeFiles/runtime.dir/rule
+.PHONY : runtime
+
+# codegen rule for target.
+libs/runtime/CMakeFiles/runtime.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f libs/runtime/CMakeFiles/runtime.dir/build.make libs/runtime/CMakeFiles/runtime.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles --progress-num=5,6 "Finished codegen for target runtime"
+.PHONY : libs/runtime/CMakeFiles/runtime.dir/codegen
+
+# clean rule for target.
+libs/runtime/CMakeFiles/runtime.dir/clean:
+	$(MAKE) $(MAKESILENT) -f libs/runtime/CMakeFiles/runtime.dir/build.make libs/runtime/CMakeFiles/runtime.dir/clean
+.PHONY : libs/runtime/CMakeFiles/runtime.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.
