@@ -1,0 +1,15 @@
+/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles/edit_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/CMakeFiles/rebuild_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/src/CMakeFiles/zvm.dir
+/home/zzealot/sauce/priv/zeal-lang/build/src/CMakeFiles/edit_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/src/CMakeFiles/rebuild_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/CMakeFiles/edit_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/CMakeFiles/rebuild_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/core/CMakeFiles/core.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/core/CMakeFiles/edit_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/core/CMakeFiles/rebuild_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/alloc/CMakeFiles/alloc.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/alloc/CMakeFiles/edit_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/libs/alloc/CMakeFiles/rebuild_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/tests/CMakeFiles/edit_cache.dir
+/home/zzealot/sauce/priv/zeal-lang/build/tests/CMakeFiles/rebuild_cache.dir

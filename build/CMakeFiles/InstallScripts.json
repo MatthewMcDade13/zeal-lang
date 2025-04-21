@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/zzealot/sauce/priv/zeal-lang/build/cmake_install.cmake",
+		"/home/zzealot/sauce/priv/zeal-lang/build/src/cmake_install.cmake",
+		"/home/zzealot/sauce/priv/zeal-lang/build/libs/cmake_install.cmake",
+		"/home/zzealot/sauce/priv/zeal-lang/build/libs/core/cmake_install.cmake",
+		"/home/zzealot/sauce/priv/zeal-lang/build/libs/alloc/cmake_install.cmake",
+		"/home/zzealot/sauce/priv/zeal-lang/build/tests/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

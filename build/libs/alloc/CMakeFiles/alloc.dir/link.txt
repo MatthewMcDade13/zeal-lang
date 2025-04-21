@@ -1,0 +1,2 @@
+/sbin/ar qc liballoc.a CMakeFiles/alloc.dir/src/lib.cpp.o
+/sbin/ranlib liballoc.a

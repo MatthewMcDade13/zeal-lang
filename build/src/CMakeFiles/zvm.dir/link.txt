@@ -1,0 +1,1 @@
+clang++ -Wl,--dependency-file=CMakeFiles/zvm.dir/link.d CMakeFiles/zvm.dir/main.cpp.o -o zvm  ../libs/core/libcore.a ../libs/alloc/liballoc.a
