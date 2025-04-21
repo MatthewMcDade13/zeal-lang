@@ -6,6 +6,7 @@ use core::{alloc::GlobalAlloc, sync::atomic::AtomicU32};
 extern crate alloc;
 
 pub mod buff;
+pub mod bytes;
 pub mod mem;
 pub mod ptr;
 pub mod stack;

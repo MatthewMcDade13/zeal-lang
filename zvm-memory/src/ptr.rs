@@ -79,10 +79,18 @@ impl<T> DerefMut for Slice<T> {
 }
 
 pub type RawBytes = Slice<u8>;
+
 #[repr(transparent)]
-pub struct Own<T> {
+pub struct Own<T: ?Sized> {
     ptr: NonNull<T>,
-    _pd: PhantomData<ManuallyDrop<T>>,
+    _pd: PhantomData<T>,
+}
+
+impl<T> Clone for Own<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        unsafe { Self::new(self.ptr.read()) }
+    }
 }
 
 impl<T> Deref for Own<T> {
@@ -114,16 +122,11 @@ impl<T> Own<T> {
     }
 }
 
-impl<T> Drop for Own<T> {
+impl<T> Drop for Own<T>
+where
+    T: ?Sized,
+{
     fn drop(&mut self) {
         unsafe { libc::free(self.ptr.as_ptr().cast::<libc::c_void>()) }
     }
-}
-
-/// Owning pointer to contiguous block of T
-#[repr(C)]
-pub struct Chunk<T> {
-    begin: NonNull<T>,
-    cap: u32,
-    len: u32,
 }
