@@ -6,8 +6,12 @@ project('zeal', 'c',
 subdir('ast')
 subdir('core')
 
+root_includes = include_directories('.')
+root_sources = ['main.c']
 
-exe = executable('zeal', 'main.c',
+exe = executable('zeal', 
+  root_sources,
+  include_directories : root_includes,
   install : true,
   dependencies : [ast_dep, core_dep]
 )

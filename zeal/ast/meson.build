@@ -1,6 +1,6 @@
 
 ast_includes = include_directories('inc')
-ast_sources = ['ast.c']
+ast_sources = ['ast.c', 'token.c', 'parse.c']
 
 astlib = library('zeal-ast',
   ast_sources,
