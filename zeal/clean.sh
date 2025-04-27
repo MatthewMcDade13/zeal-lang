@@ -1,0 +1,4 @@
+
+
+
+rm -rf ./builddir 
