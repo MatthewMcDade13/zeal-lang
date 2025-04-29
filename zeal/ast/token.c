@@ -13,45 +13,45 @@ const char FUNCTION[] = "function";
  const char STRUCT[] = "struct";
  const char IF[] = "if";
  const char ELSE[] = "else";
- const char RETURN[];
- const char IFELSE[];
- const char WHEN[]; 
- const char MATCH[];
- const char CONST[];
- const char LET[];
- const char MUT[];
- const char PUB[];
-extern const char FOR[];
-extern const char FOREACH[];
-extern const char WHILE[];
-extern const char NOT[];
-extern const char AND[];
-extern const char OR[];
-extern const char THEN[];
-extern const char NEWTYPE[];
-extern const char MODULE[];
-extern const char TRAIT[];
+ const char RETURN[] = "return";
+ const char ELSEIF[] = "elseif";
+ const char WHEN[] = "when"; 
+ const char MATCH[] = "match";
+ const char CONST[] = "const";
+ const char LET[] = "let";
+ const char MUT[] = "mut";
+ const char PUB[] = "pub";
+ const char FOR[] = "for";
+ const char FOREACH[] = "foreach";
+ const char WHILE[] = "while";
+ const char NOT[] = "not";
+ const char AND[] = "and";
+ const char OR[] = "or";
+ const char THEN[] = "then";
+ const char NEWTYPE[] = "newtype";
+ const char MODULE[] = "mod";
+ const char TRAIT[] = "trait";
 
-extern const char RIGHT_FAT_ARROW[];
-extern const char RIGHT_ARROW[];
+ const char RIGHT_FAT_ARROW[] = "=>";
+ const char RIGHT_ARROW[] = "->";
 
-extern const char OPEN_PAREN;
-extern const char CLOSE_PAREN;
+ const char OPEN_PAREN = '(';
+ const char CLOSE_PAREN = ')';
 
-extern const char OPEN_BRACE;
-extern const char CLOSE_BRACE;
+ const char OPEN_BRACE = '[';
+ const char CLOSE_BRACE = ']';
 
-extern const char OPEN_CURLY;
-extern const char CLOSE_CURLY;
+ const char OPEN_CURLY = '{';
+ const char CLOSE_CURLY = '}';
 
-extern const char GT;
-extern const char GTE[];
-extern const char LT;
-extern const char LTE[];
+ const char GT = '>';
+ const char GTE[] = ">=";
+ const char LT = '<';
+ const char LTE[] = "<=";
 
-extern const char ADD;
-extern const char SUB;
-extern const char DIV;
-extern const char MUL;
-extern const char MODULO;
-
+ const char PLUS = '+';
+ const char MINUS = '-';
+ const char FORWARD_SLASH = '/';
+ const char STAR = '*';
+ const char PERCENT = '%';
+ 

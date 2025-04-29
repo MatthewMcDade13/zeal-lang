@@ -1,8 +1,7 @@
 #pragma once
 
 
-void token(void);
-
+typedef struct TokBuffer TokBuffer;
 
 extern const char FUNCTION[];
 extern const char FN[];
@@ -48,9 +47,9 @@ extern const char GTE[];
 extern const char LT;
 extern const char LTE[];
 
-extern const char ADD;
-extern const char SUB;
-extern const char DIV;
-extern const char MUL;
-extern const char MODULO;
+extern const char PLUS;
+extern const char MINUS;
+extern const char FORWARD_SLASH;
+extern const char STAR;
+extern const char PERCENT;
 
