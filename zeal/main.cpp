@@ -1,4 +1,5 @@
 #include <iostream>
+#include "zast/incl/ast.h"
 #include "zbytecode/incl/lib.h"
 #include "zcore/incl/lib.h"
 #include "zvm/incl/lib.h"
@@ -14,6 +15,7 @@ int main(int argc, char **argv) {
     zeal::core::zcore();
     zeal::bc::bytecode();
     zeal::zvm::zvm();
+    zeal::ast::ast();
 
     return 0;
 }

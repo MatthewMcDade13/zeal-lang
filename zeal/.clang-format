@@ -1,0 +1,18 @@
+---
+BasedOnStyle: LLVM
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Inline
+ColumnLimit: 80
+NamespaceIndentation: None
+PointerAlignment: Left
+SpacesInParentheses: false
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: true
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+SortIncludes: true
+IndentCaseLabels: true
+...

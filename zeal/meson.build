@@ -22,11 +22,13 @@ main_sources = files('main.cpp')
 subdir('zcore')
 subdir('zbytecode')
 subdir('zvm')
+subdir('zast')
 
 
 exe = executable('zeal',
   main_sources,
-  link_with: [libzcore, libzvm, libzbytecode],
+  dependencies: [depzcore, depzvm, depzbytecode, depzast],
+  link_with: [libzcore, libzvm, libzbytecode, ],
   install : true
 )
 
