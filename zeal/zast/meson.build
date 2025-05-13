@@ -1,12 +1,12 @@
 zast_includes = include_directories('incl')
 
-zast_sources = files('ast.cpp')
+zast_sources = files('ast.cpp', 'lex.cpp')
 
 
 libzast = library('zast',
   zast_sources,
   include_directories: zast_includes,
-  dependencies: [depzcore ],
+  dependencies: [depzcore],
   install: true
 )
 

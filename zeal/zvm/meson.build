@@ -1,6 +1,6 @@
 zvm_includes = include_directories('incl')
 
-zvm_sources = files('lib.cpp')
+zvm_sources = files('zvm.cpp')
 
 
 libzvm = library('zvm',

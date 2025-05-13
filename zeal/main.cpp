@@ -11,7 +11,10 @@ int main(int argc, char **argv) {
         std::cout << argv[0] <<  "takes no arguments.\n";
         return 1;
     }
-    std::cout << "This is project AYYYYLMEOOOOO " << PROJECT_NAME << ".\n";
+
+
+
+    
     zeal::core::zcore();
     zeal::bc::bytecode();
     zeal::zvm::zvm();

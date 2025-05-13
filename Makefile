@@ -1,4 +1,7 @@
 # Makefile for a Meson-based C++ project
+#
+# TODO: The paths for meson commands needs some work, and i dont
+# feel like playing with Makefiles rn...
 
 # Variables
 # Build directory (default is 'builddir')
@@ -17,7 +20,9 @@ all: build
 setup-dev:
 	@if [ ! -d "$(BUILD_DEBUG)" ]; then \
 		echo "Configuring  Meson Debug project in $(BUILD_DEBUG)..."; \
+		pushd ./zeal \
 		meson setup $(BUILD_DEBUG); \
+		popd \
 	else \
 		echo "Build directory $(BUILD_DEBUG) already exists. Skipping Debug configure."; \
 		echo "Run 'make setup-dev' to force reconfiguration."; \
@@ -33,7 +38,7 @@ reconfigure-dev:
 build-dev:
 	@if [ ! -d "$(BUILD_DEBUG)" ]; then \
 		echo "Debug Build directory not found. Running 'make setup-dev' first..."; \
-		make configure; \
+		make setup-dev; \
 	fi
 	@echo "Building Debug project in $(BUILD_DEBUG)..."
 	meson compile -C $(BUILD_DEBUG)

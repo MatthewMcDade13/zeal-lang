@@ -3,17 +3,15 @@ Zeal Programming Language.
 
 #### Goals
 - Syntax is lua-ish in ml style 
-- Native embedable Rust bindings.
-- Unobstructive Static Typing (somewhat similar to Go) 
+- Inferred static types, dynamic types are possible, but compiler and runtime try to avoid it.
 - JIT or AOT compilation 
 - Module System
 - documentation generation and typespecs similar to RustDoc or Elixir's @doc 
 - Runtime AST and compile time macros
 - package manager & cli tool for Zeal (simliar to npm/cargo, name tentative)
 - Structs, no classes
-- Traits: Something between Rust and Go 
-- Pattern matching / Destructuring
-
+- Traits: Something between Rust and Go, or at least Behaviors like Elixir
+- Pattern matching / Destructuring (thats gunna be a while before this is impled lol)
 - Optional Types (nil exists but I may remove it in favor of optional types, nonetheless Optional types will be a feature no matter what)
 - Pipe operator
 - Pass instance to method function automatically (instance.method() and method(instance) are both legal syntax and express the same method/function call)
@@ -29,9 +27,8 @@ Zeal Programming Language.
 - const :: Does not allow rebinding, or reassignment, unique identifier in current scope. 
 
 #### Compile Targets
-- ECMAScrit/WebAssembly
+- ECMAScript/WebAssembly
 - LLVM:
-- [Mu Micro Virtual Machine](https://microvm.github.io/)  
 - ZealVM
 
 
@@ -58,3 +55,17 @@ end
 
 `
 
+
+## Installing
+- Because of ABI weirdness, its best if you compile Zeal binaries from scratch with clang/LLVM.
+
+#### Install req
+- clang++ >= 19
+- llvm >= 19
+- meson >= 1.6.1
+
+```bash
+  make setup
+  make build
+  
+```
