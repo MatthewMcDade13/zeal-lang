@@ -14,33 +14,30 @@ namespace zeal::core {
 
 
 struct BoxStr {
-  const std::shared_ptr<const u8[]> bytes{nullptr};
-  const usize len{0};
-
-  constexpr BoxStr(std::shared_ptr<const u8[]> sptr = nullptr, usize inlen = 0) noexcept: bytes(sptr), len(inlen) {}
+  const std::shared_ptr<const char[]> bytes{nullptr};
+  constexpr BoxStr(std::shared_ptr<const char[]> sptr = nullptr) noexcept: bytes(sptr) {}
 
   /// Ad-Hoc move constructor from string.
   static constexpr BoxStr from_string(std::string&& string) noexcept {
     auto s = reinterpret_cast<char*>(new u8[string.size()]());
     std::strcpy(s, string.c_str());
     auto _ = std::move(string);
-    const u8* res = reinterpret_cast<u8*>(s);
-    return BoxStr(std::shared_ptr<const u8[]>(res), string.size());
+    return BoxStr(std::shared_ptr<const char[]>(s));
   }
 
 
   static BoxStr create(const std::string_view sv) {
-    auto buf = new u8[sv.size()]();
-    std::memcpy(buf, sv.data(), sv.size());
-    auto bptr = std::shared_ptr<const u8[]>(buf);    
-    return BoxStr(bptr, sv.size());
+    auto buf = new char[sv.size()]();
+    std::strcpy(buf, sv.data());
+    auto bptr = std::shared_ptr<const char[]>(buf);    
+    return BoxStr(bptr);
 
   }
 
   
 
   constexpr bool is_empty() const noexcept {
-    return nullptr != bytes && len > 0;
+    return nullptr != bytes;
   }
 
   constexpr bool has_some() const noexcept {
@@ -51,15 +48,17 @@ struct BoxStr {
    if (this->is_empty()) return {};
 
    auto ptr = (const char*)this->bytes.get();
-   return std::string_view{ptr, this->len}; 
+   return std::string_view{ptr }; 
   }
 
-  constexpr std::span<const u8> as_span() const noexcept {
+   std::span<const char> as_span() const noexcept {
     if (this->is_empty()) return {}; 
-    return std::span{this->bytes.get(), this->len};
+    const auto len = std::strlen(this->bytes.get());
+    return std::span{this->bytes.get(), len };
   }
 
 };
+
 
 /// Unique(ish) String.
 /// Runes are not guaranteed to be runtime unique, but there is
@@ -69,15 +68,21 @@ struct BoxStr {
 /// of readonly pinned memory)
 struct Rune {
 
-  static constexpr const usize MAX_LEN = sizeof(size_t) * 3;
+  static constexpr const usize MAX_LEN = 16;
 
   using Empty = std::monostate;
-  using SubString = std::span<const u8>;
+  using SubString = std::string_view;
   using Inline = std::array<u8, MAX_LEN>;
-  using Inner = std::variant<Empty, Inline, BoxStr, SubString>;
+  using Inner = std::variant< Inline, BoxStr, SubString>;
   using Self = Rune;
 
- constexpr Rune() noexcept : _buf(Empty()) {}
+  
+  // union {
+  //  std::array<u8, MAX_LEN> small; 
+  //  BoxStr large; 
+  // } _buf;
+
+ constexpr Rune() noexcept : _buf() {}
 
   // String(std::array<u8, )
 

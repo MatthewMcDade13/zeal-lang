@@ -27,7 +27,9 @@ namespace zeal::core {
   template<typename T>
   struct ArcBuf {
 
-    using Type = std::shared_ptr<T[]>;
+    using Inner = std::shared_ptr<T[]>;
+
+    Inner ptr;
 
 
   };
