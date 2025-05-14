@@ -19,8 +19,6 @@ template <usize Size> struct Stack {
     std::memcpy(top, data, size_bytes);
     this->memory[top_slot + size_bytes + 1] = this->top_slot;
 
-    // auto* top = this->
-    // std::memcpy()
   }
 
   template <typename T> std::optional<T*> peek_top() {
