@@ -1,6 +1,6 @@
 bytecode_includes = include_directories('incl')
 
-bytecode_sources = files('lib.cpp')
+bytecode_sources = files('lib.cpp', 'bc.cpp')
 
 
 libzbytecode = library('zbytecode',

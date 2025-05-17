@@ -23,12 +23,13 @@ subdir('zcore')
 subdir('zbytecode')
 subdir('zvm')
 subdir('zast')
+subdir('llvmc')
 
 
 exe = executable('zeal',
   main_sources,
-  dependencies: [depzcore, depzvm, depzbytecode, depzast],
-  link_with: [libzcore, libzvm, libzbytecode, ],
+  dependencies: [depzcore, depzvm, depzbytecode, depzast, depllvmc],
+  link_with: [libzcore, libzvm, libzbytecode, libllvmc],
   install : true
 )
 

@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "rune.h"
+#include "rcbuf.h"
 #include <cassert>
 namespace zeal::ast {
 
@@ -189,8 +190,8 @@ namespace lex {
 
   // using LexResult = std::variant<std::monostate, ArcVec<Token>, ArcVec<LexError>>; 
   
-  ArcVec<Token> tokenize(std::string_view source_file);
-  ArcVec<Token> tokenize_memory(std::string_view source_memory);
+  std::optional<core::RcArray<Token>> tokenize(const std::string& source_file);
+  std::optional<core::RcArray<Token>> tokenize_memory(std::string_view source_memory);
 }
 
 

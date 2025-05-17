@@ -3,11 +3,13 @@
 #include "common.h"
 #include "rune.h"
 #include "slice.h"
+#include <any>
 namespace zeal::core {
 
 struct Value final {
 
-
+  struct None final {};
+  struct Struct final {};
 
   enum class Type : u8 {
     Uninit,
@@ -15,25 +17,26 @@ struct Value final {
     Byte,
     Character,
     Int32,
-    Float32,
     Int64,
+    Float32,
     Float64,
     Rune,
     String,
     List,
+    Pointer,
+    HashMap,
   };
 
-  Value();
-  Value(byte b);
-  Value(char c);
-  Value(i32 int32_in);
-  Value(i64 int64_in);
-  Value(f32 float32_in);
-  Value(f64 float64_in);
-  Value(Rune r);
-  Value(BoxStr bs);
-  Value(Slice<Value> list_in);
-
+  constexpr Value(): data(std::monostate()) {}
+  constexpr Value(byte b): data(b) {}
+  constexpr Value(char c): data(c) {}
+  constexpr Value(i32 int32_in): data(int32_in) {}
+  constexpr Value(i64 int64_in): data(int64_in) {}
+  constexpr Value(f32 float32_in): data(float32_in) {}
+  constexpr Value(f64 float64_in): data(float64_in) {}
+  constexpr Value(Rune r): data(r) {}
+  constexpr Value(BoxStr bs): data(bs) {}
+  constexpr Value(Slice<Value> list_in): data(list_in) {}
   Value(std::vector<Value>&& list_in);
 
   Value(const Value& other);
@@ -41,10 +44,16 @@ struct Value final {
   Value& operator=(const Value& other);
   Value& operator=(Value&& other);
 
-  ~Value();
 
   constexpr Type get_type() const noexcept {
-    return this->type;
+
+    static constexpr Type TYPE_INDEX[] = {
+        Type::Uninit, Type::Byte,    Type::Character, Type::Int32,
+        Type::Int64,  Type::Float32, Type::Float64,   Type::Rune,
+        Type::String, Type::List,    Type::Pointer, Type::HashMap};
+
+    const auto index = this->data.index();
+    return TYPE_INDEX[index];
   }
 
   static Value make_rune(const std::string& rune);
@@ -66,7 +75,7 @@ struct Value final {
   f32 expect_float32() const;
   f64 expect_float64() const;
   Rune expect_rune() const;
-  Slice<Value> expect_list()  const;
+  Slice<Value> expect_list() const;
 
   bool try_set_byte(byte b) noexcept;
   bool try_set_character(char c) noexcept;
@@ -100,19 +109,10 @@ struct Value final {
   void reset();
 
 private:
-  union {
-    byte byte;
-    char character;
-    i32 int32;
-    i64 int64;
-    f32 float32;
-    f64 float64;
-    Rune rune;
-    BoxStr string;
-    Slice<Value> list;
-  } data;
-
-  Type type = Type::Uninit;
+  using OptPointer = std::optional<std::shared_ptr<Value>>;
+  std::variant<std::monostate, None, byte, char, i32, i64, f32, f64, Rune,
+               BoxStr, Slice<Value>, Struct, std::any*>
+      data;
 };
 
 } // namespace zeal::core

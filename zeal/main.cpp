@@ -1,8 +1,9 @@
 #include <iostream>
+#include "llvmc/incl/llvmc.h"
 #include "zast/incl/ast.h"
 #include "zbytecode/incl/lib.h"
 #include "zcore/incl/lib.h"
-#include "zvm/incl/lib.h"
+// #include "zvm/incl/lib.h"
 
 #define PROJECT_NAME "zeal"
 
@@ -17,8 +18,9 @@ int main(int argc, char **argv) {
     
     zeal::core::zcore();
     zeal::bc::bytecode();
-    zeal::zvm::zvm();
+    // zeal::zvm::zvm();
     zeal::ast::ast();
+    zeal::llvm::llvmc();
 
     return 0;
 }

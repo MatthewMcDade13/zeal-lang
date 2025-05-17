@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <span>
@@ -14,6 +15,7 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <expected>
 
 namespace zeal {
 using u8 = uint8_t;
@@ -30,8 +32,7 @@ using isize = long;
 using f32 = float;
 using f64 = double;
 
-template<typename T>
-using Opt = std::optional<T>;
+template <typename T> using Opt = std::optional<T>;
 
 template <typename T> using slice = std::span<const T>;
 
@@ -51,5 +52,12 @@ template <typename T> using Box = std::unique_ptr<T>;
 
 template <typename T> using ArcVec = std::shared_ptr<T[]>;
 
+struct ErrorInfo {
+  i32 error_code;
+  char message[255];  
+};
+
+template <typename T>
+using Result = std::expected<std::reference_wrapper<T>, ErrorInfo>;
 
 } // namespace zeal

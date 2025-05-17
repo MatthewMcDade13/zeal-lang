@@ -1,13 +1,18 @@
 #include "zvm.h"
+#include "value.h"
 #include <iostream>
 
 namespace zeal::zvm {
 
 
 
-struct Zvm {
-  
-};
+
+// struct Zvm {
+
+// private:
+//   std::array<core::Value, ZVM_RUNTIME_STACK_SIZE> stack;
+//   usize stack_top;
+// };
 
 
 Zvm* zvm_create_instance(Zvm_InitConfig config) {

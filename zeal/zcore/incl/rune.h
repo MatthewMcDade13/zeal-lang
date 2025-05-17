@@ -8,14 +8,12 @@
 #include <string_view>
 #include <variant>
 
-
-
 namespace zeal::core {
-
 
 struct BoxStr {
   const std::shared_ptr<const char[]> bytes{nullptr};
-  constexpr BoxStr(std::shared_ptr<const char[]> sptr = nullptr) noexcept: bytes(sptr) {}
+  constexpr BoxStr(std::shared_ptr<const char[]> sptr = nullptr) noexcept
+      : bytes(sptr) {}
 
   /// Ad-Hoc move constructor from string.
   static constexpr BoxStr from_string(std::string&& string) noexcept {
@@ -25,40 +23,32 @@ struct BoxStr {
     return BoxStr(std::shared_ptr<const char[]>(s));
   }
 
-
   static BoxStr create(const std::string_view sv) {
     auto buf = new char[sv.size()]();
     std::strcpy(buf, sv.data());
-    auto bptr = std::shared_ptr<const char[]>(buf);    
+    auto bptr = std::shared_ptr<const char[]>(buf);
     return BoxStr(bptr);
-
   }
 
-  
+  constexpr bool is_empty() const noexcept { return nullptr != bytes; }
 
-  constexpr bool is_empty() const noexcept {
-    return nullptr != bytes;
-  }
-
-  constexpr bool has_some() const noexcept {
-    return !is_empty();
-  }
+  constexpr bool has_some() const noexcept { return !is_empty(); }
 
   constexpr std::string_view as_view() const noexcept {
-   if (this->is_empty()) return {};
+    if (this->is_empty())
+      return {};
 
-   auto ptr = (const char*)this->bytes.get();
-   return std::string_view{ptr }; 
+    auto ptr = (const char*) this->bytes.get();
+    return std::string_view{ptr};
   }
 
-   std::span<const char> as_span() const noexcept {
-    if (this->is_empty()) return {}; 
+  std::span<const char> as_span() const noexcept {
+    if (this->is_empty())
+      return {};
     const auto len = std::strlen(this->bytes.get());
-    return std::span{this->bytes.get(), len };
+    return std::span{this->bytes.get(), len};
   }
-
 };
-
 
 /// Unique(ish) String.
 /// Runes are not guaranteed to be runtime unique, but there is
@@ -73,22 +63,21 @@ struct Rune {
   using Empty = std::monostate;
   using SubString = std::string_view;
   using Inline = std::array<u8, MAX_LEN>;
-  using Inner = std::variant< Inline, BoxStr, SubString>;
+  using Inner = std::variant<Empty, Inline, BoxStr, SubString>;
   using Self = Rune;
 
-  
   // union {
-  //  std::array<u8, MAX_LEN> small; 
-  //  BoxStr large; 
+  //  std::array<u8, MAX_LEN> small;
+  //  BoxStr large;
   // } _buf;
 
- constexpr Rune() noexcept : _buf() {}
+  constexpr Rune() noexcept : _buf() {}
 
   // String(std::array<u8, )
 
   [[nodiscard]]
   static Rune from(std::string_view src) {
-    const auto strlen = src.size();    
+    const auto strlen = src.size();
 
     if (strlen == 0)
       return Rune();
@@ -97,41 +86,44 @@ struct Rune {
       auto bs = BoxStr::from_string(std::move(sbuf));
       return Rune(std::move(bs));
     } else {
-      Inline arr{}; 
+      Inline arr{};
       std::memcpy(arr.data(), src.cbegin(), std::min(src.size(), MAX_LEN));
       return Rune(arr);
     }
   }
 
   [[nodiscard]]
-  const char& operator[](const usize index) const & noexcept {  
+  const char& operator[](const usize index) const& noexcept {
 
     if (index >= MAX_LEN || index >= sview().size()) {
-     constexpr static const char space{' '}; 
-     return space;
+      constexpr static const char space{' '};
+      return space;
     } else {
       return sview()[index];
     }
   }
 
+  [[nodiscard]]
+  static constexpr Rune make_default() noexcept {
+    return {};
+  }
 
   [[nodiscard]]
-  static constexpr Rune make_default() noexcept { return {}; }
-
-  [[nodiscard]]
-  static constexpr Rune none() noexcept { return Rune::make_default(); } 
+  static constexpr Rune none() noexcept {
+    return Rune::make_default();
+  }
 
   [[nodiscard]]
   constexpr std::string_view sview() const noexcept {
     if (auto* res = std::get_if<BoxStr>(&_buf)) {
       return res->as_view();
     } else if (auto res = std::get_if<SubString>(&_buf)) {
-      return std::string_view{(const char*)res->data(), res->size()};
+      return std::string_view{(const char*) res->data(), res->size()};
     } else if (auto res = std::get_if<Inline>(&_buf)) {
       return std::string_view{(const char*) res->data(), res->size()};
     } else {
       using std::operator""sv;
-      return ""sv;      
+      return ""sv;
     }
   }
 
@@ -139,30 +131,23 @@ struct Rune {
   [[nodiscard]] constexpr std::optional<const char*> data() const noexcept {
     const auto view = this->sview();
     if (view.size() > 0 && view.data() != nullptr) {
-     return view.data(); 
+      return view.data();
     } else {
       return std::nullopt;
     }
   }
 
-  constexpr operator std::string_view() const noexcept {
-    return this->sview();
-  }
-
+  constexpr operator std::string_view() const noexcept { return this->sview(); }
 
 private:
+  Rune(BoxStr&& string) : _buf(std::move(string)) {}
+  Rune(SubString sub) : _buf(sub) {}
+  Rune(Inline arr) : _buf(arr) {}
 
-
-  Rune(BoxStr&& string): _buf(std::move(string)) {}
-  Rune(SubString sub): _buf(sub) {}
-  Rune(Inline arr): _buf(arr) {}
-
-  
   /// Reference to the root of an allocated string (std::shared_ptr<const u8[]>
   /// OR std::array<u8, MAX_LEN - 1>)
   Inner _buf;
 };
-
 
 namespace traits {
 
@@ -180,5 +165,4 @@ concept Runic = (requires (T a) {
 
 } // namespace traits
 
-  
-}
+} // namespace zeal::core
