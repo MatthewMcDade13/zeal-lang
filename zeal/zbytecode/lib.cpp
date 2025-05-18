@@ -1,8 +1,10 @@
 #include "incl/lib.h"
 #include <iostream>
+#include <plog/Log.h>
 
 namespace zeal::bc {
   void bytecode() {
-    std::cout << "hello from zbytecode!\n";
+
+    PLOGD << "Hello from zeal core!!";
   }
 }

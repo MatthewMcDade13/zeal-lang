@@ -18,11 +18,15 @@ main_sources = files('main.cpp')
 # test('basic', exe)
 
 
+subdir('libs')
+
+
+
 subdir('zcore')
 subdir('zbytecode')
 subdir('zvm')
 subdir('zast')
-subdir('libs')
+
 
 
 exe = executable('zeal',

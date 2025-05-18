@@ -1,10 +1,10 @@
 #include "incl/lib.h"
-#include <iostream>
+#include <plog/Log.h>
 
 namespace zeal::core {
 
   void zcore() {
-    std::cout << "Hello from zcore!\n";
+    PLOGD << "Hello from zeal core!!";
   } 
 }
 

@@ -1,10 +1,11 @@
 #include "incl/ast.h"
 #include <cassert>
 #include <iostream>
+#include "plog/Log.h"
 
 namespace zeal::ast {
 void ast() {
-  std::cout << "hello from ast!\n";
+  PLOGD << "Hello from ZAST!";
 }
 
 AstNode& AstList::operator[](usize index) {

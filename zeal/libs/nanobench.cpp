@@ -1,1 +1,6 @@
-#include "incl/nanobench.h"
+
+#define ANKERL_NANOBENCH_IMPLEMENT
+#include "nanobench.h"
+
+
+

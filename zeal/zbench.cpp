@@ -1,22 +1,18 @@
-#include <iostream>
-#include "zast/incl/ast.h"
-#include "zbytecode/incl/lib.h"
-#include "zcore/incl/lib.h"
+#include <nanobench.h>
 
-#define PROJECT_NAME "zeal"
+#include <atomic>
+#include <cassert>
 
-int main(int argc, char **argv) {
-    if(argc != 1) {
-        std::cout << argv[0] <<  "takes no arguments.\n";
-        return 1;
-    }
+int main() {
+    int y = 0;
 
+    std::atomic<int> x(0);
 
+    ankerl::nanobench::Bench().run("compare_exchange_strong", [&] {
+        // zeal::core::BoxStr a = zeal::core::BoxStr::create("testing123lol");
+        // assert(a.as_view() == "testing123lol");
 
-    
-    zeal::core::zcore();
-    zeal::bc::bytecode();
-    zeal::ast::ast();
-
-    return 0;
+        // std::cout << (std::string(a.as_view())) << "\n";
+        x.compare_exchange_strong(y, 0);
+    });
 }
