@@ -1,5 +1,6 @@
 #pragma once
 
+#include <any>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -59,5 +60,13 @@ struct ErrorInfo {
 
 template <typename T>
 using Result = std::expected<std::reference_wrapper<T>, ErrorInfo>;
+
+/// Concept for callback functions that take a single const data parameer and return a template arg [Result]
+template<typename Callback, typename Result, typename Param = std::any>
+concept PredicateAny = requires(Callback cb, const Param& t) {
+  { cb(t) } -> std::convertible_to<Result>;
+};
+
+
 
 } // namespace zeal

@@ -1,11 +1,11 @@
 ---
-BasedOnStyle: LLVM
-IndentWidth: 2
-TabWidth: 2
+BasedOnStyle: Google
+IndentWidth: 4
+TabWidth: 4
 UseTab: Never
 BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Inline
-ColumnLimit: 80
+ColumnLimit: 85
 NamespaceIndentation: None
 PointerAlignment: Left
 SpacesInParentheses: false
@@ -16,3 +16,4 @@ DerivePointerAlignment: false
 SortIncludes: true
 IndentCaseLabels: true
 ...
+

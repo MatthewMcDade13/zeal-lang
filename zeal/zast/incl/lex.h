@@ -1,9 +1,11 @@
 #pragma once
 
-#include "common.h"
-#include "rune.h"
-#include "rcbuf.h"
 #include <cassert>
+#include <expected>
+
+#include "common.h"
+#include "rcbuf.h"
+#include "rune.h"
 namespace zeal::ast {
 
 enum class TokType : i16 {
@@ -130,38 +132,45 @@ enum class TokType : i16 {
   DblStar,
   BuiltinEnd,
 
+  /// any user string, inculding surrounding '"'
+  String,
+  /// any symbol prefixed with ':' (even strings ex: :"really long rune but im still only a rune :)")
+  Rune,
+  /// any alpha-numeric characters not surrounded by '"' and/or prefixed with ':' or '@'
+  Symbol,
+  /// any alpha-numeric characters prefixed with '@'
+  Macro,
+
 };
 
 /// Namespace for builting reserved language rune literals
 /// such as begin, end, function, ect...
-struct RuneLiterals {
-  static constexpr const auto Count = static_cast<i16>(TokType::BuiltinEnd) -
-                                      static_cast<i16>(TokType::BuiltinStart);
+struct RuneKeywords {
+  static constexpr const auto Count = static_cast<i16>(TokType::BuiltinEnd) - static_cast<i16>(TokType::BuiltinStart);
 
-  static constexpr const char* Names[Count] = {
-      "begin", "end",  "function", "fn",   "do",     "while", "when", "for",
-      "if",    "then", "elseif",   "else", "struct", "or",    "and",  "module",
-      ">=",    "<=",   "+=",       "-=",   "/=",     "*=",    "&&",   "||",
-      "^^",    "..",   "...",      "--",   "->",     "=>",    "<-",   "where",
-      "in",    "let",  "mut",      "|>",   "<|",     "**"
-  };
+  static constexpr std::array<std::string_view, Count> Names = {
+      "begin", "end", "function", "fn", "do", "while", "when", "for", "if",  "then", "elseif", "else", "struct",
+      "or",    "and", "module",   ">=", "<=", "+=",    "-=",   "/=",  "*=",  "&&",   "||",     "^^",   "..",
+      "...",   "--",  "->",       "=>", "<-", "where", "in",   "let", "mut", "|>",   "<|",     "**"};
 
-  static constexpr const char* lookup(TokType type) {
+  template <TokType type>
+  static constexpr std::string_view lookup() noexcept {
     constexpr const i16 lower_limit = static_cast<i16>(TokType::BuiltinStart);
     constexpr const i16 upper_limit = static_cast<i16>(TokType::BuiltinEnd);
-    const i16 id = static_cast<i16>(type);
+    constexpr const i16 id = static_cast<i16>(type);
+    static_assert(id > lower_limit && id < upper_limit, "Invalid tok type to lookup RuneKeyword!");
 
-    if (id <= lower_limit || id >= upper_limit) {
-      return ""; 
-    }
-    const isize index = lower_limit - id;
-    assert(index >= 0 && index <= Count);
+    constexpr const isize index = upper_limit - id;
+    static_assert(index >= 0 && index <= Count,
+                  "Index our of range when looking up string representation of RuneKeyword!");
 
-    return Names[index]; 
-    
+    return Names[index];
   }
-};
 
+  static constexpr const std::string_view Begin() noexcept { return lookup<TokType::Begin>(); }
+
+  static constexpr const std::string_view End() noexcept { return lookup<TokType::End>(); }
+};
 
 struct Token {
   u32 lineno{};
@@ -171,28 +180,47 @@ struct Token {
 
   core::Rune lexeme{core::Rune::make_default()};
 
-  constexpr std::string_view as_str() const noexcept { return lexeme.sview(); }
+  constexpr std::string_view lexeme_string() const noexcept { return lexeme.sview(); }
+  constexpr bool has_lexeme() const noexcept { return lexeme.sview().size() >= 1; }
 };
 
+namespace lex {
 
-namespace lex {  
+struct LexError {
+  enum : u8 {
+    UnexpectedEof,
+    /// Missing ending '"' or ')', '}', ect
+    MissingCloser,
+    UnknownSymbol,
+    InvalidSymbol,
+    IOFail,
+    /// Any error, read error message to find out what went wrong
+    Any,
 
-  // struct LexError {
-  //   enum : i8 {
-  //     UnknownSymbol,
-  //     InvalidSymbol,
-  //   };
+    /// Most likely an exception was thrown when constructing a std::string somewhere... hmmm... *sherlock_holms_emoji* lol
+    BadStdStringCtor,
+    LangFeatureNotYetImplemented,
+  } errtype;
 
-  //   isize at_line{};
-  //   isize at_column{};
+  struct Location {
+    usize line{};
+    usize column{};
+  } loc;
 
-  // };
+  std::string message;
+};
 
-  // using LexResult = std::variant<std::monostate, ArcVec<Token>, ArcVec<LexError>>; 
-  
-  std::optional<core::RcArray<Token>> tokenize(const std::string& source_file);
-  std::optional<core::RcArray<Token>> tokenize_memory(std::string_view source_memory);
-}
+/// LexError's inner error enum type
+using LexError_t = decltype(LexError::errtype);
 
 
-} // namespace zeal::ast
+/// Tag type representing a successful IO operation that returns no value
+struct IOResult {};
+template <typename T = IOResult>
+using LexResult = std::expected<T, LexError>;
+
+LexResult<core::RcArray<Token>> tokenize(const std::string& source_file);
+LexResult<core::RcArray<Token>> tokenize_memory(const std::string_view source_memory);
+}  // namespace lex
+
+}  // namespace zeal::ast

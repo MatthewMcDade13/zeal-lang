@@ -1,18 +1,17 @@
 project('zeal-lang', 'cpp',
   version : '0.1',
   default_options : [
-    'warning_level=3',
     'cpp_std=c++23'
   ])
 
-cpp = meson.get_compiler('cpp')
-project_args = []
+# cpp = meson.get_compiler('cpp')
+# project_args = []
 
-if cpp.get_id() == 'gcc' or cpp.get_id() == 'clang'
-  project_args += ['-Wextra']
-endif
+# if cpp.get_id() == 'gcc' or cpp.get_id() == 'clang'
+#   project_args += ['-Wextra']
+# endif
 
-add_project_arguments(project_args, language: 'cpp')
+# add_project_arguments(project_args, language: 'cpp')
 
 main_sources = files('main.cpp')
 
@@ -23,13 +22,28 @@ subdir('zcore')
 subdir('zbytecode')
 subdir('zvm')
 subdir('zast')
-subdir('llvmc')
+subdir('libs')
 
 
 exe = executable('zeal',
   main_sources,
-  dependencies: [depzcore, depzvm, depzbytecode, depzast, depllvmc],
-  link_with: [libzcore, libzvm, libzbytecode, libllvmc],
+  dependencies: [depzcore, depzvm, depzbytecode, depzast, zplog_dep, zbench_dep],
+  link_with: [libzcore, libzvm, libzbytecode, libzast, libzplog, libzbench],
   install : true
 )
 
+dep_includes = include_directories('zcore/incl', 'zbytecode/incl', 'zvm/incl', 'zast/incl', 'libs/incl')
+
+dep = declare_dependency(
+  include_directories: dep_includes, 
+  link_with: [libzcore, libzvm, libzbytecode, libzast, libzplog, libzbench]
+)
+
+zbench_sources = files('zbench.cpp')
+
+bench_exe = executable('zbench',
+  zbench_sources,
+  dependencies: [zbench_dep, dep],
+  link_with: [libzbench],
+  install: true
+)
