@@ -1,5 +1,7 @@
 #include "lex.h"
 
+#include <plog/Log.h>
+
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -8,6 +10,17 @@
 #include <sstream>
 
 #include "rcbuf.h"
+
+#define push_token(OUT, TY)                              \
+    do {                                                 \
+        OUT.emplace_back(lex.make_token<TokType::TY>()); \
+    } while (false);
+
+#define push_lexeme(OUT, TY, LEXEME)                           \
+    do {                                                       \
+        OUT.emplace_back(lex.make_token<TokType::TY>(LEXEME)); \
+    } while (false);
+
 
 namespace {
 using namespace zeal;
@@ -176,38 +189,11 @@ struct Lexer {
 
 }  // namespace
 
-namespace zeal::ast {
-
-namespace lex {
-
-LexResult<core::RcArray<Token>> tokenize(const std::string& filepath) {
-    std::ifstream infile(filepath);
-
-    std::stringstream ss;
-    if (!infile) {
-        ss << "Could not open file: " << filepath << "\n";
-        const LexError err{.errtype = LexError::IOFail, .loc{}, .message = ss.str()};
-        return std::unexpected(err);
-    }
-    ss << infile.rdbuf();
-    return tokenize_memory(ss.str());
+static lex::LexResult<> tokenize_alnum(Lexer& lex, Vec<Token>& out_buffer) {
+    assert(false || "TODO: Implement tokenize_alnum");
 }
 
-#define push_token(OUT, TY)                              \
-    do {                                                 \
-        OUT.emplace_back(lex.make_token<TokType::TY>()); \
-    } while (false);
-
-#define push_lexeme(OUT, TY, LEXEME)                           \
-    do {                                                       \
-        OUT.emplace_back(lex.make_token<TokType::TY>(LEXEME)); \
-    } while (false);
-
-LexResult<> tokenize_alnum(Lexer& lex, Vec<Token>& out_buffer) {}
-
-/// tokenizes non-alphanumeric symbols like '+', '=>', ect
-/// pushes tokens into @param tok_buffer
-LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
+static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
     switch (lex.peek()) {
         case '+': {
             lex.adv();
@@ -311,9 +297,9 @@ LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
                 }
                 if (lex.peek() == '\n') {
                     // TODO: Support multi-line strings
-                    std::cerr << "multiline strings not yet supported!\n";
+                    PLOGD << "multiline strings not yet supported!\n";
                     return std::unexpected(
-                        lex.make_error(LexError_t::LangFeatureNotYetImplemented,
+                        lex.make_error(lex::LexError_t::LangFeatureNotYetImplemented,
                                        "Multiline strings not yet supported!"));
                 }
             }
@@ -343,8 +329,8 @@ LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
         } break;
         default: {
             using std::operator""s;
-            return std::unexpected(LexError{
-                .errtype = LexError::Any,
+            return std::unexpected(lex::LexError{
+                .errtype = lex::LexError::Any,
                 .loc =
                     {
                         .line = static_cast<usize>(lex.cursor.line),
@@ -357,8 +343,24 @@ LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
     }
 }
 
-LexResult<core::RcArray<Token>> tokenize_memory(
-    const std::string_view source_memory) {
+namespace zeal::ast {
+
+namespace lex {
+
+LexResult<Vec<Token>> tokenize(const std::string& filepath) {
+    std::ifstream infile(filepath);
+
+    std::stringstream ss;
+    if (!infile) {
+        ss << "Could not open file: " << filepath << "\n";
+        const LexError err{.errtype = LexError::IOFail, .loc{}, .message = ss.str()};
+        return std::unexpected(err);
+    }
+    ss << infile.rdbuf();
+    return tokenize_memory(ss.str());
+}
+
+LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
     Lexer lex = {.cursor = {}, .pos = 0, .sv = source_memory};
 
     Vec<Token> result;
@@ -402,3 +404,8 @@ LexResult<core::RcArray<Token>> tokenize_memory(
 }  // namespace lex
 
 }  // namespace zeal::ast
+
+
+// macro cleanup
+#undef push_token
+#undef push_lexeme

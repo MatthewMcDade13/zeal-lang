@@ -219,8 +219,8 @@ struct IOResult {};
 template <typename T = IOResult>
 using LexResult = std::expected<T, LexError>;
 
-LexResult<core::RcArray<Token>> tokenize(const std::string& source_file);
-LexResult<core::RcArray<Token>> tokenize_memory(const std::string_view source_memory);
+LexResult<Vec<Token>> tokenize(const std::string& source_file);
+LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory);
 }  // namespace lex
 
 }  // namespace zeal::ast

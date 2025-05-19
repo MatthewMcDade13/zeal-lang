@@ -25,6 +25,7 @@ if buildtype == 'release'
     pic: true,
     install: true,
   )
+
 else
 
   message('Letting meson decide how to build non-release mode build...')
@@ -56,3 +57,4 @@ zplog_dep = declare_dependency(
   include_directories: zlibs_includes,
   link_with: libzplog
 )
+

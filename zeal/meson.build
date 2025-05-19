@@ -51,3 +51,14 @@ bench_exe = executable('zbench',
   link_with: [libzbench],
   install: true
 )
+
+test_sources = files('tests/all.cpp')
+alltests_exe = executable('ztests',
+  test_sources,
+  include_directories: zlibs_includes,
+  dependencies: dep,
+  install: true
+)
+
+test('zeal_tests', alltests_exe)
+
