@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <expected>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <ranges>
 #include <sstream>
@@ -21,7 +23,6 @@
         OUT.emplace_back(lex.make_token<TokType::TY>(LEXEME)); \
     } while (false);
 
-
 namespace {
 using namespace zeal;
 using namespace zeal::ast;
@@ -34,6 +35,68 @@ struct Lexer {
     } cursor{};
     isize pos;
     std::string_view sv;
+
+    template <char match>
+    isize match_adv() {
+        constexpr const auto CB = [](Lexer& l) { l.adv(); };
+        return this->match_then<match>(CB);
+    }
+
+    template <char match>
+    isize scan() {
+        static constexpr auto noop = []() {};
+        return this->scan_while<match>(noop);
+    }
+
+    /// advances this->pos while current peeded token is alpha-numeric
+    /// @returns string view of scanned token, this will change every call
+    std::string_view next_alnum() {
+        const auto begin = this->pos;
+        while (!this->is_eos() && std::isalnum(this->peek())) {
+            this->adv();
+        }
+        isize end{0};
+        if (this->is_eos()) {
+            end = this->sv.size() - 1;    
+        }
+        end = this->pos;
+        return this->sv.substr(begin, end - begin);
+    }
+
+    template <char match, typename Callback>
+        requires std::invoke_r<Callback, void(Lexer&)>
+    isize scan_while(Callback cb) {
+        const auto old = this->pos;
+        while (!this->is_eos() && !this->matches<match>()) {
+            this->adv();
+            cb(*this);
+        }
+        if (this->matches<match>()) {
+            return this->pos - old;
+        }
+        // we got to eof, oof!
+        return 0;
+    }
+
+    /// If peeked value is equal to match character, user provided callback is called
+    /// @returns the delta of this->pos after calling user provided callback and
+    /// before calling user provided callback does not take into account differences
+    /// in cursor line/col values, only pos
+    template <char match, typename Callback>
+        requires std::invoke_r<Callback, void(Lexer&)>
+    constexpr isize match_then(Callback cb) {
+        const auto old = this->pos;
+        if (this->matches<match>()) {
+            cb(*this);
+            return this->pos - old;
+        }
+        return old;
+    }
+
+    template <char match>
+    constexpr bool matches() const noexcept {
+        return this->peek() == match;
+    }
 
     /// Create a token of template type [TokType] at current line and column
     /// location
@@ -159,11 +222,6 @@ struct Lexer {
         return -1;
     }
 
-    // template<typename Callback>
-    // usize adv_do_while() noexcept {
-
-    // }
-
     /// Advances this->pos by @param n and increments cursor column by 1
     void adv(isize n = 1) noexcept {
         this->pos += n;
@@ -189,15 +247,37 @@ struct Lexer {
 
 }  // namespace
 
+/*
+
+  static constexpr std::array<std::string_view, Count> Names = {
+      "begin", "end", "function", "fn", "do", "while", "when", "for", "if",  "then",
+  "elseif", "else", "struct", "or",    "and", "module",   ">=", "<=", "+=",    "-=",
+  "/=",  "*=",  "&&",   "||",     "^^",   "..",
+      "...",   "--",  "->",       "=>", "<-", "where", "in",   "let", "mut", "|>",
+  "<|",     "**"};
+
+
+*/
+
 static lex::LexResult<> tokenize_alnum(Lexer& lex, Vec<Token>& out_buffer) {
-    assert(false || "TODO: Implement tokenize_alnum");
+    const auto tok = std::string(lex.next_alnum());
+    if (tok.size() == 0) {
+        PLOGW << "lex.next_alnum returned empty string!";
+        return std::unexpected(lex.make_error(lex::LexError_t::UnknownSymbol));
+    }
+    // TODO: check if tok is a keyword and tag accordingly
+
+
+    push_lexeme(out_buffer,Symbol, std::move(tok));
+    return {};
+
 }
 
 static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
     switch (lex.peek()) {
         case '+': {
             lex.adv();
-            if (lex.peek(1) == '=') {
+            if (lex.peek() == '=') {
                 lex.adv();
                 push_token(out_buffer, PlusEq);
             } else {
@@ -207,7 +287,7 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
         } break;
         case '-': {
             lex.adv();
-            if (lex.peek(1) == '>') {
+            if (lex.peek() == '>') {
                 lex.adv();
                 push_token(out_buffer, ArrowRight);
             } else if (lex.peek(1) == '=') {
@@ -220,7 +300,7 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
         } break;
         case '/': {
             lex.adv();
-            if (lex.peek_next() == '=') {
+            if (lex.peek() == '=') {
                 lex.adv();
                 push_token(out_buffer, DivEq);
             } else {
@@ -230,7 +310,7 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
         } break;
         case '*': {
             lex.adv();
-            if (lex.peek_next() == '=') {
+            if (lex.peek() == '=') {
                 lex.adv();
                 push_token(out_buffer, MulEq);
             } else {
@@ -245,13 +325,16 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
         } break;
         case '<': {
             lex.adv();
-            if (lex.peek_next() == '-') {
+            if (lex.peek() == '-') {
                 lex.adv();
                 push_token(out_buffer, ArrowLeft);
 
-            } else if (lex.peek_next() == '=') {
+            } else if (lex.peek() == '=') {
                 lex.adv();
                 push_token(out_buffer, Lte);
+            } else if (lex.peek() == '|') {
+                lex.adv();
+                push_token(out_buffer, PipeLeft);
             } else {
                 push_token(out_buffer, Lt);
             }
@@ -259,7 +342,7 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
         } break;
         case '>': {
             lex.adv();
-            if (lex.peek_next() == '=') {
+            if (lex.peek() == '=') {
                 lex.adv();
                 push_token(out_buffer, Gte);
             } else {
@@ -310,9 +393,8 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
                 lex.adv();
                 return {};
             } else {
-                std::cerr << "Mismatched ending '\"' found on: line: "
-                          << lex.cursor.line << " column: " << lex.cursor.col
-                          << "\n";
+                PLOGF << "Mismatched ending '\"' found on: line: " << lex.cursor.line
+                      << " column: " << lex.cursor.col << "\n";
                 return {};
             }
 
@@ -327,20 +409,40 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
             push_token(out_buffer, QMark);
             return {};
         } break;
+        case '|': {
+            lex.adv();
+            if (lex.peek() == '>') {
+                lex.adv();
+                push_token(out_buffer, PipeRight);
+                return {};
+            } else {
+                push_token(out_buffer, SinglePipe);
+                return {};
+            }
+        } break;
+        case '.': {
+            lex.adv();
+            if (lex.peek() == '.' && lex.peek_next() == '.') {
+                lex.adv(2);
+                push_token(out_buffer, TripleDot);
+                return {};
+            } else if (lex.peek() == '.') {
+                lex.adv();
+                push_token(out_buffer, DblDot);
+                return {};
+            }
+        } break;
         default: {
             using std::operator""s;
-            return std::unexpected(lex::LexError{
-                .errtype = lex::LexError::Any,
-                .loc =
-                    {
-                        .line = static_cast<usize>(lex.cursor.line),
-                        .column = static_cast<usize>(lex.cursor.col),
-                    },
-                .message =
-                    "Could not determine glyph: "s + std::to_string(lex.peek()),
-            });
+            return std::unexpected(
+                lex.make_error(lex::LexError_t::UnknownSymbol,
+                               "Unknown glyph: "s + std::to_string(lex.peek())));
         }
     }
+    using std::operator""s;
+    return std::unexpected(
+        lex.make_error(lex::LexError_t::InvalidSymbol,
+                       "Unknown/Invalid character: "s + std::to_string(lex.peek())));
 }
 
 namespace zeal::ast {
@@ -366,11 +468,8 @@ LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
     Vec<Token> result;
     result.reserve(lex.sv.size());
 
-    const auto len = static_cast<isize>(lex.sv.size() - 1);
-
-    while (!lex.is_eos() <= len) {
-        const auto i = lex.pos;
-        const auto curr = lex.sv[i];
+    while (!lex.is_eos()) {
+        const auto curr = lex.peek();
 
         if (curr == '\n') {
             lex.newline_adv();
@@ -381,8 +480,6 @@ LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
             lex.adv();
             continue;
         }
-
-        const auto next = i + 1 >= len ? curr : lex.sv[i + 1];
 
         if (std::isalnum(curr)) {
             if (const auto res = tokenize_alnum(lex, result); !res.has_value()) {
@@ -404,7 +501,6 @@ LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
 }  // namespace lex
 
 }  // namespace zeal::ast
-
 
 // macro cleanup
 #undef push_token
