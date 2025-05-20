@@ -1,9 +1,11 @@
 #include "args.h"
 
+#include <algorithm>
 #include <cstring>
 #include <ios>
 #include <sstream>
 #include <tuple>
+#include "plog/Log.h"
 
 using namespace zeal;
 
@@ -33,6 +35,40 @@ CmdArgs CmdArgs::parse_args(int argc, char** argv) {
     return CmdArgs(comptype, flags, err, std::move(args), std::move(argline));
 }
 
+Opt<Str> CmdArgs::query_outdir() const {
+    const auto len = this->input_args.size();
+    for (usize i = 0; i < len; i++) {
+       const auto item = this->input_args[i]; 
+       if (item.contains("-o")) {
+           // make sure this flag wasnt the last argument
+           if (i + 1 >= len) {
+               // we got the flag but no argument was provided
+               return {};
+           }
+           return this->input_args[i + 1];
+       }
+    }
+    return {};
+}
+
+Opt<Str> CmdArgs::query_evaluate() const {
+
+    
+    const auto len = this->input_args.size();
+    for (usize i = 0; i < len; i++) {
+       const auto item = this->input_args[i]; 
+       if (item.contains("-e")) {
+           // make sure this flag wasnt the last argument
+           if (i + 1 >= len) {
+               // we got the flag but no argument was provided
+               return {};
+           }
+           return this->input_args[i + 1];
+       }
+    }
+    return {};    
+}
+
 }  // namespace zeal::core
 
 
@@ -43,6 +79,7 @@ static void parse_flag(const std::string_view flag,
     // used for flags that need additional flags
     for (usize i = 0; i < flag.size(); i++) {
         const auto item = flag[i];
+        PLOGD << "parsing flag: " << item;
         if (item == '-') {
             continue;
         }
@@ -53,7 +90,12 @@ static void parse_flag(const std::string_view flag,
             } break;
             case 'E':  // fallthrough
             case 'e': {
-                outflags |= CmdArgFlags::Execute;
+                PLOGD << "Matched flag e!";
+                PLOGD << "outflags before: " << (u32)outflags;
+
+                outflags = outflags | CmdArgFlags::Execute;
+
+                PLOGD << "outflags after: " << (u32)outflags;
             } break;
             case 'S':  // fallthrough
             case 's': {

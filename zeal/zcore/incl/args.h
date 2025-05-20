@@ -1,5 +1,6 @@
 #pragma once
 #include <type_traits>
+
 #include "common.h"
 
 namespace zeal::core {
@@ -39,19 +40,29 @@ enum class CmdArgFlags : u32 {
     /// zeal [-s --source] "let x = 40; print x;"
     /// ```
     SrcString = 1 << 3,
+    /// (C)ompile
+    // zeal -C "path/to/some/file.zl"
+    Compile = 1 << 4,
     /// (C)ompile (s)ource_string
     /// zeal -Cs "let x = 50; print x;"
-    CompileSrcString = 1 << 4,
+    CompileSrcString = 1 << 5,
     ///
     /// (C)ompile (r)oot
     /// zeal -Cr .
-    CompileRoot = 1 << 5,
+    CompileRoot = 1 << 6,
     /// (C)ompile (m)odule
     /// zeal -Cm "path/to/your_module.zl"
-    CompileModule = 1 << 6,
-    /// (Compile)
-    // zeal -C "path/to/some/file.zl" 
-    Compile = 1 << 7,
+    CompileModule = 1 << 7,
+
+    /// (O)utput directory
+    /// can also be -o or --outdir or --out
+    /// zeal -C "path/to/file.zl" -O "./ouput/directory"
+    OutDir = 1 << 8,
+    /// (i)nitializes a new Zeal project in directory specified
+    /// zeal -i .
+    /// zeal --init "path/to/proj/root"
+    InitProject = 1 << 9,
+
 };
 
 constexpr CmdArgFlags operator|(CmdArgFlags lhs, CmdArgFlags rhs) noexcept {
@@ -60,52 +71,63 @@ constexpr CmdArgFlags operator|(CmdArgFlags lhs, CmdArgFlags rhs) noexcept {
     const auto r = static_cast<std::underlying_type_t<CmdArgFlags>>(rhs);
 
     return static_cast<CmdArgFlags>(l | r);
-        
 }
- constexpr CmdArgFlags& operator|=(CmdArgFlags& lhs, CmdArgFlags rhs) {
-     lhs = lhs | rhs;
-     return lhs;
+constexpr CmdArgFlags& operator|=(CmdArgFlags& lhs, CmdArgFlags rhs) {
+    lhs = lhs | rhs;
+    return lhs;
 }
+
+namespace priv_impl {
+
+template <typename T, T Mask>
+constexpr bool _isset_(const auto flag) noexcept {
+    constexpr auto FLAG = static_cast<u32>(Mask);
+    const auto fl = static_cast<u32>(flag);
+    return (FLAG & fl) == FLAG;
+}
+
+}  // namespace priv_impl
+
+#ifndef isset
+#define isset(FLAG, TYPE, VARIANT) priv_impl::_isset_<TYPE, TYPE::VARIANT>(FLAG)
+#endif
+
+#ifndef isset_args
+#define isset_args(FL, V) isset(FL, CmdArgFlags, V)
+#endif
 
 constexpr bool isset_repl(const CmdArgFlags fl) noexcept {
-   constexpr auto REPL = static_cast<u32>(CmdArgFlags::Repl);
-   const auto flag = static_cast<u32>(fl);
-   return (REPL & flag) == REPL;
+    return isset_args(fl, Repl);
 }
 
-
 constexpr bool isset_execute(const CmdArgFlags fl) noexcept {
-   constexpr auto EXEC = static_cast<u32>(CmdArgFlags::Execute);
-   const auto flag = static_cast<u32>(fl);
-   return (EXEC & flag) == EXEC;
+    return isset_args(fl, Execute);
 }
 
 constexpr bool isset_compile_src_string(const CmdArgFlags fl) noexcept {
-   constexpr auto FLAG = static_cast<u32>(CmdArgFlags::CompileSrcString);
-   const auto flag = static_cast<u32>(fl);
-   return (FLAG & flag) == FLAG;
+    return isset_args(fl, CompileSrcString);
 }
 
 constexpr bool isset_compile_root(const CmdArgFlags fl) noexcept {
-   constexpr auto FLAG = static_cast<u32>(CmdArgFlags::CompileRoot);
-   const auto flag = static_cast<u32>(fl);
-   return (FLAG & flag) == FLAG;
+    return isset_args(fl, CompileRoot);
 }
 
 constexpr bool isset_compile_module(const CmdArgFlags fl) noexcept {
-   constexpr auto FLAG = static_cast<u32>(CmdArgFlags::CompileModule);
-   const auto flag = static_cast<u32>(fl);
-   return (FLAG & flag) == FLAG;
+    return isset_args(fl, CompileModule);
 }
 
 constexpr bool isset_src_string(const CmdArgFlags fl) noexcept {
-   constexpr auto FLAG = static_cast<u32>(CmdArgFlags::SrcString);
-   const auto flag = static_cast<u32>(fl);
-   return (FLAG & flag) == FLAG;
+    return isset_args(fl, SrcString);
+}
+
+constexpr bool isset_compile(const CmdArgFlags fl) noexcept {
+    return isset_args(fl, Compile);
 }
 
 
-
+constexpr bool isset_outdir(const CmdArgFlags fl) noexcept {
+    return isset_args(fl, OutDir);
+}
 
 }  // namespace flags
 
@@ -188,6 +210,12 @@ struct CmdArgs {
     }
 
     static CmdArgs parse_args(int argc, char** argv);
+    /// Tries to get the value for outdir, returns nullopt if unsuccessful or
+    /// value is nullopt or not present
+    Opt<Str> query_outdir() const;
+    /// Tries to get the argument passed to execute flag
+    /// or nullopt if not present 
+    Opt<Str> query_evaluate() const;
 };
 
 }  // namespace zeal::core

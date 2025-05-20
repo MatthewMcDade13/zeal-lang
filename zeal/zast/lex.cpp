@@ -110,38 +110,57 @@ struct Lexer {
     /// @returns string view of scanned token, this will change every call
     std::string next_alnum() {
         const auto begin = this->pos;
+        PLOGD << "BEGIN: " << std::to_string(begin);
 
-        const auto curr = this->peek();
+        auto curr = this->peek();
         if (zis_numeric(curr)) {
+            PLOGD << "Found Numeric: " << curr;
             return this->next_numeric();
         }
 
-        while (!this->is_eos() &&
-               (std::isalnum(this->peek() || this->peek() == '_'))) {
+        while (!this->is_eos() && (std::isalnum(curr) || curr == '_')) {
+            curr = this->peek();
             this->adv();
+            // Space interrupts the token stream
+            // NOTE: This makes sense to me now and i dont see this ever causing
+            // issue, but we shall see... lol
+            if (std::isspace(this->peek())) {
+                break;
+            }
         }
         isize end{0};
         if (this->is_eos()) {
+            PLOGW << "Advanced too far!!";
             end = this->src.size();
+        } else {
+            end = this->pos;
         }
-        end = this->pos;
-        return this->src.substr(begin, end - begin);
 
+        PLOGD << "END: " << end;
+        const auto s = this->src.substr(begin, end - begin);
+        PLOGD << "ALNUM: " << s;
+        return s;
     }
 
     std::string next_numeric() {
         const auto begin = this->pos;
-        PLOGD << "Current Token: " << this->peek() << " Expected to be numeric!!!!";
-        bool is_numeric = false;
-        do {
-            const auto curr = this->peek();
-            // since we expect the caller to have aready checked that the lead
-            // chacater to this number literal is 0 - 9, we can just scan through
-            // until we hit something that isnt numeric or . or _
-            is_numeric = zis_numeric_or_delim(curr);
+        while (!this->is_eos() && zis_numeric_or_delim(this->peek())) {
             this->adv();
+            if (std::isspace(this->peek())) {
+                break;
+            }
+        }
 
-        } while (!this->is_eos() && is_numeric);
+        // do {
+        //     const auto curr = this->peek();
+        //     // since we expect the caller to have aready checked that the lead
+        //     // chacater to this number literal is 0 - 9, we can just scan through
+        //     // until we hit something that isnt numeric or . or _
+        //     is_numeric = zis_numeric_or_delim(curr);
+        //     PLOGD << "is_numeric = " << curr;
+        //     this->adv();
+
+        // } while (!this->is_eos() && is_numeric);
         if (this->is_eos()) {
             PLOGF << "Error while parsing numeric!";
             return "";
@@ -243,12 +262,12 @@ struct Lexer {
         // most situations id say.
         try {
             // we don't want this to throw... thanks sepples!!!!
-            const std::string m = std::string(message);
+            std::string m = std::string(message);
 
             return lex::LexError{
                 .errtype = errty,
                 .loc = loc,
-                .message = m,
+                .message = std::move(m),
             };
         } catch (const std::exception& e) {
             // NOTE: if we got here, std::string threw an exception... ugh...
@@ -359,6 +378,11 @@ static lex::LexResult<> tokenize_alnum(Lexer& lex, Vec<Token>& out_buffer) {
         return std::unexpected(lex.make_error(lex::LexError_t::UnknownSymbol));
     }
 
+    if (lex.peek() == ';') {
+        lex.adv();
+        push_token(out_buffer, SemiColon);
+    }
+
     const auto first = *tok.begin();
 
     // check we have a token starting with a valid numeric character first.
@@ -451,6 +475,11 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
             push_token(out_buffer, Percent);
             return {};
         } break;
+        case ';': {
+            lex.adv();
+            push_token(out_buffer, SemiColon);
+            return {};
+        } break;
         case '<': {
             lex.adv();
             if (lex.peek() == '-') {
@@ -527,6 +556,16 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
             }
 
         } break;
+        case '=': {
+            lex.adv();
+            if (lex.peek() == '=') {
+                lex.adv();
+                push_token(out_buffer, DblEq);
+            } else {
+                push_token(out_buffer, Eq);
+            }
+            return {};
+        } break;
         case '!': {
             lex.adv();
             push_token(out_buffer, Bang);
@@ -562,9 +601,9 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
         } break;
         default: {
             using std::operator""s;
-            return std::unexpected(
-                lex.make_error(lex::LexError_t::UnknownSymbol,
-                               "Unknown glyph: "s + std::to_string(lex.peek())));
+            const auto glyph = std::string(1, lex.peek());
+            return std::unexpected(lex.make_error(lex::LexError_t::UnknownSymbol,
+                                                  "Unknown glyph: "s + glyph));
         }
     }
     using std::operator""s;
@@ -591,14 +630,20 @@ LexResult<Vec<Token>> tokenize(const std::string& filepath) {
 }
 
 LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
-    Lexer lex = {.cursor = {}, .pos = 0, .src = std::string(source_memory)};
-    PLOGD << "Loaded source:\n\t" << source_memory.size();
+    // Pad our input to the right to avoid errors due to lexer landing on last token
+    // might even add a non-utf8 End of stream marker
+    Lexer lex = {.cursor = {}, .pos = 0, .src = std::string(source_memory) + "\n\n"};
 
     Vec<Token> result;
     result.reserve(lex.src.size());
 
     while (!lex.is_eos()) {
         const auto curr = lex.peek();
+
+        if (lex.matches<';'>()) {
+            lex.adv();
+            push_token(result, SemiColon);
+        }
 
         if (curr == '\n') {
             lex.newline_adv();
@@ -612,7 +657,9 @@ LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
 
         if (std::isalnum(curr)) {
             if (const auto res = tokenize_alnum(lex, result); !res.has_value()) {
-                return std::unexpected(res.error());
+                PLOGE << "tokenize_alnum returned empty advancing cursor...";
+                lex.adv();
+                // return std::unexpected(res.error());
             }
 
             continue;
