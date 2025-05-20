@@ -1,7 +1,8 @@
 project('zeal-lang', 'cpp',
   version : '0.1',
   default_options : [
-    'cpp_std=c++23'
+    'cpp_std=c++23',
+    'werror=true'
   ])
 
 # cpp = meson.get_compiler('cpp')
@@ -31,6 +32,7 @@ subdir('zast')
 
 exe = executable('zeal',
   main_sources,
+  cpp_pch: 'pch/zeal_pch.h',
   dependencies: [depzcore, depzvm, depzbytecode, depzast, zplog_dep, zbench_dep],
   link_with: [libzcore, libzvm, libzbytecode, libzast, libzplog, libzbench],
   install : true

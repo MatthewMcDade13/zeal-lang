@@ -1,4 +1,4 @@
-zlibs_includes = include_directories('incl')
+zlibs_includes = include_directories('incl', 'incl/sfl')
 
 # zlibs_sources = files('nanobench.cpp', 'plog.cpp')
 

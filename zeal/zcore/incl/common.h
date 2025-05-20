@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <expected>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -16,7 +17,6 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
-#include <expected>
 
 namespace zeal {
 using u8 = uint8_t;
@@ -33,40 +33,72 @@ using isize = long;
 using f32 = float;
 using f64 = double;
 
-template <typename T> using Opt = std::optional<T>;
+template <typename T>
+using Opt = std::optional<T>;
 
-template <typename T> using slice = std::span<const T>;
+template <typename T>
+using slice = std::span<const T>;
 
-template <typename T> using slice_mut = std::span<T>;
+template <typename T>
+using slice_mut = std::span<T>;
 
 using Bytes = slice_mut<byte>;
 
-template <typename T> using Vec = std::vector<T>;
+template <typename T>
+using Vec = std::vector<T>;
+using String = std::string;
+/// String view, similar to rust's &str
+/// @warning !!! this does not handle termination of strings as               !!!
+/// !!! this is just a pointer and a length, so if passed to C/C++ apis, that !!!
+/// !!! expect a C null termined string, bad things will happen lol           !!!
+using Str = std::string_view;
 
-template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
+/// String view, similar to rust's &str
+/// @warning !!! this does not handle termination of strings as               !!!
+/// !!! this is just a pointer and a length, so if passed to C/C++ apis, that !!!
+/// !!! expect a C null termined string, bad things will happen lol           !!!
+using Sview = std::string_view;
 
-template <typename T> using HashSet = std::unordered_set<T>;
+/// String view, similar to rust's &str
+/// @warning !!! this does not handle termination of strings as               !!!
+/// !!! this is just a pointer and a length, so if passed to C/C++ apis, that !!!
+/// !!! expect a C null termined string, bad things will happen lol           !!!
+using Sref = std::string_view;
 
-template <typename T> using Arc = std::shared_ptr<T>;
+template<typename A, typename B>
+using Tup2 = std::tuple<A, B>;
 
-template <typename T> using Box = std::unique_ptr<T>;
+template<typename A, typename B, typename C>
+using Tup3 = std::tuple<A, B, C>;
 
-template <typename T> using ArcVec = std::shared_ptr<T[]>;
+template <typename K, typename V>
+using HashMap = std::unordered_map<K, V>;
+
+template <typename T>
+using HashSet = std::unordered_set<T>;
+
+template <typename T>
+using Arc = std::shared_ptr<T>;
+
+template <typename T>
+using Box = std::unique_ptr<T>;
+
+template <typename T>
+using ArcVec = std::shared_ptr<T[]>;
 
 struct ErrorInfo {
-  i32 error_code;
-  char message[255];  
+    i32 error_code;
+    char message[255];
 };
 
 template <typename T>
 using Result = std::expected<std::reference_wrapper<T>, ErrorInfo>;
 
-/// Concept for callback functions that take a single const data parameer and return a template arg [Result]
-template<typename Callback, typename Result, typename Param = std::any>
+/// Concept for callback functions that take a single const data parameer and return
+/// a template arg [Result]
+template <typename Callback, typename Result, typename Param = std::any>
 concept PredicateAny = requires(Callback cb, const Param& t) {
-  { cb(t) } -> std::convertible_to<Result>;
+    { cb(t) } -> std::convertible_to<Result>;
 };
 
-
-
-} // namespace zeal
+}  // namespace zeal

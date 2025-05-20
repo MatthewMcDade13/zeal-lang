@@ -1,6 +1,6 @@
 core_includes = include_directories('incl')
 
-core_sources = files('lib.cpp', 'common.cpp', 'stack.cpp', 'value.cpp')
+core_sources = files('lib.cpp', 'common.cpp', 'stack.cpp', 'value.cpp', 'args.cpp')
 
 
 libzcore = library('zcore',

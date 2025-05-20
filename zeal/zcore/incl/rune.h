@@ -75,6 +75,29 @@ struct Rune {
 
   // String(std::array<u8, )
 
+  template<const char str[]>
+  static constexpr Rune from_static() noexcept {
+    constexpr const isize len = sizeof(str) - 1;
+    if (len <= 0) {
+      return Rune();
+    }
+
+    Rune r;
+    r._buf = std::string_view(str);
+    return r;
+  }
+
+  static constexpr Rune from_static(const std::string_view static_string) noexcept {
+    if (static_string.size() == 0) {
+      return Rune();
+    }
+    Rune r;
+    r._buf = std::string_view(static_string);
+    return r;
+  }
+
+
+  
   [[nodiscard]]
   static Rune from(std::string_view src) {
     const auto strlen = src.size();
@@ -122,8 +145,7 @@ struct Rune {
     } else if (auto res = std::get_if<Inline>(&_buf)) {
       return std::string_view{(const char*) res->data(), res->size()};
     } else {
-      using std::operator""sv;
-      return ""sv;
+      return {};
     }
   }
 

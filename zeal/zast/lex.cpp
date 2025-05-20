@@ -10,8 +10,60 @@
 #include <iostream>
 #include <ranges>
 #include <sstream>
+#include <string_view>
 
 #include "rcbuf.h"
+#include "sfl/static_unordered_flat_map.hpp"
+
+static constexpr bool zis_numeric(const char c) noexcept {
+    return c >= '0' && c < '9';
+}
+
+static constexpr bool zis_numeric_or_delim(const char c) noexcept {
+    return zis_numeric(c) || c == '.' || '_' || 'x';
+}
+
+static const sfl::static_unordered_flat_map<const std::string_view,
+                                            zeal::ast::TokType, 28>
+    RESERVED_WORDS = {
+        {"begin", zeal::ast::TokType::Begin},
+        {"end", zeal::ast::TokType::End},
+        {"function", zeal::ast::TokType::Function},
+        {"fn", zeal::ast::TokType::Fn},
+        {"do", zeal::ast::TokType::Do},
+        {"while", zeal::ast::TokType::While},
+        {"when", zeal::ast::TokType::When},
+        {"for", zeal::ast::TokType::For},
+
+        {"if", zeal::ast::TokType::If},
+        {"then", zeal::ast::TokType::Then},
+        {"elseif", zeal::ast::TokType::Elseif},
+        {"else", zeal::ast::TokType::Else},
+        {"struct", zeal::ast::TokType::Struct},
+        {"or", zeal::ast::TokType::Or},
+        {"and", zeal::ast::TokType::And},
+        {"module", zeal::ast::TokType::Module},
+        {"where", zeal::ast::TokType::Where},
+        {"in", zeal::ast::TokType::In},
+        {"let", zeal::ast::TokType::Let},
+        {"mut", zeal::ast::TokType::Mut},
+
+        {"const", zeal::ast::TokType::Constant},
+        {"newtype", zeal::ast::TokType::NewType},
+
+        {"continue", zeal::ast::TokType::Continue},
+
+        {"break", zeal::ast::TokType::Break},
+
+        {"pub", zeal::ast::TokType::Pub},
+
+        {"import", zeal::ast::TokType::Import},
+
+        {"include", zeal::ast::TokType::Include},
+
+        {"return", zeal::ast::TokType::Return},
+
+};
 
 #define push_token(OUT, TY)                              \
     do {                                                 \
@@ -21,6 +73,11 @@
 #define push_lexeme(OUT, TY, LEXEME)                           \
     do {                                                       \
         OUT.emplace_back(lex.make_token<TokType::TY>(LEXEME)); \
+    } while (false);
+
+#define push(OUT, TY, VAL)                                       \
+    do {                                                         \
+        OUT.emplace_back(lex.make_token_from(TokType::TY, VAL)); \
     } while (false);
 
 namespace {
@@ -34,7 +91,7 @@ struct Lexer {
         isize col{};
     } cursor{};
     isize pos;
-    std::string_view sv;
+    std::string src;
 
     template <char match>
     isize match_adv() {
@@ -48,19 +105,49 @@ struct Lexer {
         return this->scan_while<match>(noop);
     }
 
-    /// advances this->pos while current peeded token is alpha-numeric
+    /// advances this->pos while current peeked token is alpha-numeric or '_'
+    /// tokenizes numeric constants as well
     /// @returns string view of scanned token, this will change every call
-    std::string_view next_alnum() {
+    std::string next_alnum() {
         const auto begin = this->pos;
-        while (!this->is_eos() && std::isalnum(this->peek())) {
+
+        const auto curr = this->peek();
+        if (zis_numeric(curr)) {
+            return this->next_numeric();
+        }
+
+        while (!this->is_eos() &&
+               (std::isalnum(this->peek() || this->peek() == '_'))) {
             this->adv();
         }
         isize end{0};
         if (this->is_eos()) {
-            end = this->sv.size() - 1;    
+            end = this->src.size();
         }
         end = this->pos;
-        return this->sv.substr(begin, end - begin);
+        return this->src.substr(begin, end - begin);
+
+    }
+
+    std::string next_numeric() {
+        const auto begin = this->pos;
+        PLOGD << "Current Token: " << this->peek() << " Expected to be numeric!!!!";
+        bool is_numeric = false;
+        do {
+            const auto curr = this->peek();
+            // since we expect the caller to have aready checked that the lead
+            // chacater to this number literal is 0 - 9, we can just scan through
+            // until we hit something that isnt numeric or . or _
+            is_numeric = zis_numeric_or_delim(curr);
+            this->adv();
+
+        } while (!this->is_eos() && is_numeric);
+        if (this->is_eos()) {
+            PLOGF << "Error while parsing numeric!";
+            return "";
+        }
+        const auto end = this->pos;
+        return this->src.substr(begin, end - begin);
     }
 
     template <char match, typename Callback>
@@ -101,21 +188,36 @@ struct Lexer {
     /// Create a token of template type [TokType] at current line and column
     /// location
     template <TokType type>
-    constexpr Token make_token(std::string_view lexeme = "") const noexcept {
+    constexpr Token make_token(std::string_view lexeme = "") const {
+        return this->make_token_from(type, Rune::from(lexeme));
+    }
+
+    template <typename T>
+    constexpr Token make_token_from(const TokType type, T val) const {
         return Token{
             .lineno = static_cast<u32>(this->cursor.line),
             .colno = static_cast<u32>(this->cursor.col),
             .type = type,
-            .lexeme = Rune::from(lexeme),
+            .data = val,
         };
     }
 
+    constexpr Token make_token(const TokType type,
+                               std::string_view lexeme = "") const {
+        return this->make_token_from(type, core::Rune::from(lexeme));
+    }
+
+    constexpr Token make_token_static(const TokType type,
+                                      const std::string_view static_string) const {
+        return this->make_token_from(type, Rune::from_static(static_string));
+    };
+
     constexpr char peek(isize n = 0) const noexcept {
-        const isize len = this->sv.size();
+        const isize len = this->src.size();
         if (this->pos >= len || this->pos < 0) {
             return -1;
         }
-        return this->sv[this->pos + n];
+        return this->src[this->pos + n];
     }
     /// Convience function for this->peek(1);
     constexpr char peek_next() const noexcept { return this->peek(1); }
@@ -237,7 +339,7 @@ struct Lexer {
 
     /// Is end of source?
     constexpr bool is_eos() const noexcept {
-        if (this->pos >= 0 && static_cast<usize>(this->pos) < this->sv.size()) {
+        if (this->pos >= 0 && static_cast<usize>(this->pos) < this->src.size()) {
             return false;
         } else {
             return true;
@@ -247,30 +349,56 @@ struct Lexer {
 
 }  // namespace
 
-/*
-
-  static constexpr std::array<std::string_view, Count> Names = {
-      "begin", "end", "function", "fn", "do", "while", "when", "for", "if",  "then",
-  "elseif", "else", "struct", "or",    "and", "module",   ">=", "<=", "+=",    "-=",
-  "/=",  "*=",  "&&",   "||",     "^^",   "..",
-      "...",   "--",  "->",       "=>", "<-", "where", "in",   "let", "mut", "|>",
-  "<|",     "**"};
-
-
-*/
-
+/// @brief Utility function to tokenize any alphanumeric word
+/// @remarks calls lex.next_alnum and wraps it in a Rune and pushes token into
+/// out_buffer
 static lex::LexResult<> tokenize_alnum(Lexer& lex, Vec<Token>& out_buffer) {
-    const auto tok = std::string(lex.next_alnum());
+    const auto tok = lex.next_alnum();
     if (tok.size() == 0) {
-        PLOGW << "lex.next_alnum returned empty string!";
+        PLOGD << "lex.next_alnum returned empty string!";
         return std::unexpected(lex.make_error(lex::LexError_t::UnknownSymbol));
     }
-    // TODO: check if tok is a keyword and tag accordingly
 
+    const auto first = *tok.begin();
 
-    push_lexeme(out_buffer,Symbol, std::move(tok));
+    // check we have a token starting with a valid numeric character first.
+    // not sure what it would be otherwise, but it gets logged and treated as some
+    // Symbol/Rune
+    if (zis_numeric(first)) {
+        // NOTE: idk if this is necessary, but fuggue it, it doesn't hurt
+        // to have it here (need to ensure null terminated string, lets call it
+        // the cost of reducing a string to an integer/float :D)
+        using std::operator""s;
+        const std::string num = std::string(tok) + "\0"s;
+        try {
+            if (tok.contains('.')) {
+                const auto val = std::stof(num);
+                push(out_buffer, Float, val);
+                return {};
+            }
+            const auto val = std::stoi(num);
+            push(out_buffer, Integer, val);
+            return {};
+
+        } catch (...) {
+            PLOGF << "Failed to parse symbol: " << tok
+                  << "to a numeric value! treating it as a symbol...";
+            push(out_buffer, Symbol, core::Rune::from(std::move(num)));
+            return {};
+        }
+    }
+
+    if (const auto search = RESERVED_WORDS.find(tok);
+        search != RESERVED_WORDS.end()) {
+        const TokType tt = search->second;
+        // make runes that are simple string_views into a static string
+        out_buffer.emplace_back(lex.make_token_static(tt, search->first));
+
+    } else {
+        push(out_buffer, Symbol, core::Rune::from(std::move(tok)));
+    }
+
     return {};
-
 }
 
 static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
@@ -389,7 +517,7 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
             // double check we havent gotten to end of input
             if (lex.peek() == '"') {
                 const auto end = lex.pos;
-                push_lexeme(out_buffer, String, lex.sv.substr(begin, end));
+                push_lexeme(out_buffer, String, lex.src.substr(begin, end));
                 lex.adv();
                 return {};
             } else {
@@ -463,10 +591,11 @@ LexResult<Vec<Token>> tokenize(const std::string& filepath) {
 }
 
 LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
-    Lexer lex = {.cursor = {}, .pos = 0, .sv = source_memory};
+    Lexer lex = {.cursor = {}, .pos = 0, .src = std::string(source_memory)};
+    PLOGD << "Loaded source:\n\t" << source_memory.size();
 
     Vec<Token> result;
-    result.reserve(lex.sv.size());
+    result.reserve(lex.src.size());
 
     while (!lex.is_eos()) {
         const auto curr = lex.peek();

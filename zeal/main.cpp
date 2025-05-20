@@ -5,22 +5,10 @@
 #include <plog/Initializers/ConsoleInitializer.h>
 
 #include "plog/Formatters/TxtFormatter.h"
-#include "zast/incl/ast.h"
-#include "zbytecode/incl/lib.h"
-#include "zcore/incl/lib.h"
-
-
-#define PROJECT_NAME "zeal"
-
-
+#include "zcore/incl/args.h"
 
 
 int main(int argc, char **argv) {
-    if(argc != 1) {
-        std::cout << argv[0] <<  "takes no arguments.\n";
-        return 1;
-    }
-
     // TODO: make logging toggleable from command line
     static plog::ConsoleAppender<plog::TxtFormatter> consoleAppender;
     #if 0
@@ -28,14 +16,13 @@ int main(int argc, char **argv) {
         plog::init(plog::verbose, &consoleAppender).addAppender(&fileAppender);
     #else 
         plog::init(plog::verbose, &consoleAppender);
-    #endif
-    
-    
+    #endif     
     PLOGD << "Initialized plog!";
-    
-    zeal::core::zcore();
-    zeal::bc::bytecode();
-    zeal::ast::ast();
 
+    const auto args = zeal::core::CmdArgs::parse_args(argc, argv);
+
+    
     return 0;
 }
+
+

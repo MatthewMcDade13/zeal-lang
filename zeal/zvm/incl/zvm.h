@@ -43,9 +43,11 @@ typedef struct Zvm_InitConfig {
 
 typedef enum Zvm_ErrorState {
   /// No error state, we good!
-  ZVM_OK,
-  ZVM_PARSE_ERROR,
-  ZVM_IO_FILE_ERROR,
+  ZVM_OK = 0,
+  ZVM_PARSE_ERROR = -1,
+  ZVM_IO_FILE_ERROR = -2,
+  /// todo / not implemented yet (NIY)
+  ZVM_TODONIY = -3,
 } Zvm_ErrorState;
 
 typedef struct Zvm_ErrorInfo {
