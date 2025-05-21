@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
                 for (const auto& t : toks) {
                     PLOGD << t.to_string();
                 }
-                return 0;
+                continue;
             } else {
                 PLOGF << "Failed to tokenize input: '" << input << "': " << res.error().message;
                 continue;

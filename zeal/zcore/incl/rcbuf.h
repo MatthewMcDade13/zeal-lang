@@ -15,7 +15,7 @@ namespace zeal::core {
   /// copies given items of rvalue vec into 
   /// a shared_ptr<T[]>
   template<typename T>
-  ArcVec<T> into_arcvec(std::vector<T>&& vec) {
+  RcVec<T> into_arcvec(std::vector<T>&& vec) {
     auto* copied = new T[vec.size()](); 
     std::copy(vec.begin(), vec.end(), copied);
 

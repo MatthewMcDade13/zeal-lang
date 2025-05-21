@@ -78,27 +78,30 @@ template <typename T>
 using HashSet = std::unordered_set<T>;
 
 template <typename T>
-using Arc = std::shared_ptr<T>;
+using Rc = std::shared_ptr<T>;
 
 template <typename T>
 using Box = std::unique_ptr<T>;
 
 template <typename T>
-using ArcVec = std::shared_ptr<T[]>;
+using RcVec = std::shared_ptr<T[]>;
+
+template<typename ...Args>
+using Union = std::variant<Args...>;
 
 struct ErrorInfo {
     i32 error_code;
     char message[255];
 };
 
-template <typename T>
-using Result = std::expected<std::reference_wrapper<T>, ErrorInfo>;
 
-/// Concept for callback functions that take a single const data parameer and return
-/// a template arg [Result]
-template <typename Callback, typename Result, typename Param = std::any>
-concept PredicateAny = requires(Callback cb, const Param& t) {
-    { cb(t) } -> std::convertible_to<Result>;
-};
+template <typename T>
+using Result = std::expected<T, ErrorInfo>;
+
+
+template <typename T>
+using ResultRef = Result<std::reference_wrapper<T>>;
+
+
 
 }  // namespace zeal

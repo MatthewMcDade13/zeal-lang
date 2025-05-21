@@ -124,9 +124,11 @@ struct Lexer {
             // Space interrupts the token stream
             // NOTE: This makes sense to me now and i dont see this ever causing
             // issue, but we shall see... lol
-            if (std::isspace(this->peek())) {
+            if (std::isspace(this->peek()) || this->peek() == ';') {
+                PLOGD << "Found semicolon while getting next alnum";
                 break;
             }
+
         }
         isize end{0};
         if (this->is_eos()) {
@@ -146,7 +148,8 @@ struct Lexer {
         const auto begin = this->pos;
         while (!this->is_eos() && zis_numeric_or_delim(this->peek())) {
             this->adv();
-            if (std::isspace(this->peek())) {
+            if (std::isspace(this->peek()) || this->peek() == ';') {
+                PLOGD << "found space or semicolon, breaking out of while loop!";
                 break;
             }
         }
@@ -378,11 +381,6 @@ static lex::LexResult<> tokenize_alnum(Lexer& lex, Vec<Token>& out_buffer) {
         return std::unexpected(lex.make_error(lex::LexError_t::UnknownSymbol));
     }
 
-    if (lex.peek() == ';') {
-        lex.adv();
-        push_token(out_buffer, SemiColon);
-    }
-
     const auto first = *tok.begin();
 
     // check we have a token starting with a valid numeric character first.
@@ -476,6 +474,7 @@ static lex::LexResult<> tokenize_glyphs(Lexer& lex, Vec<Token>& out_buffer) {
             return {};
         } break;
         case ';': {
+            PLOGD << "Found semicolon while parsing glyph!";
             lex.adv();
             push_token(out_buffer, SemiColon);
             return {};
@@ -616,6 +615,7 @@ namespace zeal::ast {
 
 namespace lex {
 
+
 LexResult<Vec<Token>> tokenize(const std::string& filepath) {
     std::ifstream infile(filepath);
 
@@ -640,11 +640,6 @@ LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
     while (!lex.is_eos()) {
         const auto curr = lex.peek();
 
-        if (lex.matches<';'>()) {
-            lex.adv();
-            push_token(result, SemiColon);
-        }
-
         if (curr == '\n') {
             lex.newline_adv();
         }
@@ -660,6 +655,13 @@ LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
                 PLOGE << "tokenize_alnum returned empty advancing cursor...";
                 lex.adv();
                 // return std::unexpected(res.error());
+            }
+
+            if (lex.peek() == ';') {
+                PLOGD << "Found semicolon in main repl loop";
+                lex.adv();
+                push_token(result, SemiColon);
+                continue;
             }
 
             continue;

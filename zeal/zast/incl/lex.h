@@ -360,6 +360,13 @@ struct LexError {
             return {};
         }
     }
+
+    constexpr bool is_terminal(const char c) noexcept {
+       return c == '\n' || c == ';';
+    }
+    constexpr bool isspace_or_terminal(const char c) noexcept {
+        return is_terminal(c) || std::isspace(c);
+    }
 };
 
 /// LexError's inner error enum type
