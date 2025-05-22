@@ -1,15 +1,10 @@
 #pragma once
 
 #include "common.h"
-#include <iostream>
-#include <string>
-#include <vector>
-#include <string_view>
-#include <span>
-#include <optional>
-#include <concepts>
-#include <type_traits>
-#include <variant>
-#include <sstream>
-#include <cstdint>
 
+#include <plog/Initializers/ConsoleInitializer.h>
+#include <plog/Initializers/RollingFileInitializer.h>
+#include <plog/Log.h>
+#include <plog/Severity.h>
+
+#

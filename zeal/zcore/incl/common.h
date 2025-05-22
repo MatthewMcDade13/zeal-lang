@@ -8,6 +8,8 @@
 #include <expected>
 #include <functional>
 #include <iterator>
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <span>
 #include <string_view>
