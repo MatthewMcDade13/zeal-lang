@@ -8,7 +8,7 @@ int factorial(int number) {
 
 TEST_CASE("Test tokenize words") {
     constexpr const char* SAMPLE = "let x = 12;";
-    const auto ts = zeal::ast::lex::tokenize_memory(SAMPLE);
+    const auto ts = zeal::ast::lex::tokenize_input(SAMPLE);
 
     // CHECK(ts.has_value());
 

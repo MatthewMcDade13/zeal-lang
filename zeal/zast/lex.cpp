@@ -626,10 +626,10 @@ LexResult<Vec<Token>> tokenize(const std::string& filepath) {
         return std::unexpected(err);
     }
     ss << infile.rdbuf();
-    return tokenize_memory(ss.str());
+    return tokenize_input(ss.str());
 }
 
-LexResult<Vec<Token>> tokenize_memory(const std::string_view source_memory) {
+LexResult<Vec<Token>> tokenize_input(const std::string_view source_memory) {
     // Pad our input to the right to avoid errors due to lexer landing on last token
     // might even add a non-utf8 End of stream marker
     Lexer lex = {.cursor = {}, .pos = 0, .src = std::string(source_memory) + "\n\n"};

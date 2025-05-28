@@ -10,15 +10,6 @@
 #include "plog/Formatters/TxtFormatter.h"
 #include "zcore/incl/args.h"
 
-// std::atomic_bool terminate_prog(false);
-volatile bool terminate_prog{false};
-
-void handle_sigint(int signum) {
-    if (signum == SIGINT) {
-        PLOGD << "Ctrl+C detected. Exiting...";
-        terminate_prog = true;
-    }
-}
 
 int main(int argc, char** argv) {
     using namespace zeal::core;
@@ -33,22 +24,7 @@ int main(int argc, char** argv) {
 #endif
     PLOGD << "Initialized plog!";
 
-    std::signal(SIGINT, handle_sigint);
-
     const auto args = zeal::core::CmdArgs::parse_args(argc, argv);
-
-    std::stringstream ss;
-    using std::operator""s;
-    for (const auto& f : args.input_args) {
-        auto s = std::string(f) + "\0"s;
-        ss << s << " | "s;
-    }
-    const auto fstr = ss.str();
-
-    PLOGI << "CmdArgs: \n\t=> "
-          << ((zeal::u32) args.flags & (zeal::u32) flags::CmdArgFlags::Execute)
-          << " " << (zeal::u32) flags::CmdArgFlags::Compile << args.input_string
-          << "flags len: " << args.input_args.size() << " flags: " << fstr;
 
     const auto flags = args.flags;
 
@@ -57,9 +33,6 @@ int main(int argc, char** argv) {
 
     } else if (flags::isset_execute(flags)) {
         PLOGI << "flag execute is set!";
-        // if (const auto opt = args.query_evaluate()) {
-
-        // }
 
         PLOGF << "Execute/eval flag was set but not argument was provided!";
         return 0;
@@ -77,12 +50,12 @@ int main(int argc, char** argv) {
 
         zeal::String input;
 
-        while (!terminate_prog) {
+        for(;;) {
             std::cout << "zeal> ";
 
             if (!std::getline(std::cin, input)) {
                 std::cout << "Read EOF, Exiting...\n";
-                terminate_prog = true;
+                return 0;
             }
 
             if (input == "exit" || input == "quit") {
@@ -90,7 +63,7 @@ int main(int argc, char** argv) {
                 return 0;
             }
 
-            auto res = zeal::ast::lex::tokenize_memory(input);
+            auto res = zeal::ast::lex::tokenize_input(input);
             if (res.has_value()) {
                 PLOGD << "Lex Success!!";
                 const auto toks = res.value(); 

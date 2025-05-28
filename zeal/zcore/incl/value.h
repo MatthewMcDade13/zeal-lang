@@ -115,4 +115,17 @@ private:
       data;
 };
 
+
+/// A Zeal builtin type representing a value of any type.
+/// Think of it as Zeal's version of void* (but more type-safe :D)
+/// Inspired by c3-lang's any type, which is essentially a void* + typeid
+template <typename T>
+struct Any {
+  
+};
+
+
+
+
+
 } // namespace zeal::core

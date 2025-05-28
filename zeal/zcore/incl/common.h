@@ -91,19 +91,48 @@ using RcVec = std::shared_ptr<T[]>;
 template<typename ...Args>
 using Union = std::variant<Args...>;
 
-struct ErrorInfo {
-    i32 error_code;
-    char message[255];
+/// A general/any error.
+/// simply a templated Error Type and
+/// a static sized message buffer
+template<usize MessageLen = 255, typename ErrorCode = i32>
+struct Error {
+    ErrorCode error_code;
+    std::byte message[MessageLen];
+
+    constexpr Error() noexcept: error_code({}), message({}) {}
+    constexpr Error(const ErrorCode err) noexcept: error_code(err), message({}) {}
+    constexpr Error(const ErrorCode err, const Str msg) noexcept: Error(err) {
+
+       const auto len = std::min(MessageLen, msg.size());
+       std::memcpy(this->message, msg, len - 1);
+       this->message[len] = '\0';
+    }
 };
 
+using Err = Error<255>;
 
+/// Type alias for C++23 std::expected.
+/// @template T must be copy-constructible and not a reference type.
+/// @see [ResultRef] if you need T to be a ref type.
 template <typename T>
-using Result = std::expected<T, ErrorInfo>;
+using Result = std::expected<T, Err>;
 
 
+/// Type alias for C++23 std::expected.
+/// @template T must be a reference type
+/// @see [Result] if you need a Result with default behavior
 template <typename T>
 using ResultRef = Result<std::reference_wrapper<T>>;
 
 
+namespace type {
+    
+template<typename T>
+struct Any {
+     
+};
+
+
+}
 
 }  // namespace zeal
