@@ -1,36 +1,14 @@
 #pragma once
 
-#include <sfl/small_unordered_flat_set.hpp>
+#include <plog/Log.h>
+
+#include <sfl/small_unordered_flat_map.hpp>
 #include <variant>
 
 #include "common.h"
 #include "rune.h"
 
 namespace zeal::ast {
-
-/// A collection of unique strings (separated by a single whitespace in memory)
-/// a small unordered flat set is used to track strings that are already in table.
-/// Runes are distinguised from symbols by their ':' prefix
-/// NOTE: currently all symbols are promoted to Runes at some point, so their names will most likely
-/// be used interchangibly. (Runes are just internned strings, and since symbols are pretty much static Syntax data,
-/// they are an easy target for string interning). Just keep in mind that :symbol != symbol
-///
-/// @warning std::string_view 's returned from lookup and insertion are only valid the lifetime of this Table.
-/// and for that reason this table is not copyable
-struct SymbolTable final {
-
-    constexpr SymbolTable() noexcept: seen(), symbols() {}
-
-    Str add(const Str symbol);
-    Opt<Str> lookup(const Str symbol) const;
-    
-   private:
-       SymbolTable(const SymbolTable&) = delete;
-       SymbolTable& operator=(const SymbolTable&) = delete;
-
-       sfl::small_unordered_flat_set<Str,  64> seen{};
-       String symbols{};
-};
 
 namespace expr {
 

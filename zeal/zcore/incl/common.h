@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <any>
 #include <concepts>
 #include <cstddef>
@@ -8,17 +9,17 @@
 #include <expected>
 #include <functional>
 #include <iterator>
-#include <algorithm>
-#include <iterator>
 #include <memory>
 #include <span>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <vector>
+
 
 namespace zeal {
 using u8 = uint8_t;
@@ -67,10 +68,10 @@ using Sview = std::string_view;
 /// !!! expect a C null termined string, bad things will happen lol           !!!
 using Sref = std::string_view;
 
-template<typename A, typename B>
+template <typename A, typename B>
 using Tup2 = std::tuple<A, B>;
 
-template<typename A, typename B, typename C>
+template <typename A, typename B, typename C>
 using Tup3 = std::tuple<A, B, C>;
 
 template <typename K, typename V>
@@ -88,24 +89,38 @@ using Box = std::unique_ptr<T>;
 template <typename T>
 using RcVec = std::shared_ptr<T[]>;
 
-template<typename ...Args>
+template <typename... Args>
 using Union = std::variant<Args...>;
+
+/// Type tag for unit type. Essentially a marker denoting "nothing"
+/// or any other abstract equivalent objects (NOTE: This is word salad, and im
+/// keeping the comment as it is for lolz :D)
+struct UnitTag final {};
+using TUnit = UnitTag;
 
 /// A general/any error.
 /// simply a templated Error Type and
 /// a static sized message buffer
-template<usize MessageLen = 255, typename ErrorCode = i32>
+template <usize MessageLen = 255, typename ErrorCode = i32>
 struct Error {
     ErrorCode error_code;
-    std::byte message[MessageLen];
+    std::array<const char, MessageLen> message;
+    // char message[MessageLen];
 
-    constexpr Error() noexcept: error_code({}), message({}) {}
-    constexpr Error(const ErrorCode err) noexcept: error_code(err), message({}) {}
-    constexpr Error(const ErrorCode err, const Str msg) noexcept: Error(err) {
+    constexpr Error() noexcept : error_code({}), message({}) {}
+    constexpr Error(const ErrorCode err) noexcept : error_code(err), message({}) {}
+    constexpr Error(const ErrorCode err, const Str msg) noexcept : Error(err) {
+        const auto len = std::min(MessageLen, msg.size());
+        std::memcpy(this->message, msg, len - 1);
+        this->message[len] = '\0';
+    }
 
-       const auto len = std::min(MessageLen, msg.size());
-       std::memcpy(this->message, msg, len - 1);
-       this->message[len] = '\0';
+    constexpr String to_string() const {
+        std::stringstream ss;
+        const auto msg = std::string(this->message.data());
+
+        ss << "Error(" << std::to_string(this->error_code) << ") => " << msg << "\n"; 
+        return ss.str();
     }
 };
 
@@ -118,21 +133,19 @@ template <typename T>
 using Result = std::expected<T, Err>;
 
 
-/// Type alias for C++23 std::expected.
-/// @template T must be a reference type
-/// @see [Result] if you need a Result with default behavior
-template <typename T>
-using ResultRef = Result<std::reference_wrapper<T>>;
+using IOResult = Result<TUnit>;
 
+    /// Type alias for C++23 std::expected.
+    /// @template T must be a reference type
+    /// @see [Result] if you need a Result with default behavior
+    template <typename T>
+    using ResultRef = Result<std::reference_wrapper<T>>;
 
 namespace type {
-    
-template<typename T>
-struct Any {
-     
-};
 
+template <typename T>
+struct Any {};
 
-}
+}  // namespace type
 
 }  // namespace zeal
