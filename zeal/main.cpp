@@ -1,5 +1,5 @@
-#include <plog/Initializers/ConsoleInitializer.h>
 #include <plog/Initializers/RollingFileInitializer.h>
+#include <plog/Initializers/ConsoleInitializer.h>
 #include <plog/Log.h>
 #include <plog/Severity.h>
 
@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     using namespace zeal::core;
 
     // TODO: make logging toggleable from command line
-    static plog::ConsoleAppender<plog::TxtFormatter> consoleAppender;
+    static plog::ColorConsoleAppender<plog::TxtFormatter> consoleAppender;
 #if 0
         static plog::RollingFileAppender<plog::TxtFormatter> fileAppender("./.zlog/zlog.txt", 100000, 5);
         plog::init(plog::verbose, &consoleAppender).addAppender(&fileAppender);

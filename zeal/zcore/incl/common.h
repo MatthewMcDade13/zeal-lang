@@ -11,15 +11,14 @@
 #include <iterator>
 #include <memory>
 #include <span>
+#include <sstream>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
-#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <vector>
-
 
 namespace zeal {
 using u8 = uint8_t;
@@ -40,12 +39,12 @@ template <typename T>
 using Opt = std::optional<T>;
 
 template <typename T>
-using slice = std::span<const T>;
+using cslice = std::span<const T>;
 
 template <typename T>
-using slice_mut = std::span<T>;
+using slice = std::span<T>;
 
-using Bytes = slice_mut<byte>;
+using Bytes = slice<byte>;
 
 template <typename T>
 using Vec = std::vector<T>;
@@ -103,15 +102,18 @@ using TUnit = UnitTag;
 /// a static sized message buffer
 template <usize MessageLen = 255, typename ErrorCode = i32>
 struct Error {
+    /// Error value for anything, refer to
+    /// message field for error information
+    static constexpr const ErrorCode ANY = 0;
     ErrorCode error_code;
-    std::array<const char, MessageLen> message;
+    std::array<char, MessageLen> message;
     // char message[MessageLen];
 
     constexpr Error() noexcept : error_code({}), message({}) {}
     constexpr Error(const ErrorCode err) noexcept : error_code(err), message({}) {}
     constexpr Error(const ErrorCode err, const Str msg) noexcept : Error(err) {
         const auto len = std::min(MessageLen, msg.size());
-        std::memcpy(this->message, msg, len - 1);
+        std::memcpy(this->message.data(), msg.data(), len - 1);
         this->message[len] = '\0';
     }
 
@@ -119,7 +121,7 @@ struct Error {
         std::stringstream ss;
         const auto msg = std::string(this->message.data());
 
-        ss << "Error(" << std::to_string(this->error_code) << ") => " << msg << "\n"; 
+        ss << "Error(" << std::to_string(this->error_code) << ") => " << msg << "\n";
         return ss.str();
     }
 };
@@ -132,14 +134,31 @@ using Err = Error<255>;
 template <typename T>
 using Result = std::expected<T, Err>;
 
-
 using IOResult = Result<TUnit>;
 
-    /// Type alias for C++23 std::expected.
-    /// @template T must be a reference type
-    /// @see [Result] if you need a Result with default behavior
-    template <typename T>
-    using ResultRef = Result<std::reference_wrapper<T>>;
+/// Type alias for C++23 std::expected.
+/// @template T must be a reference type
+/// @see [Result] if you need a Result with default behavior
+template <typename T>
+using ResultRef = Result<std::reference_wrapper<T>>;
+
+constexpr Err make_error(const i32 code, const Str message = "") noexcept {
+    return Err(code, message);
+}
+
+constexpr Err make_error(const Str message) noexcept {
+    return make_error(Err::ANY, message);
+}
+
+#ifndef ZERR
+/// Conveinence wrapper around std::unexpected(make_error(...))
+#define ZERR(...) std::unexpected(make_error(__VA_ARGS__))
+#endif
+
+template <typename T>
+constexpr auto me(const i32 code) -> Result<T> {
+    return std::unexpected(make_error(code));
+}
 
 namespace type {
 

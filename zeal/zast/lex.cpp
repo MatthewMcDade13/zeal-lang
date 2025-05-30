@@ -616,8 +616,9 @@ namespace zeal::ast {
 namespace lex {
 
 
-LexResult<Vec<Token>> tokenize(const std::string& filepath) {
-    std::ifstream infile(filepath);
+LexResult<Vec<Token>> tokenize_file(const Str filepath) {
+    const auto fp = std::string(filepath);
+    std::ifstream infile(fp);
 
     std::stringstream ss;
     if (!infile) {

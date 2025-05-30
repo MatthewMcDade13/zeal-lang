@@ -367,6 +367,11 @@ struct LexError {
     constexpr bool isspace_or_terminal(const char c) noexcept {
         return is_terminal(c) || std::isspace(c);
     }
+
+    constexpr String to_string() const {
+        const auto prefix = std::string(this->type_string());
+        return prefix + "::" + this->message;
+    }
 };
 
 /// LexError's inner error enum type
@@ -377,8 +382,8 @@ struct IOResult {};
 template <typename T = IOResult>
 using LexResult = std::expected<T, LexError>;
 
-LexResult<Vec<Token>> tokenize(const std::string& source_file);
-LexResult<Vec<Token>> tokenize_input(const std::string_view source_memory);
+LexResult<Vec<Token>> tokenize_file(const Str source_file);
+LexResult<Vec<Token>> tokenize_input(const Str source_memory);
 }  // namespace lex
 
 }  // namespace zeal::ast

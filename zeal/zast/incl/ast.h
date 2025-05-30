@@ -7,34 +7,55 @@
 
 #include "common.h"
 #include "rune.h"
+#include "string_table.h"
 
 namespace zeal::ast {
 
 namespace expr {
 
-// struct Atom {
-// using Unit = std::monostate;
-// using Inner = std::variant<Unit, bool, i64, f64, core::Rune>;
-// };
 
 enum class OperatorType {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Concat,
-    Negate,
-    Not,
-    Modulo,
-    Gt,
-    Lt,
-    Gte,
-    Lte,
-    Eq,
-    NotEq,
-    And,
-    Or,
+
     Unknown,
+    /// +
+    Add,
+    /// -
+    Sub,
+    /// *
+    Mul,
+    /// /
+    Div,
+    /// ++
+    Concat,
+    /// ! (or maybe '--'?)
+    Negate,
+    /// not
+    Not,
+    /// % (or maybe 'mod')
+    Modulo,
+    /// >
+    Gt,
+    /// <
+    Lt,
+    /// >=
+    Gte,
+    /// <=
+    Lte,
+    /// ==
+    Eq,
+    /// !=
+    NotEq,
+    /// and (or '&&')
+    And,
+    /// or (or '||')
+    Or,
+    /// $ (or call/invoke, maybe something else)
+    Call,
+    /// |>
+    PipeRight,
+    /// => (or 'mkv')
+    MapKV,
+
 };
 
 /// Index/Slot to another AST Node
@@ -54,8 +75,10 @@ struct Slot {
 // Pair Forms
 struct Operator {
     const OperatorType type{};
+    /// Must be a list of at least 2 exprs
     const Slot args{};
 };
+
 struct Assign {
     const Slot lhs{};
     const Slot rhs{};
@@ -63,63 +86,95 @@ struct Assign {
 
 struct Call {
     const Slot head{};
+    /// Must be a list
     const Slot args{};
 };
 
 struct BasicBlock {
-    Vec<Slot> statements;
+    /// Must be a list
+    const Slot statements;
 };
 
 /// Same as @ref [BasicBlock], but loops back to beginning of block after executing
 /// last statement, forever. (lke rust's loop {} block)
 struct LoopBlock {
-    Vec<Slot> statements;
+    /// must be a list of exprs
+    const Slot body;
 };
 
 struct WhileBlock {
-    Slot condition;
-    Vec<Slot> body;
+    const Slot condition;
+    /// Must be a list of Exprs
+    const Slot body;
 };
 
-struct DefFunc {};
+struct DefFunc {
+    const core::StringTable::Handle name;
+    /// Must be a list of bindings
+    const Slot params;
+    const Slot body;
+};
 
-struct Binding {};
 
-struct EscapeExpr {};
+struct Binding {
+    enum class Type : u8 {
+        Let,
+        Mut,
+        Const,
+        Param,
+        Field,
+        MapPair,
+    };
 
-using Slots2 = Tup2<Slot, Slot>;
-using Slots3 = Tup3<Slot, Slot, Slot>;
+    Type type;
+
+
+    /// Slot to initilizer expr node. 0 if none
+    /// Binding types Let and Const MUST have a non 0 initializer
+    Slot initializer{0};
+
+    core::StringTable::Handle name;   
+
+    // TODO: Add typeinfo
+};
+
+struct EscapeStmt {
+    enum class Type : u8 {
+        Return,
+        Break,
+        Continue,
+        Try,
+        Catch,
+        Expect,
+    };
+    Type type;
+
+    /// If type is Return, must but non-0 slot!
+    Slot expr{0};
+};
+
 
 using Unit = std::monostate;
 using List = Vec<Slot>;
 using Symbol = core::Rune;
 
 using PairForm = Union<Operator, Assign, Call, Tup2<Slot, Slot>>;
-using TripleForm = Union<Slots3>;
+using TripleForm = Union<DefFunc, Binding, Tup3<Slot, Slot, Slot>>;
 
-using Atom = Union<Unit, bool, i64, f64, String, Symbol>;
+using Atom = Union<Unit, bool, i64, f64, core::StringTable::Handle>;
 using Expr = Union<Unit, Atom, PairForm, TripleForm, List>;
-using ExprStmt = Union<Expr, BasicBlock, LoopBlock>;
+using ExprStmt = Union<Expr, BasicBlock, LoopBlock, EscapeStmt>;
 
-struct Ast {};
-
-// NOTE: For reference:
-/*
-
-#[derive(Debug, Clone)]
-pub enum ExprStmt {
-    Block(AstList<Self>),
-    Loop(AstList<Self>),
-    While { cond: Expr, body: AstList<Self> },
-    When(AstList<WhenForm>),
-    DefFunc(FuncDecl),
-    Binding(BindStmt),
-    Escape(EscapeExpr),
-    Atom(Expr),
-}
-
-*/
 
 }  // namespace expr
+
+// struct Ast {
+//     Vec<expr::ExprStmt> root; 
+// };
+
+IOResult parse_file(const Str filepath);
+IOResult parse_source(const Str source);
+IOResult parse(const std::span<const struct Token> toks);
+
 
 }  // namespace zeal::ast
