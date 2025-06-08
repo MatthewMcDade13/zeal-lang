@@ -36,10 +36,10 @@ IOResult parse_source(const Str source) {
 }
 
 IOResult parse(const std::span<const Token> toks) {
-    Parser p{
-        .toks = toks,
-        .i = 0,
-    };
+    // Parser p{
+    //     .toks = toks,
+    //     .i = 0,
+    // };
 
     
 

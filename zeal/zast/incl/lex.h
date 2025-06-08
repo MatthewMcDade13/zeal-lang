@@ -378,8 +378,8 @@ struct LexError {
 using LexError_t = decltype(LexError::errtype);
 
 /// Tag type representing a successful IO operation that returns no value
-struct IOResult {};
-template <typename T = IOResult>
+struct LexIOResult {};
+template <typename T = LexIOResult>
 using LexResult = std::expected<T, LexError>;
 
 LexResult<Vec<Token>> tokenize_file(const Str source_file);
