@@ -350,7 +350,7 @@ struct LexError {
             "Unknown",          "UnexpectedEof",
             "MissingCloser",    "UnknownSymbol",
             "IOFail",           "Any",
-            "BadStdStringCtor", "LanFeatureNotYetImplemented"};
+            "BadStdStringCtor", "LangFeatureNotYetImplemented"};
         const auto ty = static_cast<usize>(this->errtype);
         try {
             return NAMES[ty];

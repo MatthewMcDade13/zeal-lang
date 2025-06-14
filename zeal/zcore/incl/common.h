@@ -21,6 +21,7 @@
 #include <vector>
 
 namespace zeal {
+
 using u8 = uint8_t;
 using i8 = int8_t;
 using byte = std::byte;
@@ -128,10 +129,14 @@ struct Error {
 
 using Err = Error<255>;
 
+struct UnitType {
+    
+};
+
 /// Type alias for C++23 std::expected.
 /// @template T must be copy-constructible and not a reference type.
 /// @see [ResultRef] if you need T to be a ref type.
-template <typename T>
+template <typename T = UnitType>
 using Result = std::expected<T, Err>;
 
 using IOResult = Result<TUnit>;
