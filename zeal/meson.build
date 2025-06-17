@@ -1,8 +1,8 @@
 project('zeal-lang', 'cpp',
   version : '0.1',
   default_options : [
-    'cpp_std=c++23',
-    # 'cpp_eh=none',
+    'cpp_std=c++',
+    'cpp_eh=none',
     'werror=true'
   ])
 
