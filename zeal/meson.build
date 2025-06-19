@@ -1,29 +1,31 @@
-project('zeal-lang', 'cpp',
+project('zeal-lang', 'cpp', 'c',
   version : '0.1',
   default_options : [
-    'cpp_std=c++',
-    'cpp_eh=none',
+    'cpp_std=c++17,c++20,c++23',
+    'c_std=c11,c17,c18,c23',
+    # 'cpp_eh=none',
+    # 'cpp_rtti=false',
     'werror=true'
   ])
 
-# cpp = meson.get_compiler('cpp')
-# project_args = []
+project_args = []
 
-# if cpp.get_id() == 'gcc' or cpp.get_id() == 'clang'
-#   project_args += ['-Wextra']
-# endif
+buildtype = get_option('buildtype')
 
-# add_project_arguments(project_args, language: 'cpp')
+
+if buildtype == 'debug' or buildtype == 'debugoptimized'
+  project_args += ['-DZEAL_DEBUG=1']
+else
+  project_args += ['-DZEAL_DEBUG=0']
+endif
+
 
 main_sources = files('main.cpp')
-
-# test('basic', exe)
 
 
 subdir('libs')
 
-
-
+subdir('zalloc')
 subdir('zcore')
 subdir('zbytecode')
 subdir('zvm')
@@ -33,13 +35,17 @@ subdir('zast')
 
 exe = executable('zeal',
   main_sources,
+  cpp_args: project_args,
+  c_args: project_args,
   cpp_pch: 'pch/zeal_pch.h',
   dependencies: [depzcore, depzvm, depzbytecode, depzast, zplog_dep, zbench_dep],
   link_with: [libzcore, libzvm, libzbytecode, libzast, libzplog, libzbench],
   install : true
 )
 
-dep_includes = include_directories('zcore/incl', 'zbytecode/incl', 'zvm/incl', 'zast/incl', 'libs/incl')
+# TODO: create a library config so zeal can be easily embedded
+
+dep_includes = include_directories('zalloc/incl', 'zcore/incl', 'zbytecode/incl', 'zvm/incl', 'zast/incl', 'libs/incl')
 
 dep = declare_dependency(
   include_directories: dep_includes, 

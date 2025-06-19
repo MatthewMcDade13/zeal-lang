@@ -6,7 +6,6 @@
 
 #include "common.h"
 #include "plog/Log.h"
-#include "rune.h"
 namespace zeal::ast {
 
 enum class TokType : i16 {
@@ -17,7 +16,7 @@ enum class TokType : i16 {
     /// AST Marker to denote the end of a statement/expression
     Terminal = 0,
 
-    /// Single character Runes
+    /// single character runes
     Plus = '+',
     Minus = '-',
     Star = '*',
@@ -172,218 +171,218 @@ enum class TokType : i16 {
 
 constexpr const char UNKNOWN_LITERAL[] = "_?_";
 
-constexpr String toktype_to_string(const TokType tt)  {
-    constexpr const auto glower = static_cast<i16>(TokType::BuiltinStart);
-    constexpr const auto gupper = static_cast<i16>(TokType::BuiltinEnd);
+// constexpr String toktype_to_string(const TokType tt)  {
+//     constexpr const auto glower = static_cast<i16>(TokType::BuiltinStart);
+//     constexpr const auto gupper = static_cast<i16>(TokType::BuiltinEnd);
 
-    constexpr const auto lvlower = static_cast<i16>(TokType::LangValuesStart);
-    constexpr const auto lvupper = static_cast<i16>(TokType::LangValuesEnd);
+//     constexpr const auto lvlower = static_cast<i16>(TokType::LangValuesStart);
+//     constexpr const auto lvupper = static_cast<i16>(TokType::LangValuesEnd);
 
-    const auto tval = static_cast<i16>(tt);
+//     const auto tval = static_cast<i16>(tt);
 
-    if (tval < glower) {
-        return std::string(1, static_cast<char>(tt));
-    } else if (tval > glower && tval < gupper) {
-        static constexpr std::array<Str, 47> NAMES = {
-            "begin", "end",    "function", "fn",      "do",       "while",  "when",
-            "for",   "if",     "then",     "elseif",  "else",     "struct", "or",
-            "and",   "module", ">=",       "<=",      "+=",       "-=",     "/=",
-            "*=",    "&&",     "||",       "^^",      "..",       "...",    "--",
-            "->",    "=>",     "<-",       "where",   "in",       "let",    "mut",
-            "|>",    "<|",     "**",       "newtype", "continue", "break",  "return",
-            "pub",   "import", "include",  "const",   "=="};
-        const auto i = tval - glower;
-        if (i < NAMES.size()) {
-            return std::string(NAMES[i]);
-        } else {
-            return String(UNKNOWN_LITERAL) + std::to_string(tval);
-        }
+//     if (tval < glower) {
+//         return std::string(1, static_cast<char>(tt));
+//     } else if (tval > glower && tval < gupper) {
+//         static constexpr std::array<Str, 47> NAMES = {
+//             "begin", "end",    "function", "fn",      "do",       "while",  "when",
+//             "for",   "if",     "then",     "elseif",  "else",     "struct", "or",
+//             "and",   "module", ">=",       "<=",      "+=",       "-=",     "/=",
+//             "*=",    "&&",     "||",       "^^",      "..",       "...",    "--",
+//             "->",    "=>",     "<-",       "where",   "in",       "let",    "mut",
+//             "|>",    "<|",     "**",       "newtype", "continue", "break",  "return",
+//             "pub",   "import", "include",  "const",   "=="};
+//         const auto i = tval - glower;
+//         if (i < NAMES.size()) {
+//             return std::string(NAMES[i]);
+//         } else {
+//             return String(UNKNOWN_LITERAL) + std::to_string(tval);
+//         }
 
-    } else if (tval > lvlower && tval < lvupper) {
-        switch (tt) {
-            case TokType::String: {
-                return "__String__";
-            } break;
-            case TokType::Rune: {
-                return "__Rune__";
-            } break;
-            case TokType::Symbol: {
-                return "__Symbol__";
-            } break;
-            case TokType::Macro: {
-                return "__Macro__";
-            } break;
-            case TokType::Float: {
-                return "__Float__";
-            } break;
-            case TokType::Integer: {
-                return "__Integer__";
-            } break;
-            default: {
-                return "__TOKTYPE__UNKNOWN__";
-            } break;
-        }
-    } else {
-        return std::string(UNKNOWN_LITERAL) + std::to_string(tval);
-    }
+//     } else if (tval > lvlower && tval < lvupper) {
+//         switch (tt) {
+//             case TokType::String: {
+//                 return "__String__";
+//             } break;
+//             case TokType::Rune: {
+//                 return "__Rune__";
+//             } break;
+//             case TokType::Symbol: {
+//                 return "__Symbol__";
+//             } break;
+//             case TokType::Macro: {
+//                 return "__Macro__";
+//             } break;
+//             case TokType::Float: {
+//                 return "__Float__";
+//             } break;
+//             case TokType::Integer: {
+//                 return "__Integer__";
+//             } break;
+//             default: {
+//                 return "__TOKTYPE__UNKNOWN__";
+//             } break;
+//         }
+//     } else {
+//         return std::string(UNKNOWN_LITERAL) + std::to_string(tval);
+//     }
 
-}
+// }
 
-struct Token {
-    using Empty = std::monostate;
-    using Symbol = core::Rune;
-    using Int = i64;
-    using Float = f64;
-    using Data = std::variant<Empty, Symbol, Int, Float>;
+// struct Token {
+//     using Empty = std::monostate;
+//     using Symbol = core::Rune;
+//     using Int = i64;
+//     using Float = f64;
+//     using Data = std::variant<Empty, Symbol, Int, Float>;
 
-    u32 lineno{};
-    u32 colno{};
+//     u32 lineno{};
+//     u32 colno{};
 
-    TokType type = TokType::Unknown;
+//     TokType type = TokType::Unknown;
 
-    Data data;
+//     Data data;
 
-    // constexpr Token() : lineno(0), colno(0), data(Empty()) {}
+//     // constexpr Token() : lineno(0), colno(0), data(Empty()) {}
 
-    constexpr std::string_view lexeme_sview() const noexcept {
-        if (std::holds_alternative<Symbol>(this->data)) {
-            const auto& r = std::get<Symbol>(this->data);
-            return r.sview();
-        }
-        return {};
-    }
-    constexpr bool has_lexeme() const noexcept {
-        return std::holds_alternative<Symbol>(this->data);
-    }
+//     constexpr std::string_view lexeme_sview() const noexcept {
+//         if (std::holds_alternative<Symbol>(this->data)) {
+//             const auto& r = std::get<Symbol>(this->data);
+//             return r.sview();
+//         }
+//         return {};
+//     }
+//     constexpr bool has_lexeme() const noexcept {
+//         return std::holds_alternative<Symbol>(this->data);
+//     }
 
-    constexpr bool is_float() const noexcept {
-        return std::holds_alternative<Float>(this->data);
-    }
+//     constexpr bool is_float() const noexcept {
+//         return std::holds_alternative<Float>(this->data);
+//     }
 
-    constexpr bool is_integer() const noexcept {
-        return std::holds_alternative<Int>(this->data);
-    }
+//     constexpr bool is_integer() const noexcept {
+//         return std::holds_alternative<Int>(this->data);
+//     }
 
-    constexpr bool is_int_or_float() const noexcept {
-        return this->is_float() || this->is_integer();
-    }
+//     constexpr bool is_int_or_float() const noexcept {
+//         return this->is_float() || this->is_integer();
+//     }
 
-    constexpr Opt<u64> try_integer() const noexcept {
-        if (this->is_integer()) {
-            return std::get<Int>(this->data);
-        } else {
-            return std::nullopt;
-        }
-    }
+//     constexpr Opt<u64> try_integer() const noexcept {
+//         if (this->is_integer()) {
+//             return std::get<Int>(this->data);
+//         } else {
+//             return std::nullopt;
+//         }
+//     }
 
-    constexpr Opt<f64> try_float() const noexcept {
-        if (this->is_integer()) {
-            return std::get<Float>(this->data);
-        } else {
-            return std::nullopt;
-        }
-    }
+//     constexpr Opt<f64> try_float() const noexcept {
+//         if (this->is_integer()) {
+//             return std::get<Float>(this->data);
+//         } else {
+//             return std::nullopt;
+//         }
+//     }
 
-    constexpr Opt<Symbol> try_lexeme() const noexcept {
-        if (this->has_lexeme()) {
-            return std::get<Symbol>(this->data);
-        } else {
-            return std::nullopt;
-        }
-    }
+//     constexpr Opt<Symbol> try_lexeme() const noexcept {
+//         if (this->has_lexeme()) {
+//             return std::get<Symbol>(this->data);
+//         } else {
+//             return std::nullopt;
+//         }
+//     }
 
-    constexpr String to_string() const {
-        if (const auto rsym = this->try_lexeme()) {
-            const Symbol sym = rsym.value();
-            std::string res(sym);
-            // if rune is empty, try stringifying the type token type instead
-            if (res.size() == 0) {
-                return toktype_to_string(this->type);
-            }
-            // just to be safe! lol
-            res += "\0";
-            return res;
-        } else if (const auto rint = this->try_integer()) {
-            const auto val = rint.value();
-            return std::to_string(val);
+//     constexpr String to_string() const {
+//         if (const auto rsym = this->try_lexeme()) {
+//             const Symbol sym = rsym.value();
+//             std::string res(sym);
+//             // if rune is empty, try stringifying the type token type instead
+//             if (res.size() == 0) {
+//                 return toktype_to_string(this->type);
+//             }
+//             // just to be safe! lol
+//             res += "\0";
+//             return res;
+//         } else if (const auto rint = this->try_integer()) {
+//             const auto val = rint.value();
+//             return std::to_string(val);
 
-        } else if (const auto rfloat = this->try_float()) {
-            const auto val = rfloat.value();
-            return std::to_string(val);
+//         } else if (const auto rfloat = this->try_float()) {
+//             const auto val = rfloat.value();
+//             return std::to_string(val);
 
-        } else {
-            return {};
-        }
-    }
-};
+//         } else {
+//             return {};
+//         }
+//     }
+// };
 
-namespace lex {
+// namespace lex {
 
-struct LexError {
-    enum : u8 {
-        Unknown = 0,
-        UnexpectedEof,
-        /// Missing ending '"' or ')', '}', ect
-        MissingCloser,
-        UnknownSymbol,
-        InvalidSymbol,
-        IOFail,
-        /// Any error, read error message to find out what went wrong
-        Any,
+// struct LexError {
+//     enum : u8 {
+//         Unknown = 0,
+//         UnexpectedEof,
+//         /// Missing ending '"' or ')', '}', ect
+//         MissingCloser,
+//         UnknownSymbol,
+//         InvalidSymbol,
+//         IOFail,
+//         /// Any error, read error message to find out what went wrong
+//         Any,
 
-        /// Most likely an exception was thrown when constructing a std::string
-        /// somewhere... hmmm... *sherlock_holms_emoji* lol
-        BadStdStringCtor,
-        LangFeatureNotYetImplemented,
-        Count
-    } errtype;
+//         /// Most likely an exception was thrown when constructing a std::string
+//         /// somewhere... hmmm... *sherlock_holms_emoji* lol
+//         BadStdStringCtor,
+//         LangFeatureNotYetImplemented,
+//         Count
+//     } errtype;
 
-    struct Location {
-        usize line{};
-        usize column{};
-    } loc;
+//     struct Location {
+//         usize line{};
+//         usize column{};
+//     } loc;
 
-    std::string message;
+//     std::string message;
 
-    constexpr std::string_view type_string() const noexcept {
-        static constexpr const std::array<std::string_view, Count> NAMES = {
-            "Unknown",          "UnexpectedEof",
-            "MissingCloser",    "UnknownSymbol",
-            "IOFail",           "Any",
-            "BadStdStringCtor", "LangFeatureNotYetImplemented"};
-        const auto ty = static_cast<usize>(this->errtype);
-        try {
-            return NAMES[ty];
-        } catch (...) {
-            PLOGF << "errtype of token calling to_string method is invalid/out of "
-                     "range!!";
-            return {};
-        }
-    }
+//     constexpr std::string_view type_string() const noexcept {
+//         static constexpr const std::array<std::string_view, Count> NAMES = {
+//             "Unknown",          "UnexpectedEof",
+//             "MissingCloser",    "UnknownSymbol",
+//             "IOFail",           "Any",
+//             "BadStdStringCtor", "LangFeatureNotYetImplemented"};
+//         const auto ty = static_cast<usize>(this->errtype);
+//         try {
+//             return NAMES[ty];
+//         } catch (...) {
+//             PLOGF << "errtype of token calling to_string method is invalid/out of "
+//                      "range!!";
+//             return {};
+//         }
+//     }
 
-    constexpr bool is_terminal(const char c) noexcept {
-       return c == '\n' || c == ';';
-    }
-    constexpr bool isspace_or_terminal(const char c) noexcept {
-        return is_terminal(c) || std::isspace(c);
-    }
+//     constexpr bool is_terminal(const char c) noexcept {
+//        return c == '\n' || c == ';';
+//     }
+//     constexpr bool isspace_or_terminal(const char c) noexcept {
+//         return is_terminal(c) || std::isspace(c);
+//     }
 
-    constexpr String to_string() const {
-        const auto prefix = std::string(this->type_string());
-        return prefix + "::" + this->message;
-    }
-};
+//     constexpr String to_string() const {
+//         const auto prefix = std::string(this->type_string());
+//         return prefix + "::" + this->message;
+//     }
+// };
 
-/// LexError's inner error enum type
-using LexError_t = decltype(LexError::errtype);
+// /// LexError's inner error enum type
+// using LexError_t = decltype(LexError::errtype);
 
-/// Tag type representing a successful IO operation that returns no value
-struct LexIOResult {};
-template <typename T = LexIOResult>
-using LexResult = std::expected<T, LexError>;
+// /// Tag type representing a successful IO operation that returns no value
+// struct LexIOResult {};
+// template <typename T = LexIOResult>
+// using LexResult = std::expected<T, LexError>;
 
-LexResult<Vec<Token>> tokenize_file(const Str source_file);
-LexResult<Vec<Token>> tokenize_input(const Str source_memory);
-}  // namespace lex
+// LexResult<Vec<Token>> tokenize_file(const Str source_file);
+// LexResult<Vec<Token>> tokenize_input(const Str source_memory);
+// }  // namespace lex
 
 }  // namespace zeal::ast
