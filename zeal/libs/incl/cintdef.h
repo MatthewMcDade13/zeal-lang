@@ -25,7 +25,6 @@ using isize = long;
 using f32 = float;
 using f64 = double;
 
-
 #else
 typedef uint8_t u8;
 typedef int8_t i8;

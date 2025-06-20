@@ -47,19 +47,14 @@ static i32 unix_release(void* memory, const i64 size_bytes) noexcept;
 /// Wrapper funcitons to tidy up duplication of #if WINDOWS #elif UNIX #else #endif
 /// chains
 static void* mem_reserve(const i64 size_bytes) noexcept;
-static void mem_commit(void* memory, const i64 size_bytes) noexcept;
-static void mem_decommit(void* memory, const i64 size_bytes) noexcept;
-static void mem_release(void* memory, const i64 size_bytes) noexcept;
+static i32 mem_commit(void* memory, const i64 size_bytes) noexcept;
+static i32 mem_decommit(void* memory, const i64 size_bytes) noexcept;
+static i32 mem_release(void* memory, const i64 size_bytes) noexcept;
 
-static void mblock_header_init(zl_MemoryBlock* block, u8* memory,
-                               const i32 size_bytes) noexcept;
+static i32 mblock_header_init(zl_MemoryBlock* block, u8* memory,
+                              const i32 size_bytes) noexcept;
 
-static void mblock_append(zl_MemoryBlock* block, const i32 size_bytes) noexcept;
-
-#if ZEAL_DEBUG
-/// @warning Deaf Bees!!!
-constexpr const auto CANARY = 0xDEAFBEE5;
-#endif
+static i32 mblock_append(zl_MemoryBlock* block, const i32 size_bytes) noexcept;
 
 // ====================================
 // Implementation of C header functions
@@ -130,16 +125,16 @@ void* zl_reserve_memory(const i64 size_bytes) noexcept {
     return mem_reserve(size_bytes);
 }
 
-void zl_commit_memory(void* memory, const i64 size_bytes) noexcept {
-    mem_commit(memory, size_bytes);
+i32 zl_commit_memory(void* memory, const i64 size_bytes) noexcept {
+    return mem_commit(memory, size_bytes);
 }
 
-void zl_decommit_memory(void* memory, const i64 size_bytes) noexcept {
-    mem_decommit(memory, size_bytes);
+i32 zl_decommit_memory(void* memory, const i64 size_bytes) noexcept {
+    return mem_decommit(memory, size_bytes);
 }
 
-void zl_release_memory(void* memory, const i64 size_bytes) noexcept {
-    mem_release(memory, size_bytes);
+i32 zl_release_memory(void* memory, const i64 size_bytes) noexcept {
+    return mem_release(memory, size_bytes);
 }
 
 zl_MemoryBlock zl_mblock_new(const i64 size_bytes) noexcept {
@@ -149,9 +144,9 @@ zl_MemoryBlock zl_mblock_new(const i64 size_bytes) noexcept {
         return {
             // WARNING: This memory is uninitialized, so don't read from it until
             // the first commit is made!
-            .head = reinterpret_cast<zl_BlockHeader*>(memory),
-            .committed = 0,
-            .size_bytes = static_cast<i32>(size_bytes),
+            .head = reinterpret_cast<zl_BlockChunk*>(memory),
+            // .committed = 0,
+            // .size_bytes = static_cast<i32>(size_bytes),
         };
     }
     Zeal_Panic("%s", "Failed to reserve memory!");
@@ -180,8 +175,27 @@ u8* zl_mblock_next_avail(zl_MemoryBlock* block) noexcept {
     // }
 }
 
+static zl_BlockChunk* mblock_leaf(const zl_MemoryBlock& block) noexcept {
+    if (!block.head || block.bytes_committed == 0) {
+        PLOGE << "Attempt to use un-committed memory!";
+        return nullptr;
+    }
+    zl_BlockChunk* head = block.head;
+    /// created with no intention of appending children, so
+    /// block.head is it!
+    if (!head->next || block.max_children == 0) {
+        return head;
+    }
+
+    zl_BlockChunk* iter = head->next;
+    while (iter->next) {
+        iter = iter->next;
+    }
+    return iter;
+}
+
 /// Grows (Commits) mblock by size_bytes
-void zl_mblock_grow(zl_MemoryBlock* page, const i64 size_bytes) noexcept {
+i32 zl_mblock_grow(zl_MemoryBlock* page, const i64 size_bytes) noexcept {
     if (!page) {
         return;
     }
@@ -191,20 +205,20 @@ void zl_mblock_grow(zl_MemoryBlock* page, const i64 size_bytes) noexcept {
 
     // ensure we are within reserved bounds to allow
     // for a commit
-    u8* committed = zl_pmblock_committed(page);
+    u8* committed = zl_pmblock_commit_offset(page);
     const u8* end = zl_pmblock_end(page);
 
     if ((committed + size_bytes) >= end) {
         /// if there is no next block, grow!
         if (!page->head->next) {
             page->head->isfull = true;
-            const auto size = page->head->size_bytes * 2;
+            const auto size = page->head->block_size * 2;
             u8* child = static_cast<u8*>(zl_reserve_memory(size));
-            zl_commit_memory(child, (size_bytes + sizeof(zl_BlockHeader)) * 2);
+            zl_commit_memory(child, (size_bytes + sizeof(zl_BlockChunk)) * 2);
 
-            zl_BlockHeader h{.size_bytes = size, .isfull = false, .next = nullptr};
-            memcpy(child, &h, sizeof(zl_BlockHeader));
-            page->head->next = reinterpret_cast<zl_BlockHeader*>(child);
+            zl_BlockChunk h{.block_size = size, .isfull = false, .next = nullptr};
+            memcpy(child, &h, sizeof(zl_BlockChunk));
+            page->head->next = reinterpret_cast<zl_BlockChunk*>(child);
         } else {
             // otherwise get the next available block...
 
@@ -378,11 +392,11 @@ void* mem_reserve(const i64 size_bytes) noexcept {
 #endif
 }
 
-void mem_commit(void* memory, const i64 size_bytes) noexcept {
+int mem_commit(void* memory, const i64 size_bytes) noexcept {
 #if WINDOWS
-    win32_commit(memory, size_bytes);
+    return win32_commit(memory, size_bytes);
 #elif UNIX
-    unix_commit(memory, size_bytes);
+    return unix_commit(memory, size_bytes);
 #else
     (void) memory;
     (void) size_bytes;
@@ -391,9 +405,9 @@ void mem_commit(void* memory, const i64 size_bytes) noexcept {
 }
 void mem_decommit(void* memory, const i64 size_bytes) noexcept {
 #if WINDOWS
-    win32_decommit(memory, size_bytes);
+    return win32_decommit(memory, size_bytes);
 #elif UNIX
-    unix_decommit(memory, size_bytes);
+    return unix_decommit(memory, size_bytes);
 #else
 
 #error \
@@ -403,9 +417,9 @@ void mem_decommit(void* memory, const i64 size_bytes) noexcept {
 }
 void mem_release(void* memory, const i64 size_bytes) noexcept {
 #if WINDOWS
-    win32_release(memory, size_bytes);
+    return win32_release(memory, size_bytes);
 #elif UNIX
-    unix_release(memory, size_bytes);
+    return unix_release(memory, size_bytes);
 #else
 
 #error \
@@ -426,7 +440,7 @@ void mblock_header_init(zl_MemoryBlock* block, u8* __restrict memory,
         return;
     }
 
-    constexpr const int HEAD_SIZE = sizeof(zl_BlockHeader);
+    constexpr const int HEAD_SIZE = sizeof(zl_BlockChunk);
     if (block->committed < HEAD_SIZE) {
         Zeal_Panic(
             "MemoryBlock must have committed memory larger than %d, "
@@ -435,18 +449,18 @@ void mblock_header_init(zl_MemoryBlock* block, u8* __restrict memory,
             HEAD_SIZE, block->committed);
         return;
     }
-    const zl_BlockHeader head{
-        .size_bytes = size_bytes, .isfull = false, .next = nullptr};
-    memcpy(memory, &head, sizeof(zl_BlockHeader));
+    const zl_BlockChunk head{
+        .block_size = size_bytes, .isfull = false, .next = nullptr};
+    memcpy(memory, &head, sizeof(zl_BlockChunk));
 
-    block->head = reinterpret_cast<zl_BlockHeader*>(memory);
+    block->head = reinterpret_cast<zl_BlockChunk*>(memory);
 }
 
 void mblock_append(zl_MemoryBlock* block, const i32 size_bytes) noexcept {
     if (!block) return;
     if (!block->head) return;
 
-    zl_BlockHeader* last = block->head;
+    zl_BlockChunk* last = block->head;
     while (last->next) {
         last = last->next;
     }
