@@ -7,6 +7,7 @@
 // #include "common.h"
 
 ZEAL_CAPI_BEGIN
+#define ZEAL_ENABLE_HUGEPAGES 0
 
 #define VMEMORY_4KB (4ULL * 1024ULL)
 #define VMEMORY_2MB (2ULL * 1024ULL * 1024ULL)
@@ -30,17 +31,53 @@ ZEAL_CAPI_BEGIN
 /// 1GB multiplied by n (1GB * n)
 #define VMEMORY_1GBx(n) ((VMEMORY_1GB * n))
 
-/// Used to track the size of pages, constants correlate with thier numeric byte
-/// values for debugging
-enum zl_VMemType {
-    VMemType_1GB = 1,
-    VMemType_2MB = 2,
-    VMemType_4KB = 4,
+/// General ErrorState ErrorType info
+enum zl_VMemErrorType {
+    /// Someone somwhere trie to read/write protected memory! yikerinos!!!
+    zl_VMemErrorType__InvalidMemoryAccess = -9,
+    //// A call was made to commit virutal memory, but
+    /// there is not enought available reserved virutal memory space
+    /// to fulfill commit request.
+    zl_VMemErrorType__OutOfReservedMemory = -8,
+    /// Error occurred while attempting to decommit memory that may or may not
+    /// have been previously reserved
+    zl_VMemErrorType__DecommitFail = -7,
+    /// Error occurred while attempting to release virtual page memory
+    zl_VMemErrorType__ReleaseFail = -6,
+    /// Error occurred while attempting to reserve virutal page memory
+    /// If this happens and there is no parameter/configuration errors, then
+    /// OS really strapped for memory and we should take this as our cue to BAIL!!!
+    zl_VMemErrorType__ReserveFail = -5,
+    /// Error occurred while attempting to commit virtual page memory that may or may
+    /// not have
+    /// been previously reserved. This covers all errors not caught by other Commit
+    /// related error codes
+    zl_VMemErrorType__CommitFail = -4,
+    /// Something bad happened somewhere at some point in time in this abstract
+    /// matrix of reality we call life... *burp*
+    zl_VMemErrorType__Unknown = -3,
+    /// system call requesting memory returned an error or nullptr! panic! abort!
+    /// ahhhh!!
+    zl_VMemErrorType__OOMAbort = -2,
+    /// Invalid args passed to allocation function (ex: an unexpected nullptr,
+    /// invalid page size, ect)
+    zl_VMemErrorType__InvalidArgs = -1,
+
+    /// no error
+    zl_VMemErrorType__Ok = 0,
+    /// Previous Allocation failed due to lack of
+    /// committed virtual memory available. It would be nice to be able to check
+    /// val >= zl_VMemErrorType__RequestResize
+    /// and if so, the actual integer value is the minimum bytes required to ensure
+    /// next allocation with same
+    /// data succeeds.
+    zl_VMemErrorType__RequestResize = 1,
+
 };
 
 /// @breif Gets OS Page Size
 /// @returns u64 virtual memory page size from Operating System
-extern i64 zl_get_page_size(void) ZEAL_NOEXCEPT;
+extern u64 zl_get_page_size(void) ZEAL_NOEXCEPT;
 
 /// @breif Reserves size_bytes memory from OS
 /// @details Reserves a large, contiguous block of virtual address space.
@@ -49,64 +86,34 @@ extern i64 zl_get_page_size(void) ZEAL_NOEXCEPT;
 /// @remarks @param size_bytes MUST be >= value returned by @see
 /// [zalloc_get_page_size]. If it is not, this function does nothing and returns
 /// nullptr/NULL
-extern void* zl_reserve_memory(const i64 size_bytes) ZEAL_NOEXCEPT;
+extern void* zl_vmemory_reserve_bytes(const i64 size_bytes) ZEAL_NOEXCEPT;
 
 /// @breif Commits pages in a reserved block
 /// @details memory becomes accessible (backed by physical pages)
-extern int zl_commit_memory(void* memory, const i64 size_bytes) ZEAL_NOEXCEPT;
+extern i32 zl_vmemory_commit(void* memory, const i64 size_bytes) ZEAL_NOEXCEPT;
 
 /// @breif Decommits pages
 /// @details Decommits range of pages, releasing their physical memory.
 /// @warning The address space at @param memory remains reserved, but becomes
 /// inaccessible to read/writes
-extern int zl_decommit_memory(void* memory, const i64 size_bytes) ZEAL_NOEXCEPT;
+extern i32 zl_vmemory_decommit(void* memory, const i64 size_bytes) ZEAL_NOEXCEPT;
 
 /// @breif Releases entire block of virutal memory back to operating system
-extern int zl_release_memory(void* memory, const i64 size_bytes) ZEAL_NOEXCEPT;
-
-typedef struct zl_BlockChunk {
-    /// Number of bytes currently committed in this memory chunk
-    /// We shall keep this field first as it will most likely be the most frequently
-    /// accessed in this header, which also allows us to get current committed byte
-    /// count through something like:
-    ///
-    /// @code {.cpp}
-    ///
-    ///
-    /// const auto committed =
-    /// *(reinterpret_cast<i32*>(memory_block->head))
-    ///
-    ///
-    /// @endcode
-    ///
-    ///
-    i32 committed;
-
-    /// size of entire reserved virtual memory in bytes,
-    /// Must be on of the VMEMORY_SIZE_* variants
-    const i32 block_size;
-
-    /// Pointer to next Block if this one is full (available <= 0)
-    struct zl_BlockChunk* next;
-
-    /// beginning of block data
-    u8 storage[0];
-} zl_BlockChunk;
-
-#define zl_chunk_commit_offset(bc) (bc->storage + bc->committed)
+extern i32 zl_vmemory_free(void* memory, const i64 size_bytes) ZEAL_NOEXCEPT;
 
 /// @brief Virtual Memory Page metadata is stored on stack
-/// with a small Bucket/Block/Chunk header
+/// with a small header before available storage
 typedef struct {
     /// Root pointer to requested OS virtual memory page
-    zl_BlockChunk* head;
-    // zl_BlockChunk* back;
+    u8* begin;
+    /// Pointer to end of requested OS virtual memory page
+    u8* end;
 
     /// Count of calls to zl_commit_memory
     i32 commits;
 
     /// Count of currently allocated (committed) bytes
-    i32 commit_bytes;
+    i32 committed;
 
     /// Byte sum of all commits that have taken place since this MemoryBlocks
     /// initialization
@@ -116,66 +123,52 @@ typedef struct {
     i32 decommits;
     /// number of bytes that have been decommitted
     i32 sum_decommit_bytes;
+    /// number of bytes currently reserved that are
+    /// available for committing
+    i32 decommitted;
 
-    /// Count of calls to zl_reserve_memory
-    i32 reserves;
-    /// Number of bytes that are currently reserved
-    i32 reserved_bytes;
+    /// size of entire reserved virtual memory in bytes,
+    /// Must be a power of 2 and/or a multiple of any of the 3
+    /// valid page sizes (though most likely should just use 4KB page size...)
+    i32 chunk_size;
 
-    /// Byte sum of all commits that have taken place since this MemoryBlocks
-    /// initialization
-    i32 sum_reserved_bytes;
-
-    /// Count of calls to zl_release_memory
-    i32 releases;
-    /// Number of bytes that have been reserved
-    i32 sum_released_bytes;
-
-    /// maximum number of children to nest when we need to grow/reserve more memory.
-    /// no limit if set to -1. default is 0, thus growing is disabled and will
-    /// either return an error or crash the program (i have yet to decide :D)
-    const i32 max_children;
-    i32 children_count;
-    const zl_VMemType memtype;
+#if ZEAL_ENABLE_HUGEPAGES
+    /// Size in bytes of system huge page size to be  used
+    /// when reserving and committing virtual memory.
+    /// ignored if 0 and uses system page size for reserves/commits
+    i32 huge_page_size;
+#endif
 
 } zl_MemoryBlock;
 
-/// reinterpret cast page.head to u8* then offset by page.head.committed
-#define zl_mblock_commit_offset(page) zl_chunk_commit_offset(page.head)
-
-/// Same as zl_mempage_committed, but assumes pointer value
-#define zl_pmblock_commit_offset(ptr) zl_chunk_commit_offset(ptr->head)
-
-/// reinterpret cast zalloc_MemoryPage's head field from zalloc_PageHeader* to u8*
-#define zl_mblock_data(page) ((u8*) (page.head))
-/// Same as zl_mempage_data but assumes pointer value
-#define zl_pmblock_data(ptr) ((u8*) (ptr->head))
-
-/// Alias for mempage_data
-#define zl_mblock_begin(page) zl_mblock_data(page)
-/// Same as zl_mempage_begin but assumes pointer value
-#define zl_pmblock_begin(ptr) zl_pmblock_data(ptr)
-
-/// Gets pointer to end of memory page
-/// @warning does not check header is valid
-#define zl_mblock_end(page) (zl_mblock_begin(page) + page.head->size_bytes)
-/// Same as zl_mempage_end but assumes pointer value
-#define zl_pmblock_end(ptr) (zl_pmblock_begin(ptr) + ptr->head->size_bytes)
-
-/// Creates a new MemoryBlock structure. Requests siez_bytes
-/// from OS to reserve
-/// @warning WARNING: The memory pointed to that is returned from this function
-/// must not be read or written to until it is first committed!!! (use zl_mblock_grow
-/// to commit!)
-extern zl_MemoryBlock zl_mblock_new(const i64 size_bytes) ZEAL_NOEXCEPT;
+/// Creates a new MemoryBlock structure. Requests page_count of virtual memory pages.
+/// @param page_count Number of pages to reserve
+/// @param commit_pages Number of pages to commit upfront
+///
+/// @remarks commit_pages ignored if 0. if <= 0, commits all pages.
+///
+extern zl_MemoryBlock zl_mblock_new(const i32 page_count,
+                                    const i32 commit_pages) ZEAL_NOEXCEPT;
 /// Grows (Commits) mempage by size_bytes
-extern int zl_mblock_grow(zl_MemoryBlock* page, const i64 size_bytes) ZEAL_NOEXCEPT;
+extern i32 zl_mblock_push_bytes(zl_MemoryBlock* page,
+                                const i64 size_bytes) ZEAL_NOEXCEPT;
+
+/// Grows (commits) memory by count * page size
+extern i32 zl_mblock_push_pages(zl_MemoryBlock* memory,
+                                const i32 count) ZEAL_NOEXCEPT;
+
+/// commits all reserved memory
+extern i32 zl_mblock_full_commit(zl_MemoryBlock* memory) ZEAL_NOEXCEPT;
 
 /// Shrinks (De-Commits) mempage by size_bytes
-extern int zl_mblock_shrink(zl_MemoryBlock* page,
-                            const i64 size_bytes) ZEAL_NOEXCEPT;
+extern i32 zl_mblock_pop_bytes(zl_MemoryBlock* page,
+                               const i64 size_bytes) ZEAL_NOEXCEPT;
+
+/// Pops (Decommits) page size * count
+extern i32 zl_mblock_pop_pages(zl_MemoryBlock* memory,
+                               const i32 count) ZEAL_NOEXCEPT;
 /// Deletes (Releases) mempage
-extern int zl_mblock_delete(zl_MemoryBlock* page) ZEAL_NOEXCEPT;
+extern i32 zl_mblock_delete(zl_MemoryBlock* page) ZEAL_NOEXCEPT;
 
 ZEAL_CAPI_END
 
@@ -190,23 +183,23 @@ inline u64 get_page_size() noexcept {
 
 template <typename T>
 inline T* memory_reserve(const i64 size_bytes) noexcept {
-    void* mem = zl_reserve_memory(size_bytes);
+    void* mem = zl_vmemory_reserve_bytes(size_bytes);
     return static_cast<T*>(mem);
 }
 
 template <typename T>
 inline void memory_commit(T* memory, const i64 size_bytes) noexcept {
-    zl_commit_memory(memory, size_bytes);
+    zl_vmemory_commit(memory, size_bytes);
 }
 
 template <typename T>
 inline void memory_decommit(T* memory, const i64 size_bytes) noexcept {
-    zl_decommit_memory(memory, size_bytes);
+    zl_vmemory_decommit(memory, size_bytes);
 }
 
 template <typename T>
 inline void memory_release(T* memory, const i64 size_bytes) noexcept {
-    zl_release_memory(memory, size_bytes);
+    zl_vmemory_free(memory, size_bytes);
 }
 }  // namespace os
 
