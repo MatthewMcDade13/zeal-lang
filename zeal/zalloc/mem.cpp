@@ -110,8 +110,8 @@ zl_MemoryBlock zl_mblock_new(const i32 page_count, const i32 commit_pages) noexc
 
     zl_MemoryBlock mblock{};
     mblock.begin = memory;
-    mblock.end = mblock.begin;
-    mblock.chunk_size = size_bytes;
+    mblock.end = memory + size_bytes;
+    mblock.capacity = size_bytes;
 
     if (commit_pages != 0) {
         i32 cpages = 0;
@@ -140,112 +140,58 @@ i32 zl_mblock_push_pages(zl_MemoryBlock* mblock, const i32 count) noexcept {
 
 /// Grows (Commits) mblock by size_bytes
 i32 zl_mblock_push_bytes(zl_MemoryBlock* mblock, const i64 grow_bytes) noexcept {
-    if (!mblock) return -1;
-    if (!mblock->begin) return -1;
+    if (!mblock) return zl_VMemErrorType__InvalidArgs;
+    if (!mblock->begin) return zl_VMemErrorType__InvalidArgs;
+    if (mblock->committed >= mblock->capacity)
+        return zl_VMemErrorType__OutOfReservedMemory;
 
-    u8* committed = zl_pmblock_commit_offset(mblock);
-    const u8* end = zl_pmblock_end(mblock);
+    u8* commit_top = mblock->begin + mblock->committed;
+    u64 size = grow_bytes < 0 ? 0 : static_cast<u64>(grow_bytes);
 
-    const u8* c = (committed + grow_bytes);
+    const u8* next_top = commit_top + size;
 
-    if (c > end) {
-        const auto delta = c - end;
+    if (next_top >= mblock->end) {
+        // We overshot it, so try to at least commit the rest
+        // of reserved memory, so update size to the delta of
+        // committed and chunk_size
+        size = mblock->capacity - mblock->committed;
 
-        /// Return the byte difference required to commit before successful call
-        /// of this method wit same params
-        return zl_VMemErrorType__RequestResize * delta;
-    } else {
-        zl_vmemory_commit(committed, grow_bytes);
-        mblock->commits += 1;
-        mblock->committed += grow_bytes;
-        mblock->sum_commit_bytes += grow_bytes;
-        mblock->begin->committed += grow_bytes;
-
-        return zl_VMemErrorType__Ok;
+        if (size == 0) {
+            return zl_VMemErrorType__OutOfReservedMemory;
+        } else {
+            // capacity was somehow less than committed. Possible
+            // data corruption or sneaky bug, bail out!
+            return zl_VMemErrorType__InvalidArgs;
+        }
     }
 
-    // if (!page) {
-    //     return;
-    // }
-    // if (!page->head) {
-    //     return;
-    // }
-    //
-    // // ensure we are within reserved bounds to allow
-    // // for a commit
-    // u8* committed = zl_pmblock_commit_offset(page);
-    // const u8* end = zl_pmblock_end(page);
-    //
-    // if ((committed + size_bytes) >= end) {
-    //     /// if there is no next block, grow!
-    //     if (!page->head->next) {
-    //         page->head->isfull = true;
-    //         const auto size = page->head->block_size * 2;
-    //         u8* child = static_cast<u8*>(zl_reserve_memory(size));
-    //         zl_commit_memory(child, (size_bytes + sizeof(zl_BlockChunk)) * 2);
-    //
-    //         zl_BlockChunk h{.block_size = size, .isfull = false, .next =
-    //         nullptr}; memcpy(child, &h, sizeof(zl_BlockChunk));
-    //         page->head->next = reinterpret_cast<zl_BlockChunk*>(child);
-    //     } else {
-    //         // otherwise get the next available block...
-    //
-    //         auto* next = zl_mblock_next_avail(page);
-    //         if (next == zl_pmblock_data(page) || next == nullptr) {
-    //             Zeal_Panic("%s",
-    //                        "Failed to grow MemoryBlock for unknown reasons. "
-    //                        "Probably logic error!!!");
-    //             return;
-    //         }
-    //     }
-    //
-    //     // Zeal_Panic("%s", "Attempt to grow past current committed virtual
-    //     // memory!");
-    //     return;
-    // }
-    //
-    // zl_commit_memory(committed, size_bytes);
-    // auto* head = page->head;
-    //
-    // page->committed += size_bytes;
-}
-
-/// Shrinks (De-Commits) mblock by size_bytes
-void zl_mblock_shrink(zl_MemoryBlock* page, const i64 size_bytes) {
-    if (!page) {
-        return;
+    if (const i32 err = zl_vmemory_commit(commit_top, size); err != 0) {
+        Zeal_Panic("Failed to commit %d byte subregion of reserved memory ",
+                   static_cast<i32>(size));
+        return {};
     }
-    const auto p = *page;
-    CHECK(p);
-    u8* commit_mem_old = zl_mblock_committed(p);
-    u8* commit_mem = commit_mem_old - size_bytes;
 
-    // Handle underflow, otherwise just decommit as normal
-    if (commit_mem <= zl_mblock_begin(p)) {
-        const auto size = commit_mem_old - zl_mblock_begin(p);
-        zl_vmemory_decommit(page->begin, size);
-        page->committed = 0;
-        page->begin->committed = 0;
-    } else {
-        zl_vmemory_decommit(commit_mem, size_bytes);
-        page->begin->committed -= size_bytes;
-        page->committed = page->begin->committed;
-    }
+    mblock->commits += 1;
+    mblock->committed += size;
+    mblock->sum_commit_bytes += size;
+
+    return zl_VMemErrorType__Ok;
 }
 
 /// Deletes (Releases) mblock
-void zl_mblock_delete(zl_MemoryBlock* page) {
-    if (!page) {
-        return;
-    }
-    const auto p = *page;
-    CHECK(p);
+i32 zl_mblock_delete(zl_MemoryBlock* mblock) noexcept {
+    if (!mblock) return zl_VMemErrorType__InvalidArgs;
+    if (!mblock->begin) return zl_VMemErrorType__InvalidArgs;
 
-    void* memory = reinterpret_cast<void*>(p.begin);
-    if (memory) {
-        zl_vmemory_free(memory, p.size_bytes);
-        memset(page, 0, sizeof(zl_MemoryBlock));
+    void* memory = reinterpret_cast<void*>(mblock->begin);
+
+    if (const i32 err = zl_vmemory_free(memory, mblock->capacity); err != 0) {
+        Zeal_Panic("%s. Zeal Error Code: %d",
+                   "Error occurred while attempting to free MemoryBlock", err);
+        return zl_VMemErrorType__ReleaseFail;
     }
+    memset(mblock, 0, sizeof(zl_MemoryBlock));
+    return zl_VMemErrorType__Ok;
 }
 
 // ========================
@@ -373,7 +319,7 @@ int mem_commit(void* memory, const i64 size_bytes) noexcept {
     return ();
 #endif
 }
-void mem_decommit(void* memory, const i64 size_bytes) noexcept {
+i32 mem_decommit(void* memory, const i64 size_bytes) noexcept {
 #if WINDOWS
     return win32_decommit(memory, size_bytes);
 #elif UNIX
@@ -385,7 +331,7 @@ void mem_decommit(void* memory, const i64 size_bytes) noexcept {
     return ();
 #endif
 }
-void mem_release(void* memory, const i64 size_bytes) noexcept {
+i32 mem_release(void* memory, const i64 size_bytes) noexcept {
 #if WINDOWS
     return win32_release(memory, size_bytes);
 #elif UNIX
@@ -396,46 +342,4 @@ void mem_release(void* memory, const i64 size_bytes) noexcept {
     "Unsupported platform. zalloc_release_memory will ALWAYS be a no-op while on unsupprted platform!!!! Supported Platforms: _WIN32, __linux__, __APPLE__"
     return ();
 #endif
-}
-void mblock_header_init(zl_MemoryBlock* block, u8* __restrict memory,
-                        const i32 size_bytes) noexcept {
-    if (!block) {
-        PLOGE << "Attempt to operate on a nullptr!";
-        return;
-    }
-
-    if (!block->begin) {
-        PLOGE << "Attempt to operate on a nullptr! MemoryBlock Header  field is "
-                 "nullptr!!";
-        return;
-    }
-
-    constexpr const int HEAD_SIZE = sizeof(zl_BlockChunk);
-    if (block->committed < HEAD_SIZE) {
-        Zeal_Panic(
-            "MemoryBlock must have committed memory larger than %d, "
-            "(sizeof(zl_BlockHeader)) in bytes. Current committed memory in "
-            "bytes "
-            "is: %d\n",
-            HEAD_SIZE, block->committed);
-        return;
-    }
-    const zl_BlockChunk head{
-        .storage_size = size_bytes, .isfull = false, .next = nullptr};
-    memcpy(memory, &head, sizeof(zl_BlockChunk));
-
-    block->begin = reinterpret_cast<zl_BlockChunk*>(memory);
-}
-
-void mblock_append(zl_MemoryBlock* block, const i32 size_bytes) noexcept {
-    if (!block) return;
-    if (!block->begin) return;
-
-    zl_BlockChunk* last = block->begin;
-    while (last->next) {
-        last = last->next;
-    }
-
-    while (iter) {
-    }
 }

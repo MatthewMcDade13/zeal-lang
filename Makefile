@@ -1,141 +1,108 @@
-# Makefile for a Meson-based C++ project
-#
-# TODO: The paths for meson commands needs some work, and i dont
-# feel like playing with Makefiles rn...
 
-# Variables
-# Build directory (default is 'builddir')
-BUILD_DEBUG ?= targets/debug
-BUILD_RELEASE ?= targets/release
+PROJ_NAME ?= zeal
+BUILDDIR := targets
+CC := clang
+CXX := clang++
 
-# Name of the main executable produced by your Meson project
-# IMPORTANT: Change this to your project's executable name
-EXECUTABLE_NAME ?= zeal
-
-# Default target: build the project
 all: build
 
-# Configure the project using Meson
-# This only needs to be run once, or if meson.build changes
-setup-dev:
-	@if [ ! -d "$(BUILD_DEBUG)" ]; then \
-		echo "Configuring  Meson Debug project in $(BUILD_DEBUG)..."; \
-		pushd ./zeal \
-		meson setup $(BUILD_DEBUG); \
-		popd \
-	else \
-		echo "Build directory $(BUILD_DEBUG) already exists. Skipping Debug configure."; \
-		echo "Run 'make setup-dev' to force reconfiguration."; \
-	fi
+.PHONY: all build run test clean help
 
-# Reconfigure the project (e.g., if meson.build or options change)
-reconfigure-dev:
-	@echo "Reconfiguring Meson project in $(BUILD_DEBUG)..."
-	meson setup --reconfigure $(BUILD_DEBUG)
 
-# Build the project
-# Depends on the configure step implicitly because 'meson compile' needs a configured build directory
-build-dev:
-	@if [ ! -d "$(BUILD_DEBUG)" ]; then \
-		echo "Debug Build directory not found. Running 'make setup-dev' first..."; \
-		make setup-dev; \
-	fi
-	@echo "Building Debug project in $(BUILD_DEBUG)..."
-	meson compile -C $(BUILD_DEBUG)
-
-# Run the main executable
-# Depends on the build step
-run-dev: build-dev
-	@echo "Running Zeal in Debug"
-	$(BUILD_DEBUG)/zeal
-
-# Run tests
-# Depends on the build step
-test: build-dev
-	@echo "Running tests in $(BUILD_DEBUG)..."
-	meson test -C $(BUILD_DEBUG)
-
-# Install the project
-# Depends on the build step
-install: build
-	@echo "Installing project from $(BUILD_DEBUG)..."
-	meson install -C $(BUILD_DEBUG)
-
-# Clean the build directory
-clean-dev:
-	@echo "Cleaning build directory $(BUILD_DEBUG)..."
-	rm -rf $(BUILD_DEBUG)
-
-# Configure the project using Meson
-# This only needs to be run once, or if meson.build changes
-setup:
-	@if [ ! -d "$(BUILD_RELEASE)" ]; then \
-		echo "Configuring  Meson Debug project in $(BUILD_RELEASE)..."; \
-		meson setup $(BUILD_RELEASE); \
-	else \
-		echo "Release Build directory $(BUILD_RELEASE) already exists. Skipping Release configure."; \
-		echo "Run 'make setup' to force reconfiguration."; \
-	fi
-
-# Reconfigure the project (e.g., if meson.build or options change)
-reconfigure:
-	@echo "Reconfiguring Meson project in Release directory: $(BUILD_RELEASE)..."
-	meson setup --reconfigure $(BUILD_RELEASE)
-
-# Build the project
-# Depends on the configure step implicitly because 'meson compile' needs a configured build directory
-build:
-	@if [ ! -d "$(BUILD_RELEASE)" ]; then \
-		echo "Release Build directory not found. Running 'make setup' first..."; \
-		make configure; \
-	fi
-	@echo "Building Debug project in $(BUILD_RELEASE)..."
-	meson compile -C $(BUILD_RELEASE)
-
-# Run the main executable
-# Depends on the build step
-run: build
-	@echo "Running Zeal in Debug"
-	$(BUILD_RELEASE)/zeal
-
-# Clean the build directory
-clean:
-	@echo "Cleaning build Release directory $(BUILD_RELEASE)..."
-	rm -rf $(BUILD_RELEASE)
-
-	
-
-# Display help
 help:
-	@echo "Zeal Programming Language Meson Project"
-	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
-	@echo "Targets:"
-	@echo "  all (default) - Build the project."
-	@echo "  setup-dev     - Set up the Meson Debug build directory (if it doesn't exist)."
-	@echo "  reconfigure-dev   - Force re-configuration of the Meson Debug build directory."
-	@echo "  build-dev         - Compile the project, in debug mode"
-	@echo "  run-dev           - Build and run the main Debug executable"
-	@echo "  test          - Build and run tests."
-	@echo "  install       - Build and install the project."
-	@echo "  clean-dev         - Remove the Debug build directory ($(BUILD_DEBUG))."
+	@echo "Targets: "
+	@echo "    build           Configure (if needed) and build the project in debug(dev) mode"
+	@echo "    buildrelease    Configure (if needed) and build the project in release mode"
+	@echo "    setup           Configure (if needed)  the project in debug(dev) mode"
+	@echo "    setuprelease    Configure (if needed)  the project in release mode"
+	@echo "    run             Run main executable in debug(dev) mode."
+	@echo "    runrelease      Run main executable in release mode."
+	@echo "    test            Run project's test suite."
+	@echo "    install         Install this project to system"
+	@echo "    cleandev        Remove the debug build directory."
+	@echo "    cleanrelease        Remove the release build directory."
+	@echo "    cleanup         Remove entire build directory."
+	@echo "    refresh         clean build directory and reconfigure project"
+	@echo "    help            Show this help message."
 
-	@echo "  setup         - Set up the Meson Release build directory (if it doesn't exist)."
-	@echo "  reconfigure   - Force re-configuration of the Meson Release build directory."
-	@echo "  build         - Compile the project. in Release mode"
-	@echo "  run           - Build and run the main executable in Release mode."
-	@echo "  test          - Build and run tests."
-	@echo "  install       - Build and install the project."
-	@echo "  clean         - Remove the Release build directory ($(BUILD_RELEASE))."
+
+setuprelease:
+	@if [ ! -f "$(BUILDDIR)/debug/build.ninja" ]; then \
+		echo "Configuring Meson Project in Release mode..."; \
+		meson setup "$(BUILDDIR)/release" --buildtype=release; \
+	else \
+		echo "Meson Project already configured. Build files already exist."; \
+	fi  
+	@echo "Building Project..."
+
+setup:
+	@if [ ! -f "$(BUILDDIR)/debug/build.ninja" ]; then \
+		echo "Configuring Meson Project in Debug(dev) mode..."; \
+		meson setup "$(BUILDDIR)/debug" --buildtype=debug; \
+	else \
+		echo "Meson Project already configured. Build files already exist."; \
+	fi  
+	@echo "Building Project..."
+
+
+build: setup	
+	@echo "Building Project in Debug(dev) mode...";
+	@meson compile -C "$(BUILDDIR)/debug";
+	# @if [ ! -f "$(BUILDDIR)/debug/build.ninja" ]; then \
+	# 	echo "Configuring Meson Project in Debug(dev) mode..."; \
+	# 	meson setup "$(BUILDDIR)/debug" ; \
+	# else \
+	# 	echo "Meson Project already configured. Build files already exist."; \
+	# fi  
+	# @echo "Building Project..."
+
+
+
+buildrelease: setuprelease
+	@echo "Building Project in Release mode...";
+	@meson compile -C "$(BUILDDIR)/release";
+	# @if [ ! -f "$(BUILDDIR)/release/build.ninja" ]; then \
+	# 	echo "Configuring Meson Project in Release mode..."; \
+	# 	meson setup "$(BUILDDIR)/release" --buildtype=release;
+	# else \
+	# 	echo "Meson Project already configured. Build files already exist."; \
+	# fi
+	# @echo "Building Project..."
+
+
+install: buildrelease
+	@echo "Installing project to system!"
+	@meson install -C $(BUILDDIR)/release
+	
+
+run: build
+	@echo "Running debug executable..."
+	@$(BUILD_DIR)/debug/$(PROJ_NAME)
+
+
+runrelease: buildrelease
+	@echo "Running release executable..."
+	@$(BUILD_DIR)/release/$(PROJ_NAME)
+
+test: build
+	@echo "Running Tests..."
+	@meson test -C $(BUILDDIR)/debug --print-errorlogs
+
+cleandev:
+	@echo "Cleaning debug build directory..."
+	@rm -rf $(BUILDDIR)/debug	
+
+
+cleanrelease:
+	@echo "Cleaning release build directory..."
+	@rm -rf $(BUILDDIR)/release	
 
 	
-	@echo "  help          - Show this help message."
-	@echo ""
-	@echo "Variables (can be overridden on the command line, e.g., make BUILD_DIR=my_build):"
-	@echo "  BUILD_DEV       - Build directory (default: $(BUILD_DIR))"
-#	@echo "  CXX             - C++ compiler (default: auto-detected by Meson)"
-#	@echo "  MESON           - Meson command (default: $(MESON))"
+cleanup: 
+	@echo "Cleaning entire build directory..."
+	@rm -rf $(BUILDDIR)/
+	
 
-# Phony targets (targets that are not actual files)
-.PHONY: all setup setup-dev reconfigure reconfigure-dev build build-dev run run-dev test install clean clean-dev  help
+

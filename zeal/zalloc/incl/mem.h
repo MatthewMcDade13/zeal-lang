@@ -130,7 +130,12 @@ typedef struct {
     /// size of entire reserved virtual memory in bytes,
     /// Must be a power of 2 and/or a multiple of any of the 3
     /// valid page sizes (though most likely should just use 4KB page size...)
-    i32 chunk_size;
+    i32 capacity;
+
+    /// Memory alignment of reserved virtual memory in bytes.
+    /// Ignored if <= 0.
+    /// TODO: Actually set and use this field. for now i can't be tiffed lol
+    i32 align;
 
 #if ZEAL_ENABLE_HUGEPAGES
     /// Size in bytes of system huge page size to be  used
