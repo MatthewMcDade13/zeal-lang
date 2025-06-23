@@ -1,5 +1,7 @@
-#pragma once
+#ifndef _ZEAL_AST_INCL_LEXER_H_
+#define _ZEAL_AST_INCL_LEXER_H_
 
+#endif
 #include <cassert>
 #include <expected>
 #include <variant>
@@ -169,7 +171,7 @@ enum class TokType : i16 {
 
 };
 
-constexpr const char UNKNOWN_LITERAL[] = "_?_";
+// constexpr const char UNKNOWN_LITERAL[] = "_?_";
 
 // constexpr String toktype_to_string(const TokType tt)  {
 //     constexpr const auto glower = static_cast<i16>(TokType::BuiltinStart);
@@ -184,13 +186,13 @@ constexpr const char UNKNOWN_LITERAL[] = "_?_";
 //         return std::string(1, static_cast<char>(tt));
 //     } else if (tval > glower && tval < gupper) {
 //         static constexpr std::array<Str, 47> NAMES = {
-//             "begin", "end",    "function", "fn",      "do",       "while",  "when",
+//             "begin", "end",    "function", "fn",      "do",       "while", "when",
 //             "for",   "if",     "then",     "elseif",  "else",     "struct", "or",
 //             "and",   "module", ">=",       "<=",      "+=",       "-=",     "/=",
 //             "*=",    "&&",     "||",       "^^",      "..",       "...",    "--",
 //             "->",    "=>",     "<-",       "where",   "in",       "let",    "mut",
-//             "|>",    "<|",     "**",       "newtype", "continue", "break",  "return",
-//             "pub",   "import", "include",  "const",   "=="};
+//             "|>",    "<|",     "**",       "newtype", "continue", "break",
+//             "return", "pub",   "import", "include",  "const",   "=="};
 //         const auto i = tval - glower;
 //         if (i < NAMES.size()) {
 //             return std::string(NAMES[i]);
@@ -354,7 +356,8 @@ constexpr const char UNKNOWN_LITERAL[] = "_?_";
 //         try {
 //             return NAMES[ty];
 //         } catch (...) {
-//             PLOGF << "errtype of token calling to_string method is invalid/out of "
+//             PLOGF << "errtype of token calling to_string method is invalid/out of
+//             "
 //                      "range!!";
 //             return {};
 //         }

@@ -146,6 +146,9 @@ typedef struct {
 
 } zl_MemoryBlock;
 
+static ZEAL_FORCE_INLINE inline u8* zl_mblock_top(zl_MemoryBlock* self) ZEAL_NOEXCEPT {
+    return self->begin + self->committed;
+}
 
 extern void zl_mblock_stats_string(const zl_MemoryBlock* mblock, char* buf,
                                    const i32 len, const bool pretty) ZEAL_NOEXCEPT;
@@ -157,7 +160,7 @@ extern void zl_mblock_print_stats(const zl_MemoryBlock* mblock) ZEAL_NOEXCEPT;
 /// @param page_count Number of pages to reserve
 /// @param commit_pages Number of pages to commit upfront
 ///
-/// @remarks commit_pages ignored if 0. if <= 0, commits all pages.
+/// @remarks commit_pages ignored if 0. if < 0, commits all pages.
 ///
 extern zl_MemoryBlock zl_mblock_new(const i32 page_count,
                                     const i32 commit_pages) ZEAL_NOEXCEPT;

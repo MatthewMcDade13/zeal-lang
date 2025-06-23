@@ -41,7 +41,7 @@
 #elif defined(__GNUC__) || defined(__clang__)
 #define ZEAL_FORCE_INLINE __attribute__((always_inline))
 #else
-#define ZEAL_FORCE_INLINE inline
+#define ZEAL_FORCE_INLINE
 #endif
 
 #define zl_printf(format, ...) (printf(format, __VA_ARGS__))
