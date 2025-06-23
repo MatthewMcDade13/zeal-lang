@@ -4,6 +4,7 @@
 #include "common.h"
 
 ZEAL_CAPI_BEGIN
+
 ZEAL_CAPI_END
 
 #endif

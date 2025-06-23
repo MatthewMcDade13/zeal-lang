@@ -68,5 +68,16 @@
         (*(volatile int*) 0 = 0); \
                                   \
     } while (0)
-#endif  //
+#endif
+
+ZEAL_CAPI_BEGIN
+
+/// Simple, non-owning slice
+typedef struct {
+    const char* begin;
+    const char* end;
+} zl_StrSlice;
+
+ZEAL_CAPI_END
+
 #endif  // header guard

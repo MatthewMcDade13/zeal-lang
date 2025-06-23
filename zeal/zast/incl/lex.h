@@ -1,175 +1,202 @@
 #ifndef _ZEAL_AST_INCL_LEXER_H_
 #define _ZEAL_AST_INCL_LEXER_H_
-
-#endif
-#include <cassert>
-#include <expected>
-#include <variant>
-
 #include "common.h"
-#include "plog/Log.h"
-namespace zeal::ast {
 
-enum class TokType : i16 {
+ZEAL_CAPI_BEGIN
 
-    Error = -2,
-    Unknown = -1,
+enum zl_TokenType {
+
+    zl_TokType__Error = -2,
+    zl_TokType__Unknown = -1,
 
     /// AST Marker to denote the end of a statement/expression
-    Terminal = 0,
+    zl_TokType__Terminal = 0,
 
     /// single character runes
-    Plus = '+',
-    Minus = '-',
-    Star = '*',
-    Whack = '/',
+    zl_TokType__Plus = '+',
+    zl_TokType__Minus = '-',
+    zl_TokType__Star = '*',
+    zl_TokType__Whack = '/',
 
-    Bang = '!',
-    QMark = '?',
-    ChevronUp = '^',
-    Amp = '&',
-    Percent = '%',
-    Dollar = '$',
-    At = '@',
-    Eq = '=',
+    zl_TokType__Bang = '!',
+    zl_TokType__QMark = '?',
+    zl_TokType__ChevronUp = '^',
+    zl_TokType__Amp = '&',
+    zl_TokType__Percent = '%',
+    zl_TokType__Dollar = '$',
+    zl_TokType__At = '@',
+    zl_TokType__Eq = '=',
 
-    SinglePipe = '|',
-    OpenCurly = '{',
-    CloseCurly = '}',
+    zl_TokType__SinglePipe = '|',
+    zl_TokType__OpenCurly = '{',
+    zl_TokType__CloseCurly = '}',
 
-    OpenBracket = '[',
-    CloseBracket = ']',
+    zl_TokType__OpenBracket = '[',
+    zl_TokType__CloseBracket = ']',
 
-    OpenParen = '(',
-    CloseParen = ')',
+    zl_TokType__OpenParen = '(',
+    zl_TokType__CloseParen = ')',
 
-    DblQuote = '\"',
-    Quote = '\'',
-    Backtick = '`',
-    Tilde = '~',
-    Colon = ':',
-    SemiColon = ';',
-    Lt = '<',
-    Gt = '>',
-    Dot = '.',
+    zl_TokType__DblQuote = '\"',
+    zl_TokType__Quote = '\'',
+    zl_TokType__Backtick = '`',
+    zl_TokType__Tilde = '~',
+    zl_TokType__Colon = ':',
+    zl_TokType__SemiColon = ';',
+    zl_TokType__Lt = '<',
+    zl_TokType__Gt = '>',
+    zl_TokType__Dot = '.',
 
     /// Language keywords (ex: begin, end, struct, ect)
     /// and runes more than 1 character long
-    BuiltinStart = 0xFF,
+    zl_TokType__BuiltinStart = 0xFF,
     /// begin    :0
-    Begin,
+    zl_TokType__Begin,
     /// end      :1
-    End,
+    zl_TokType__End,
     /// function :2
-    Function,
+    zl_TokType__Function,
     /// fn       :3
-    Fn,
+    zl_TokType__Fn,
     /// do       :4
-    Do,
+    zl_TokType__Do,
     /// while    :5
-    While,
+    zl_TokType__While,
     /// when     :6
-    When,
+    zl_TokType__When,
     /// for      :7
-    For,
+    zl_TokType__For,
     /// if       :8
-    If,
+    zl_TokType__If,
     /// then     :9
-    Then,
+    zl_TokType__Then,
     /// elseif   :10
-    Elseif,
+    zl_TokType__Elseif,
     /// else     :11
-    Else,
+    zl_TokType__Else,
     /// struct   :12
-    Struct,
+    zl_TokType__Struct,
     /// or       :13
-    Or,
+    zl_TokType__Or,
     /// and      :14
-    And,
+    zl_TokType__And,
     /// mod      :15
-    Module,
+    zl_TokType__Module,
     /// >=       :16
-    Gte,
+    zl_TokType__Gte,
     /// <=       :17
-    Lte,
+    zl_TokType__Lte,
     /// +=       :18
-    PlusEq,
+    zl_TokType__PlusEq,
     /// -=       :19
-    MinusEq,
+    zl_TokType__MinusEq,
     /// /=       :20
-    DivEq,
+    zl_TokType__DivEq,
     /// *=       :21
-    MulEq,
+    zl_TokType__MulEq,
 
     /// &&       :22
-    DblAmp,
+    zl_TokType__DblAmp,
     /// ||       :23
-    DlbPipe,
+    zl_TokType__DlbPipe,
     /// ^^       :24
-    DblChevronUp,
+    zl_TokType__DblChevronUp,
     /// ..       :25
-    DblDot,
+    zl_TokType__DblDot,
     /// ...      :26
-    TripleDot,
+    zl_TokType__TripleDot,
     /// --       :27
-    ArrowRight,
+    zl_TokType__ArrowRight,
     /// =>       :29
-    FatArrowRight,
+    zl_TokType__FatArrowRight,
     /// <-       :30
-    ArrowLeft,
+    zl_TokType__ArrowLeft,
     /// where    :31
-    Where,
+    zl_TokType__Where,
     /// in       :32
-    In,
+    zl_TokType__In,
     /// let      :33
-    Let,
+    zl_TokType__Let,
     /// mut      :34
-    Mut,
+    zl_TokType__Mut,
     /// |>       :35
-    PipeRight,
+    zl_TokType__PipeRight,
     /// <|       :36
-    PipeLeft,
+    zl_TokType__PipeLeft,
     /// **       :37
-    DblStar,
+    zl_TokType__DblStar,
     /// newtype  :38
-    NewType,
+    zl_TokType__NewType,
     /// continue :39
-    Continue,
+    zl_TokType__Continue,
     /// break    :40
-    Break,
+    zl_TokType__Break,
     /// return   :41
-    Return,
+    zl_TokType__Return,
     /// pub      :42
-    Pub,
+    zl_TokType__Pub,
     /// import   :43
-    Import,
+    zl_TokType__Import,
     /// include  :44
-    Include,
+    zl_TokType__Include,
     /// const    :45
-    Constant,
+    zl_TokType__Constant,
     /// ==       :46
-    DblEq,
+    zl_TokType__DblEq,
 
-    BuiltinEnd,
+    zl_TokType__BuiltinEnd,
 
-    LangValuesStart = 0xBEE,
+    zl_TokType__LangValuesStart = 0xBEE,
 
     /// any user string, inculding surrounding '"'
-    String,
+    zl_TokType__String,
     /// any symbol prefixed with ':' (even strings ex: :"really long rune but im
     /// still only a rune :)")
-    Rune,
+    Rzl_TokType__une,
     /// any alpha-numeric characters not surrounded by '"' and/or prefixed with ':'
     /// or '@'
-    Symbol,
+    zl_TokType__Symbol,
     /// any alpha-numeric characters prefixed with '@'
-    Macro,
-    Float,
-    Integer,
+    zl_TokType__Macro,
+    zl_TokType__Float,
+    zl_TokType__Integer,
 
-    LangValuesEnd,
-
+    zl_TokType__LangValuesEnd,
 };
+
+/// An iterator to current token
+typedef struct {
+    /// Pointer slice to mmapped memory
+    zl_StrSlice memory;
+    /// Pointer slice to current Token
+    zl_StrSlice token;
+
+    union {
+        f64 floatp;
+        i64 integer;
+        zl_StrSlice string;
+    };
+
+    /// Line number where this token is at in file
+    i32 lineno;
+    /// Column (line index) number of this token
+    i32 colno;
+
+    /// Type of Zeal Language Source File Token
+    zl_TokenType type;
+
+} zl_TokStream;
+
+ZEAL_CAPI_END
+
+#endif
+// #include <cassert>
+// #include <expected>
+// #include <variant>
+//
+// #include "common.h"
+// #include "plog/Log.h"
+// namespace zeal::ast {
 
 // constexpr const char UNKNOWN_LITERAL[] = "_?_";
 
@@ -388,4 +415,4 @@ enum class TokType : i16 {
 // LexResult<Vec<Token>> tokenize_input(const Str source_memory);
 // }  // namespace lex
 
-}  // namespace zeal::ast
+// }  // namespace zeal::ast
