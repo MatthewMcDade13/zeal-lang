@@ -125,7 +125,7 @@ typedef struct {
     i32 sum_decommit_bytes;
     /// number of bytes currently reserved that are
     /// available for committing
-    i32 decommitted;
+    i32 available;
 
     /// size of entire reserved virtual memory in bytes,
     /// Must be a power of 2 and/or a multiple of any of the 3
@@ -146,7 +146,14 @@ typedef struct {
 
 } zl_MemoryBlock;
 
-/// Creates a new MemoryBlock structure. Requests page_count of virtual memory pages.
+
+extern void zl_mblock_stats_string(const zl_MemoryBlock* mblock, char* buf,
+                                   const i32 len, const bool pretty) ZEAL_NOEXCEPT;
+
+extern void zl_mblock_print_stats(const zl_MemoryBlock* mblock) ZEAL_NOEXCEPT;
+
+/// Creates a new MemoryBlock structure. Requests page_count of virtual memory
+/// pages.
 /// @param page_count Number of pages to reserve
 /// @param commit_pages Number of pages to commit upfront
 ///
@@ -173,7 +180,7 @@ extern i32 zl_mblock_pop_bytes(zl_MemoryBlock* page,
 extern i32 zl_mblock_pop_pages(zl_MemoryBlock* memory,
                                const i32 count) ZEAL_NOEXCEPT;
 /// Deletes (Releases) mempage
-extern i32 zl_mblock_delete(zl_MemoryBlock* page) ZEAL_NOEXCEPT;
+extern i32 zl_mblock_free(zl_MemoryBlock* page) ZEAL_NOEXCEPT;
 
 ZEAL_CAPI_END
 

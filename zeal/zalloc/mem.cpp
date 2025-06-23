@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 
 #include "common.h"
 #include "plog/Log.h"
@@ -50,6 +51,47 @@ static void* mem_reserve(const i64 size_bytes) noexcept;
 static i32 mem_commit(void* memory, const i64 size_bytes) noexcept;
 static i32 mem_decommit(void* memory, const i64 size_bytes) noexcept;
 static i32 mem_release(void* memory, const i64 size_bytes) noexcept;
+static inline char ZEAL_MBLOCK_STATS_TEMPL_PRETTY[] =
+    "{\n"
+    "\t\"commits\": %d,"
+    "\t\"committed_bytes\": %d,"
+    "\t\"sum_committed_bytes\": %d,"
+    "\t\"decommits\": %d,"
+    "\t\"sum_decommit_bytes\": %d,"
+    "\t\"available_bytes\": %d,"
+    "\t\"capacity\": %d,"
+    "}\n";
+
+static inline char ZEAL_MBLOCK_STATS_TEMPL[] =
+    "{"
+    "\"commits\": %d,"
+    "\"committed_bytes\": %d,"
+    "\"sum_committed_bytes\": %d,"
+    "\"decommits\": %d,"
+    "\"sum_decommit_bytes\": %d,"
+    "\"available_bytes\": %d,"
+    "\"capacity\": %d,"
+    "}";
+
+void zl_mblock_stats_string(const zl_MemoryBlock* mblock, char* buf, const i32 len,
+                            const bool pretty) ZEAL_NOEXCEPT {
+    if (pretty) {
+        sprintf(buf, ZEAL_MBLOCK_STATS_TEMPL_PRETTY, mblock->commits,
+                mblock->committed, mblock->sum_commit_bytes, mblock->decommits,
+                mblock->sum_decommit_bytes, mblock->available, mblock->capacity);
+    } else {
+        sprintf(buf, ZEAL_MBLOCK_STATS_TEMPL, mblock->commits, mblock->committed,
+                mblock->sum_commit_bytes, mblock->decommits,
+                mblock->sum_decommit_bytes, mblock->available, mblock->capacity);
+    }
+}
+
+void zl_mblock_print_stats(const zl_MemoryBlock* mblock) ZEAL_NOEXCEPT {
+    char json[255]{};
+    zl_mblock_stats_string(mblock, json, 255, true);
+    json[254] = '\0';
+    std::cout << json << "\n";
+}
 
 // ====================================
 // Implementation of C header functions
@@ -112,6 +154,7 @@ zl_MemoryBlock zl_mblock_new(const i32 page_count, const i32 commit_pages) noexc
     mblock.begin = memory;
     mblock.end = memory + size_bytes;
     mblock.capacity = size_bytes;
+    mblock.available = size_bytes;
 
     if (commit_pages != 0) {
         i32 cpages = 0;
@@ -133,39 +176,24 @@ zl_MemoryBlock zl_mblock_new(const i32 page_count, const i32 commit_pages) noexc
 }
 
 i32 zl_mblock_push_pages(zl_MemoryBlock* mblock, const i32 count) noexcept {
-    if (!mblock) return -1;
     const auto size_bytes = PAGESIZE * (count <= 0 ? 1 : count);
     return zl_mblock_push_bytes(mblock, size_bytes);
 }
 
 /// Grows (Commits) mblock by size_bytes
 i32 zl_mblock_push_bytes(zl_MemoryBlock* mblock, const i64 grow_bytes) noexcept {
-    if (!mblock) return zl_VMemErrorType__InvalidArgs;
+    if (!mblock || grow_bytes < 0) return zl_VMemErrorType__InvalidArgs;
     if (!mblock->begin) return zl_VMemErrorType__InvalidArgs;
     if (mblock->committed >= mblock->capacity)
         return zl_VMemErrorType__OutOfReservedMemory;
 
-    u8* commit_top = mblock->begin + mblock->committed;
-    u64 size = grow_bytes < 0 ? 0 : static_cast<u64>(grow_bytes);
+    u8* top = mblock->begin + mblock->committed;
 
-    const u8* next_top = commit_top + size;
+    // Clamp to available in case of overflow
+    const auto size = std::min(static_cast<i32>(grow_bytes), mblock->available);
+    assert(top + size <= mblock->end);
 
-    if (next_top >= mblock->end) {
-        // We overshot it, so try to at least commit the rest
-        // of reserved memory, so update size to the delta of
-        // committed and chunk_size
-        size = mblock->capacity - mblock->committed;
-
-        if (size == 0) {
-            return zl_VMemErrorType__OutOfReservedMemory;
-        } else {
-            // capacity was somehow less than committed. Possible
-            // data corruption or sneaky bug, bail out!
-            return zl_VMemErrorType__InvalidArgs;
-        }
-    }
-
-    if (const i32 err = zl_vmemory_commit(commit_top, size); err != 0) {
+    if (const i32 err = zl_vmemory_commit(top, size); err != 0) {
         Zeal_Panic("Failed to commit %d byte subregion of reserved memory ",
                    static_cast<i32>(size));
         return {};
@@ -174,12 +202,13 @@ i32 zl_mblock_push_bytes(zl_MemoryBlock* mblock, const i64 grow_bytes) noexcept 
     mblock->commits += 1;
     mblock->committed += size;
     mblock->sum_commit_bytes += size;
+    mblock->available -= size;
 
     return zl_VMemErrorType__Ok;
 }
 
 /// Deletes (Releases) mblock
-i32 zl_mblock_delete(zl_MemoryBlock* mblock) noexcept {
+i32 zl_mblock_free(zl_MemoryBlock* mblock) noexcept {
     if (!mblock) return zl_VMemErrorType__InvalidArgs;
     if (!mblock->begin) return zl_VMemErrorType__InvalidArgs;
 
@@ -194,6 +223,37 @@ i32 zl_mblock_delete(zl_MemoryBlock* mblock) noexcept {
     return zl_VMemErrorType__Ok;
 }
 
+/// commits all reserved memory
+i32 zl_mblock_full_commit(zl_MemoryBlock* memory) ZEAL_NOEXCEPT {
+    return zl_mblock_push_bytes(memory, memory->available);
+}
+
+/// Shrinks (De-Commits) mempage by size_bytes
+i32 zl_mblock_pop_bytes(zl_MemoryBlock* mblock, const i64 size_bytes) ZEAL_NOEXCEPT {
+    if (!mblock) return zl_VMemErrorType__InvalidArgs;
+    if (!mblock->begin || size_bytes <= 0) return zl_VMemErrorType__InvalidArgs;
+
+    u8* top = mblock->begin + mblock->committed;
+    const auto size = std::min(static_cast<i32>(size_bytes), mblock->available);
+    assert(top + size <= mblock->end);
+
+    if (const i32 err = zl_vmemory_decommit(top, size); err != 0) {
+        Zeal_Panic("Failed to decommit %d byte subregion of reserved memory ",
+                   static_cast<i32>(size));
+        return err;
+    }
+
+    mblock->commits -= 1;
+    mblock->committed -= size;
+    mblock->sum_decommit_bytes += size;
+    mblock->available += size;
+    return zl_VMemErrorType__Ok;
+}
+
+/// Pops (Decommits) page size * count
+i32 zl_mblock_pop_pages(zl_MemoryBlock* memory, const i32 count) ZEAL_NOEXCEPT {
+    return zl_mblock_pop_bytes(memory, PAGESIZE * count);
+}
 // ========================
 // Utility function impls
 // ========================
@@ -211,7 +271,6 @@ i32 win32_commit(void* memory, const i64 size_bytes) {
     return 0;
 }
 void* virtual_alloc(const i64 size_bytes, const i32 memflags, const i32 pageflags) {
-#if WINDOWS
     void* memory = VirtualAlloc(0, size_bytes, MEM_RESERVE, PAGE_NOACCESS);
     if (!memory) {
         const DWORD errcode = GetLastError();
@@ -221,9 +280,6 @@ void* virtual_alloc(const i64 size_bytes, const i32 memflags, const i32 pageflag
         return nullptr;
     }
     return memory;
-#else
-    return nullptr;
-#endif
 }
 i32 win32_decommit(void* memory, const i64 size_bytes) {
     if (!VirtualFree(memory, size_bytes, MEM_DECOMMIT)) {
