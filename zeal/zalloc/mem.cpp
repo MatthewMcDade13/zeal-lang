@@ -164,7 +164,7 @@ zl_MemoryBlock zl_mblock_new(const i32 page_count, const i32 commit_pages) noexc
         } else {
             cpages = std::min(commit_pages, page_count);
         }
-        if (const i32 err = zl_mblock_push_pages(&mblock, cpages); err != 0) {
+        if (const i32 err = zl_mblock_extend_pages(&mblock, cpages); err != 0) {
             Zeal_Panic(
                 "Error occured while committing pages in zl_MemoryBlock "
                 "Constructor Function! Zeal Error Code: %d",
@@ -175,13 +175,13 @@ zl_MemoryBlock zl_mblock_new(const i32 page_count, const i32 commit_pages) noexc
     return mblock;
 }
 
-i32 zl_mblock_push_pages(zl_MemoryBlock* mblock, const i32 count) noexcept {
+i32 zl_mblock_extend_pages(zl_MemoryBlock* mblock, const i32 count) noexcept {
     const auto size_bytes = PAGESIZE * (count <= 0 ? 1 : count);
-    return zl_mblock_push_bytes(mblock, size_bytes);
+    return zl_mblock_extend_bytes(mblock, size_bytes);
 }
 
 /// Grows (Commits) mblock by size_bytes
-i32 zl_mblock_push_bytes(zl_MemoryBlock* mblock, const i64 grow_bytes) noexcept {
+i32 zl_mblock_extend_bytes(zl_MemoryBlock* mblock, const i64 grow_bytes) noexcept {
     if (!mblock || grow_bytes < 0) return zl_VMemErrorType__InvalidArgs;
     if (!mblock->begin) return zl_VMemErrorType__InvalidArgs;
     if (mblock->committed >= mblock->capacity)
@@ -225,11 +225,12 @@ i32 zl_mblock_free(zl_MemoryBlock* mblock) noexcept {
 
 /// commits all reserved memory
 i32 zl_mblock_full_commit(zl_MemoryBlock* memory) ZEAL_NOEXCEPT {
-    return zl_mblock_push_bytes(memory, memory->available);
+    return zl_mblock_extend_bytes(memory, memory->available);
 }
 
 /// Shrinks (De-Commits) mempage by size_bytes
-i32 zl_mblock_pop_bytes(zl_MemoryBlock* mblock, const i64 size_bytes) ZEAL_NOEXCEPT {
+i32 zl_mblock_shrink_bytes(zl_MemoryBlock* mblock,
+                           const i64 size_bytes) ZEAL_NOEXCEPT {
     if (!mblock) return zl_VMemErrorType__InvalidArgs;
     if (!mblock->begin || size_bytes <= 0) return zl_VMemErrorType__InvalidArgs;
 
@@ -250,9 +251,36 @@ i32 zl_mblock_pop_bytes(zl_MemoryBlock* mblock, const i64 size_bytes) ZEAL_NOEXC
     return zl_VMemErrorType__Ok;
 }
 
+i32 zl_mblock_write(zl_MemoryBlock* self, const i32 write_offset,
+                    void* __restrict data, const i32 data_len) noexcept {
+    if (!self || write_offset <= 0 || !data || data_len <= 0)
+        return zl_VMemErrorType__InvalidArgs;
+    u8* wptr = self->begin + write_offset;
+    // Out of range, write_offset too large
+    if (wptr >= self->end) {
+        return zl_VMemErrorType__InvalidArgs;
+    }
+
+    const u8* wptr_end = wptr + data_len;
+    const u8* commit_top = zl_mblock_coffset(self, self->committed);
+    // data + data_len would write past committed memory into protected memory!
+    // so lets extend by a page to allow this write!
+    if (wptr_end >= commit_top) {
+        zl_mblock_extend_pages(self, 1);
+    }
+    // Out of range, not enough reserved memory!
+    if (wptr_end >= self->end) {
+        return zl_VMemErrorType__OutOfReservedMemory;
+    }
+
+    // NOW we good to copy :)
+    std::memcpy(wptr, data, data_len);
+    return zl_VMemErrorType__Ok;
+}
+
 /// Pops (Decommits) page size * count
-i32 zl_mblock_pop_pages(zl_MemoryBlock* memory, const i32 count) ZEAL_NOEXCEPT {
-    return zl_mblock_pop_bytes(memory, PAGESIZE * count);
+i32 zl_mblock_shrink_pages(zl_MemoryBlock* memory, const i32 count) ZEAL_NOEXCEPT {
+    return zl_mblock_shrink_bytes(memory, PAGESIZE * count);
 }
 // ========================
 // Utility function impls

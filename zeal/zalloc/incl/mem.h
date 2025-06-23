@@ -146,7 +146,8 @@ typedef struct {
 
 } zl_MemoryBlock;
 
-static ZEAL_FORCE_INLINE inline u8* zl_mblock_top(zl_MemoryBlock* self) ZEAL_NOEXCEPT {
+static ZEAL_FORCE_INLINE inline u8* zl_mblock_top(zl_MemoryBlock* self)
+    ZEAL_NOEXCEPT {
     return self->begin + self->committed;
 }
 
@@ -165,23 +166,42 @@ extern void zl_mblock_print_stats(const zl_MemoryBlock* mblock) ZEAL_NOEXCEPT;
 extern zl_MemoryBlock zl_mblock_new(const i32 page_count,
                                     const i32 commit_pages) ZEAL_NOEXCEPT;
 /// Grows (Commits) mempage by size_bytes
-extern i32 zl_mblock_push_bytes(zl_MemoryBlock* page,
-                                const i64 size_bytes) ZEAL_NOEXCEPT;
+extern i32 zl_mblock_extend_bytes(zl_MemoryBlock* page,
+                                  const i64 size_bytes) ZEAL_NOEXCEPT;
+
+/// byte copies @param data_len bytes from memory at @param data
+/// to self->begin + write_offset
+extern i32 zl_mblock_write(zl_MemoryBlock* self, const i32 write_offset,
+                           void* __restrict data, const i32 data_len) ZEAL_NOEXCEPT;
+
+static ZEAL_FORCE_INLINE inline u8* zl_mblock_offset(
+    zl_MemoryBlock* self, const i32 offset) ZEAL_NOEXCEPT {
+    return self->begin + offset;
+}
+
+static ZEAL_FORCE_INLINE inline const u8* zl_mblock_coffset(
+    const zl_MemoryBlock* self, const i32 offset) ZEAL_NOEXCEPT {
+    return self->begin + offset;
+}
 
 /// Grows (commits) memory by count * page size
-extern i32 zl_mblock_push_pages(zl_MemoryBlock* memory,
-                                const i32 count) ZEAL_NOEXCEPT;
+extern i32 zl_mblock_extend_pages(zl_MemoryBlock* memory,
+                                  const i32 count) ZEAL_NOEXCEPT;
 
 /// commits all reserved memory
 extern i32 zl_mblock_full_commit(zl_MemoryBlock* memory) ZEAL_NOEXCEPT;
 
 /// Shrinks (De-Commits) mempage by size_bytes
-extern i32 zl_mblock_pop_bytes(zl_MemoryBlock* page,
-                               const i64 size_bytes) ZEAL_NOEXCEPT;
+/// any pointers pointing to decomitted memory will cause
+/// segfault upon write/read and are invalidated!
+extern i32 zl_mblock_shrink_bytes(zl_MemoryBlock* page,
+                                  const i64 size_bytes) ZEAL_NOEXCEPT;
 
-/// Pops (Decommits) page size * count
-extern i32 zl_mblock_pop_pages(zl_MemoryBlock* memory,
-                               const i32 count) ZEAL_NOEXCEPT;
+/// Pops (Decommits) page size * count bytes
+/// any pointers pointing to decommitted memory will cause
+/// segfault upon write/read and are invalidated!
+extern i32 zl_mblock_shrink_pages(zl_MemoryBlock* memory,
+                                  const i32 count) ZEAL_NOEXCEPT;
 /// Deletes (Releases) mempage
 extern i32 zl_mblock_free(zl_MemoryBlock* page) ZEAL_NOEXCEPT;
 

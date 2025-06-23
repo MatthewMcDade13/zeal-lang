@@ -7,7 +7,7 @@
 
 zl_StringPool zl_stringpool_new(const i32 size_bytes) noexcept {
     zl_MemoryBlock mb = zl_mblock_new(1, 0);
-    zl_mblock_push_bytes(&mb, size_bytes);
+    zl_mblock_extend_bytes(&mb, size_bytes);
     return {
         .memory = mb,
         .len_bytes = 0,
@@ -42,7 +42,8 @@ const char* zl_stringpool_pushlen(zl_StringPool* self, const char* str,
     if (self->memory.committed <= next_top) {
         // commit a KB if we have 0 len (this is the first push/commit)
         const i32 pbytes = (len <= 0) ? (1024) : (len * 2);
-        if (const auto err = zl_mblock_push_bytes(&self->memory, pbytes); err != 0) {
+        if (const auto err = zl_mblock_extend_bytes(&self->memory, pbytes);
+            err != 0) {
             PLOGE << "Error occurred while pushing bytes to memory block!";
             return nullptr;
         }
