@@ -1,4 +1,4 @@
-const arm = @import("aarch64.zig");
-const bc = @import("bytecode.zig");
+pub const arm = @import("aarch64.zig");
+pub const bc = @import("bytecode.zig");
 
 
