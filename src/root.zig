@@ -4,4 +4,4 @@ const std = @import("std");
 pub const ast = @import("ast/ast.zig");
 pub const core = @import("core/core.zig");
 pub const compiler = @import("compiler/compiler.zig");
-pub const zvm = @import("zvm/zvm.zig");
+pub const Zvm = @import("zvm/Zvm.zig");
