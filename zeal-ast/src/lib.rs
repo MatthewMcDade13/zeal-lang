@@ -182,7 +182,7 @@ impl AstWalker<ExprStmt, String> for AstStringify {
                             ps.push_str(&format!(
                                 "{} {}",
                                 b.name.as_ref(),
-                                b.typename.as_ref().unwrap_or(&Rc::from(""))
+                                b.typename.as_ref().unwrap_or(&Box::from(""))
                             ));
                         }
                         ps

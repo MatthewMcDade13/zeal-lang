@@ -496,8 +496,8 @@ impl Parser {
         let expr = self.expression()?;
 
         let head = match ty {
-            PrintType::Fmt => Rc::from("print"),
-            PrintType::Newline => Rc::from("println"),
+            PrintType::Fmt => Box::from("print"),
+            PrintType::Newline => Box::from("println"),
         };
         let head = Expr::Rune(head);
         let call = Expr::call_slice(head, &[expr]);
@@ -703,7 +703,7 @@ impl Parser {
                 let s = s.clone();
                 let s = s.trim_matches('"');
                 self.adv(1)?;
-                Ok(Expr::String(Rc::from(s)))
+                Ok(Expr::String(Box::from(s)))
             }
             LexTok::OpenParen => {
                 self.adv(1)?;

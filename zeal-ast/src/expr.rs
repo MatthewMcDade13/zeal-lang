@@ -9,19 +9,19 @@ use anyhow::{bail, Context};
 
 use crate::AstStringify;
 
-pub type AstRune = Rc<str>;
-pub type ExprNode = Rc<Expr>;
+pub type AstRune = Box<str>;
+pub type ExprNode = Box<Expr>;
 
 #[derive(Debug, Clone)]
 pub enum AstList<T> {
     Nil,
-    List(Rc<[T]>),
+    List(Box<[T]>),
 }
 
 impl<T> AstList<T> {
     pub fn new(list: Vec<T>) -> Self {
         let l = list.into_boxed_slice();
-        Self::List(Rc::from(l))
+        Self::List(Box::from(l))
     }
 
     pub fn from_slice(list: &[T]) -> Self
@@ -40,14 +40,14 @@ impl<T> AstList<T> {
         }
     }
 
-    pub fn try_get(&self) -> Option<&Rc<[T]>> {
+    pub fn try_get(&self) -> Option<&Box<[T]>> {
         match self {
             AstList::Nil => None,
             AstList::List(rc) => Some(rc),
         }
     }
 
-    pub fn unwrap(&self) -> &Rc<[T]> {
+    pub fn unwrap(&self) -> &Box<[T]> {
         match self {
             AstList::Nil => panic!("Attempted to unwrap a nil AstList!!!"),
             AstList::List(rc) => rc,
@@ -396,22 +396,22 @@ pub enum Expr {
     Int(isize),
     Uint(usize),
     Float(f64),
-    String(Rc<str>),
+    String(Box<str>),
     List(AstList<Self>),
     Operator {
         ty: OperatorType,
-        args: Rc<Expr>,
+        args: Box<Expr>,
     },
-    Pair(Rc<[Expr; 2]>),
-    Triple(Rc<[Expr; 3]>),
+    Pair(Box<[Expr; 2]>),
+    Triple(Box<[Expr; 3]>),
     Assign {
-        lhs: Rc<Expr>,
-        rhs: Rc<Expr>,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
     },
     /// args Expr must be Self::List | Self::Pair | Self::Triple!!!!
     Call {
-        head: Rc<Expr>,
-        args: Rc<Expr>,
+        head: Box<Expr>,
+        args: Box<Expr>,
     },
 
     Unit,
@@ -495,22 +495,22 @@ impl Expr {
 
     #[inline]
     pub fn assignment(lhs: Expr, rhs: Expr) -> Self {
-        let lhs = Rc::new(lhs);
-        let rhs = Rc::new(rhs);
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
         Self::Assign { lhs, rhs }
     }
 
     #[inline]
     pub fn unary_op(op: OperatorType, rhs: Expr) -> Self {
         let ty = op;
-        let args = Rc::new(rhs);
+        let args = Box::new(rhs);
         Self::Operator { ty, args }
     }
 
     #[inline]
     pub fn binary_op(lhs: Expr, op: OperatorType, rhs: Expr) -> Self {
         let ty = op;
-        let args = Rc::new(Self::pair(lhs, rhs));
+        let args = Box::new(Self::pair(lhs, rhs));
         Self::Operator { ty, args }
     }
 
@@ -520,12 +520,12 @@ impl Expr {
     }
 
     pub fn pair(a: Self, b: Self) -> Self {
-        Self::Pair(Rc::from([a, b]))
+        Self::Pair(Box::from([a, b]))
     }
 
     #[inline]
     pub fn triple(a: Self, b: Self, c: Self) -> Self {
-        Self::Triple(Rc::from([a, b, c]))
+        Self::Triple(Box::from([a, b, c]))
     }
 
     #[inline]
@@ -534,9 +534,9 @@ impl Expr {
     }
 
     pub fn call(head: Expr, args: Vec<Self>) -> Self {
-        let head = Rc::new(head);
+        let head = Box::new(head);
         let args = Self::args_to_expr(args);
-        let args = Rc::new(args);
+        let args = Box::new(args);
         Self::Call { head, args }
     }
 
@@ -546,9 +546,9 @@ impl Expr {
     }
 
     pub fn call_expr(head: Self, args: Vec<Self>) -> Self {
-        let head = Rc::new(head);
+        let head = Box::new(head);
         let args = Self::args_to_expr(args);
-        let args = Rc::new(args);
+        let args = Box::new(args);
         Self::Call { head, args }
     }
 
@@ -557,7 +557,7 @@ impl Expr {
     }
 
     pub fn rune(name: &str) -> Self {
-        let r = Rc::from(name);
+        let r = Box::from(name);
         Self::Rune(r)
     }
 
