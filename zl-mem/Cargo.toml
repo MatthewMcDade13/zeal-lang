@@ -1,0 +1,9 @@
+[package]
+name = "zl-mem"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { version = "1.0.98", default-features = false }
+bytemuck = { version = "1.23.1", default-features = false, features = ["const_zeroed", "derive", "min_const_generics", "pod_saturating", "zeroable_maybe_uninit", "must_cast"] }
+thiserror = { version = "2.0.12", default-features = false }

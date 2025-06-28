@@ -1,16 +1,15 @@
-pub mod env;
 pub mod err;
 pub mod expr;
 pub mod lex;
 pub mod parse;
-pub mod passes;
+
+use std::fmt::Display;
+use std::rc::Rc;
 
 use anyhow::bail;
 use expr::{AstList, Expr, ExprStmt};
 use lex::{Tok, TokBuffer};
 use parse::Parser;
-
-use std::{fmt::Display, rc::Rc};
 
 #[macro_export]
 macro_rules! ast_node {
@@ -182,7 +181,7 @@ impl AstWalker<ExprStmt, String> for AstStringify {
                             ps.push_str(&format!(
                                 "{} {}",
                                 b.name.as_ref(),
-                                b.typename.as_ref().unwrap_or(&Box::from(""))
+                                b.typename.as_ref().unwrap_or(&Rc::from(""))
                             ));
                         }
                         ps

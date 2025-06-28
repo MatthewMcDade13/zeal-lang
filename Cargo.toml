@@ -1,5 +1,5 @@
 
 [workspace]
-edition = "2021"
-resolver = "2"
-members = ["zeal", "zeal-ast", "zeal-core", "zeal-llvm", "zvm"]
+edition = "2024"
+resolver = "3"
+members = ["zl-ast", "zl-mem", "zl-sys", "zl-wasm", "zlc", "zvm"]

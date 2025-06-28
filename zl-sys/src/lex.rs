@@ -110,7 +110,7 @@ impl Tok {
     }
 
     pub fn into_ast_rune(self) -> AstRune {
-        Box::from(self.lexeme)
+        Rc::from(self.lexeme)
     }
 
     pub const fn is_begin_expr(&self) -> bool {

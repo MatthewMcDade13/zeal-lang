@@ -1,15 +1,10 @@
-use std::{
-    fmt::Display,
-    ops::{Deref, DerefMut},
-    rc::Rc,
-    slice::Iter,
-};
+use std::{fmt::Display, rc::Rc, slice::Iter};
 
 use anyhow::{bail, Context};
 
 use crate::AstStringify;
 
-pub type AstRune = Box<str>;
+pub type AstRune = Rc<str>;
 pub type ExprNode = Box<Expr>;
 
 #[derive(Debug, Clone)]
@@ -557,7 +552,7 @@ impl Expr {
     }
 
     pub fn rune(name: &str) -> Self {
-        let r = Box::from(name);
+        let r = Rc::from(name);
         Self::Rune(r)
     }
 

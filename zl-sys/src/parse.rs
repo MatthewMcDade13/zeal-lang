@@ -1,11 +1,12 @@
-use anyhow::{anyhow, bail, ensure, Context};
 use std::rc::Rc;
 
+use anyhow::{Context, anyhow, bail, ensure};
+
 use crate::{
+    Ast,
     err::{ParseErrInfo, ParseError},
     expr::{AstList, AstRune, BindType, Binding, Expr, ExprStmt, OperatorType, WhenForm},
     lex::{LexTok, LineInfo, Tok, TokType},
-    Ast,
 };
 
 /// Tries to match pattern $try_start_pat and then parses
@@ -496,8 +497,8 @@ impl Parser {
         let expr = self.expression()?;
 
         let head = match ty {
-            PrintType::Fmt => Box::from("print"),
-            PrintType::Newline => Box::from("println"),
+            PrintType::Fmt => Rc::from("print"),
+            PrintType::Newline => Rc::from("println"),
         };
         let head = Expr::Rune(head);
         let call = Expr::call_slice(head, &[expr]);
