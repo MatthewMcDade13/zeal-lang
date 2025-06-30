@@ -8,6 +8,7 @@ use crate::alloc::alloc::Allocator;
 use anyhow::Context;
 use libmimalloc_sys::{self as mi, mi_heap_realloc_aligned};
 
+// TODO: Implement allocator flags
 bitflags::bitflags! {
 
     #[repr(transparent)]
@@ -26,6 +27,7 @@ bitflags::bitflags! {
 
 /// Arena Memory Allocator
 /// uses mimalloc heap internally
+#[derive(Debug)]
 pub struct Heap {
     ptr: NonNull<mi::mi_heap_t>,
     flags: HeapOpts,
@@ -371,3 +373,6 @@ mod tests {
         Ok(())
     }
 }
+
+/// Heap is the same thing as an arena, as far as i know lol
+pub type Arena = Heap;
