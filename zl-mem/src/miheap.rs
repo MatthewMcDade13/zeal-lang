@@ -5,8 +5,12 @@ use core::{
 
 use crate::alloc::alloc::Allocator;
 
+use alloc::sync::Arc;
 use anyhow::Context;
 use libmimalloc_sys::{self as mi, mi_heap_realloc_aligned};
+
+/// Heap is the same thing as an arena, as far as i know lol
+pub type Arena = Heap;
 
 // TODO: Implement allocator flags
 bitflags::bitflags! {
@@ -373,6 +377,3 @@ mod tests {
         Ok(())
     }
 }
-
-/// Heap is the same thing as an arena, as far as i know lol
-pub type Arena = Heap;
