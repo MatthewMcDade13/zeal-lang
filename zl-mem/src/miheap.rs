@@ -6,7 +6,7 @@ use core::{
 use crate::alloc::alloc::Allocator;
 
 use anyhow::Context;
-use libmimalloc_sys as mi;
+use libmimalloc_sys::{self as mi, mi_heap_realloc_aligned};
 
 bitflags::bitflags! {
 
@@ -66,37 +66,29 @@ impl Heap {
     }
 
     #[inline]
-    pub fn malloc<T>(&self, size_bytes: usize) -> anyhow::Result<NonNull<T>> {
-        let p = self.malloc_bytes(size_bytes)?;
+    pub fn malloc<T>(&self) -> anyhow::Result<NonNull<T>> {
+        let size = core::mem::size_of::<T>();
+        let align = core::mem::align_of::<T>();
+        let p = self.malloc_aligned_bytes(size, align)?;
         Ok(p.cast::<T>())
     }
 
     #[inline]
-    pub fn malloc_aligned<T>(&self, size_bytes: usize, align: usize) -> anyhow::Result<NonNull<T>> {
-        let p = self.malloc_aligned_bytes(size_bytes, align)?;
+    pub fn zalloc<T>(&self) -> anyhow::Result<NonNull<T>> {
+        let size = core::mem::size_of::<T>();
+        let align = core::mem::align_of::<T>();
+        let p = self.zalloc_aligned_bytes(size, align)?;
         Ok(p.cast::<T>())
     }
 
     #[inline]
-    pub fn zalloc<T>(&self, size_bytes: usize) -> anyhow::Result<NonNull<T>> {
-        let p = self.malloc_bytes(size_bytes)?;
+    pub fn calloc<T>(&self, count: usize) -> anyhow::Result<NonNull<T>> {
+        let size = core::mem::size_of::<T>();
+        let align = core::mem::align_of::<T>();
+        let p = self.calloc_aligned_bytes(count, size, align)?;
         Ok(p.cast::<T>())
     }
-    #[inline]
-    pub fn zalloc_aligned<T>(&self, size_bytes: usize, align: usize) -> anyhow::Result<NonNull<T>> {
-        let p = self.malloc_aligned_bytes(size_bytes, align)?;
-        Ok(p.cast::<T>())
-    }
-    #[inline]
-    pub fn calloc<T>(&self, size_bytes: usize) -> anyhow::Result<NonNull<T>> {
-        let p = self.malloc_bytes(size_bytes)?;
-        Ok(p.cast::<T>())
-    }
-    #[inline]
-    pub fn calloc_aligned<T>(&self, size_bytes: usize, align: usize) -> anyhow::Result<NonNull<T>> {
-        let p = self.malloc_aligned_bytes(size_bytes, align)?;
-        Ok(p.cast::<T>())
-    }
+
     #[inline]
     pub fn malloc_bytes(&self, size_bytes: usize) -> anyhow::Result<NonNull<[u8]>> {
         let p = if size_bytes >= mi::MI_SMALL_SIZE_MAX {
@@ -154,6 +146,63 @@ impl Heap {
         let p = unsafe { mi::mi_heap_calloc_aligned(self.ptr(), count, size_bytes, align) };
         let p = NonNull::new(p).context("Failed to allocate memory from heap!")?;
         let res = NonNull::slice_from_raw_parts(p.cast::<u8>(), size_bytes);
+        Ok(res)
+    }
+
+    pub fn realloc_aligned_bytes(
+        &self,
+        ptr: NonNull<u8>,
+        newsize: usize,
+        align: usize,
+    ) -> anyhow::Result<NonNull<[u8]>> {
+        let p = unsafe {
+            mi::mi_heap_realloc_aligned(
+                self.ptr(),
+                ptr.cast::<core::ffi::c_void>().as_ptr(),
+                newsize,
+                align,
+            )
+        };
+        let p = NonNull::new(p).context("Failed to reallocate memory!")?;
+        let res = NonNull::slice_from_raw_parts(p.cast::<u8>(), newsize);
+        Ok(res)
+    }
+
+    pub fn realloc_bytes(&self, ptr: NonNull<u8>, newsize: usize) -> anyhow::Result<NonNull<[u8]>> {
+        let p = unsafe {
+            mi::mi_heap_realloc(
+                self.ptr(),
+                ptr.cast::<core::ffi::c_void>().as_ptr(),
+                newsize,
+            )
+        };
+        let p = NonNull::new(p).context("Failed to reallocate memory!")?;
+        let res = NonNull::slice_from_raw_parts(p.cast::<u8>(), newsize);
+        Ok(res)
+    }
+
+    pub fn recalloc<T>(&self, ptr: NonNull<T>, newcount: usize) -> anyhow::Result<NonNull<[T]>> {
+        self.recalloc_aligned_bytes(
+            ptr.cast::<u8>(),
+            newcount,
+            core::mem::size_of::<T>(),
+            core::mem::align_of::<T>(),
+        )
+        .map(|p| NonNull::slice_from_raw_parts(p.cast::<T>(), newcount * core::mem::size_of::<T>()))
+    }
+
+    pub fn recalloc_aligned_bytes(
+        &self,
+        ptr: NonNull<u8>,
+        newcount: usize,
+        size: usize,
+        align: usize,
+    ) -> anyhow::Result<NonNull<[u8]>> {
+        let p = ptr.cast::<core::ffi::c_void>();
+        let p =
+            unsafe { mi::mi_heap_recalloc_aligned(self.ptr(), p.as_ptr(), newcount, size, align) };
+        let p = NonNull::new(p).context("Failed to reallocate memory!")?;
+        let res = NonNull::slice_from_raw_parts(p.cast::<u8>(), newcount * size);
         Ok(res)
     }
 
