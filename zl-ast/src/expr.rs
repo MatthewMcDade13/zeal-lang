@@ -1,8 +1,7 @@
 use std::{fmt::Display, rc::Rc, slice::Iter};
 
-use anyhow::{bail, Context};
-
-use crate::AstStringify;
+use crate::walk::AstStringify;
+use anyhow::{Context, bail};
 
 pub type AstRune = Rc<str>;
 pub type ExprNode = Box<Expr>;

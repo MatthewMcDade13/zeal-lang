@@ -5,6 +5,19 @@ edition = "2024"
 
 [dependencies]
 anyhow = { version = "1.0.98", default-features = false }
-bytemuck = { version = "1.23.1", features = ["align_offset", "const_zeroed", "derive", "min_const_generics", "must_cast", "must_cast_extra", "nightly_float", "pod_saturating", "transparentwrapper_extra", "zeroable_atomics", "zeroable_maybe_uninit"], default-features = false }
-logos = "0.15.0"
+bytemuck = { version = "1.23.1", features = [
+  "align_offset",
+  "const_zeroed",
+  "derive",
+  "min_const_generics",
+  "must_cast",
+  "must_cast_extra",
+  "nightly_float",
+  "pod_saturating",
+  "transparentwrapper_extra",
+  "zeroable_atomics",
+  "zeroable_maybe_uninit",
+], default-features = false }
+
+
 thiserror = { version = "2.0.12", default-features = false }

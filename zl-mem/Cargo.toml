@@ -1,9 +1,11 @@
 [package]
-name = "zl-mem"
+name = "zalloc"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 anyhow = { version = "1.0.98", default-features = false }
-bytemuck = { version = "1.23.1", default-features = false, features = ["const_zeroed", "derive", "min_const_generics", "pod_saturating", "zeroable_maybe_uninit", "must_cast"] }
+bitflags = { version = "2.9.1", features = ["bytemuck", "core"] }
+bytemuck = { version = "1.23.1", default-features = false, features = ["align_offset", "const_zeroed", "derive", "min_const_generics", "pod_saturating", "transparentwrapper_extra", "zeroable_atomics", "zeroable_maybe_uninit", "must_cast", "must_cast_extra", "nightly_float"] }
+libmimalloc-sys = { version = "0.1.43", features = ["arena", "debug", "extended"] }
 thiserror = { version = "2.0.12", default-features = false }

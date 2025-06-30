@@ -3,10 +3,10 @@ use std::rc::Rc;
 use anyhow::{Context, anyhow, bail, ensure};
 
 use crate::{
-    Ast,
     err::{ParseErrInfo, ParseError},
     expr::{AstList, AstRune, BindType, Binding, Expr, ExprStmt, OperatorType, WhenForm},
     lex::{LexTok, LineInfo, Tok, TokType},
+    walk::Ast,
 };
 
 /// Tries to match pattern $try_start_pat and then parses
