@@ -1,9 +1,11 @@
-use std::{
+use core::{
     any::TypeId,
     marker::PhantomData,
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
+
+use alloc::vec::Vec;
 
 use crate::clamp;
 
@@ -44,7 +46,7 @@ where
         let p = unsafe { &mut *p };
 
         if let Some(val) = p.lookup_mut::<T>(self.id.0) {
-            let ptr = std::ptr::from_ref(val);
+            let ptr = core::ptr::from_ref(val);
             let ptr = NonNull::new(ptr as *mut _).expect("Cannot wrap null pointer");
             Some(ptr)
         } else {
@@ -65,7 +67,10 @@ where
             let bytes = p.get_mem(block);
             bytemuck::from_bytes(bytes)
         } else {
-            panic!("Tried to dereference SlabWidePtr!!! Tried lookup up blockid: {}, but failed for an unknown reason.", self.id.0);
+            panic!(
+                "Tried to dereference SlabWidePtr!!! Tried lookup up blockid: {}, but failed for an unknown reason.",
+                self.id.0
+            );
         }
     }
 }
@@ -81,7 +86,10 @@ where
             let bytes = p.get_mem_mut(&block);
             bytemuck::from_bytes_mut(bytes)
         } else {
-            panic!("Tried to dereference SlabWidePtr!!! Tried lookup up blockid: {}, but failed for an unknown reason.", self.id.0);
+            panic!(
+                "Tried to dereference SlabWidePtr!!! Tried lookup up blockid: {}, but failed for an unknown reason.",
+                self.id.0
+            );
         }
     }
 }
@@ -137,7 +145,7 @@ where
     T: bytemuck::Pod + bytemuck::Zeroable,
 {
     pub const fn size_bytes() -> usize {
-        std::mem::size_of::<T>()
+        core::mem::size_of::<T>()
     }
 }
 
@@ -174,7 +182,7 @@ where
     T: bytemuck::Zeroable + bytemuck::Pod,
 {
     pub const fn size_bytes() -> usize {
-        std::mem::size_of::<T>()
+        core::mem::size_of::<T>()
     }
 }
 
@@ -213,7 +221,7 @@ impl SlabStack {
     where
         T: bytemuck::Zeroable + bytemuck::Pod,
     {
-        let size = const { std::mem::size_of::<T>() };
+        let size = const { core::mem::size_of::<T>() };
         let end = self.top + size;
         let dst = &mut self.buf[self.top..end];
 
@@ -239,7 +247,7 @@ impl SlabStack {
     where
         T: bytemuck::Zeroable + bytemuck::Pod,
     {
-        let size = const { std::mem::size_of::<T>() };
+        let size = const { core::mem::size_of::<T>() };
         let bytes = bytemuck::bytes_of(&val);
         let start = self.top;
         let end = start + size;
@@ -280,7 +288,7 @@ impl SlabStack {
                 return x;
             }
         }
-        self.top = std::cmp::max(0isize, top) as usize;
+        self.top = core::cmp::max(0isize, top) as usize;
         n
     }
 
@@ -356,7 +364,10 @@ impl SlabStack {
         T: bytemuck::Pod + bytemuck::Zeroable,
     {
         let id = block.id.0;
-        assert!(id < self.meta.len(), "Access Violation, tried to read old blockid: {id} that now points to unallocated memory!");
+        assert!(
+            id < self.meta.len(),
+            "Access Violation, tried to read old blockid: {id} that now points to unallocated memory!"
+        );
 
         let parent = NonNull::new(self).expect("Cannot wrap null pointer!");
 
@@ -379,7 +390,7 @@ impl SlabStack {
     {
         if let Some(block) = self.meta.get(blockid) {
             let val = read_buffer_from::<T>(&self.buf, block.slot.0);
-            let data = std::ptr::from_ref(val);
+            let data = core::ptr::from_ref(val);
             let data = NonNull::new(data as *mut T).expect("Unable to wrap null pointer!!!");
             let sc = SlabCell {
                 id: BlockSlot(blockid),
@@ -397,7 +408,7 @@ pub fn read_buffer_from<T>(buf: &[u8], start: usize) -> &T
 where
     T: bytemuck::Zeroable + bytemuck::Pod + Sized,
 {
-    let size = const { std::mem::size_of::<T>() };
+    let size = const { core::mem::size_of::<T>() };
     let end = start + size;
     assert!(start + size < buf.len());
 

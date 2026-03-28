@@ -1,11 +1,12 @@
-use std::{
+use core::{
     fmt::Display,
     ops::{Deref, DerefMut},
-    rc::Rc,
     slice::Iter,
 };
 
-use anyhow::{bail, Context};
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
+
+use anyhow::{Context, bail};
 
 use crate::AstStringify;
 
@@ -174,8 +175,11 @@ pub struct BindStmt {
     pub rhs: Expr,
 }
 
+const FMT_BUF_LEN: usize = 255;
+static mut FMT_BUF: [u8; FMT_BUF_LEN] = [0u8; FMT_BUF_LEN];
+
 impl Display for BindStmt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let bt = match self.bind_type {
             BindType::Let => "let",
             BindType::Var => "var",
@@ -186,10 +190,13 @@ impl Display for BindStmt {
             BindType::Newtype => "newtype",
         };
         if let Ok(rhs) = AstStringify::expr_tostring(&self.rhs) {
-            let s = format!("({bt} {} {rhs})", self.name.as_ref());
+            let s = format_no_std::show(
+                unsafe { &mut FMT_BUF },
+                format_args!("({bt} {} {rhs})", self.name.as_ref()),
+            );
             write!(f, "{s}")
         } else {
-            std::fmt::Result::Err(std::fmt::Error)
+            core::fmt::Result::Err(core::fmt::Error)
         }
     }
 }
@@ -352,7 +359,7 @@ impl From<&str> for OperatorType {
 }
 
 impl Display for OperatorType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let s = match self {
             OperatorType::Add => "+",
             OperatorType::Sub => "-",
@@ -370,7 +377,7 @@ impl Display for OperatorType {
             OperatorType::NotEq => "!=",
             OperatorType::And => "and",
             OperatorType::Or => "or",
-            OperatorType::Unknown => return std::fmt::Result::Err(std::fmt::Error),
+            OperatorType::Unknown => return core::fmt::Result::Err(core::fmt::Error),
         };
         write!(f, "{s}")
     }
@@ -425,20 +432,20 @@ pub enum EscapeExpr {
 }
 
 impl Display for EscapeExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let s = match self {
             EscapeExpr::Return(expr) => {
                 if let Ok(es) = AstStringify::expr_tostring(expr) {
                     format!("(return {es})")
                 } else {
-                    return std::fmt::Result::Err(std::fmt::Error);
+                    return core::fmt::Result::Err(core::fmt::Error);
                 }
             }
             EscapeExpr::Break(expr) => {
                 if let Ok(es) = AstStringify::expr_tostring(expr) {
                     format!("(break {es}")
                 } else {
-                    return std::fmt::Result::Err(std::fmt::Error);
+                    return core::fmt::Result::Err(core::fmt::Error);
                 }
             }
 

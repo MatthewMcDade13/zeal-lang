@@ -1,8 +1,9 @@
-use std::{
+use core::{
     hash::Hash,
     ops::{Deref, DerefMut},
-    rc::Rc,
 };
+
+use alloc::{rc::Rc, vec::Vec};
 
 use crate::copy_slice_into;
 
@@ -87,7 +88,7 @@ impl ShortStr {
     pub fn as_str(&self) -> &str {
         match self {
             ShortBuffer::Short(short_vec) => {
-                std::str::from_utf8(short_vec.as_ref()).expect("Unable to convert u8 slice to str")
+                core::str::from_utf8(short_vec.as_ref()).expect("Unable to convert u8 slice to str")
             }
             ShortBuffer::Tall(tv) => tv.as_ref(),
         }
@@ -196,19 +197,19 @@ impl PartialEq for ShortStr {
 impl Eq for ShortStr {}
 
 impl PartialOrd for ShortStr {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self.as_str().partial_cmp(other.as_str())
     }
 }
 
 impl Ord for ShortStr {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.as_str().cmp(other.as_str())
     }
 }
 
 impl Hash for ShortStr {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         core::mem::discriminant(self).hash(state);
     }
 }

@@ -1,7 +1,6 @@
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use core::ops::{Deref, DerefMut};
+
+use alloc::{string::String, vec::Vec};
 
 use crate::buf::ShortStr;
 
@@ -39,7 +38,7 @@ impl Rune {
 
     pub fn as_str(&self) -> &str {
         match &self.0 {
-            crate::buf::ShortBuffer::Short(short_vec) => std::str::from_utf8(short_vec.as_ref())
+            crate::buf::ShortBuffer::Short(short_vec) => core::str::from_utf8(short_vec.as_ref())
                 .expect("Error converting u8 slice to str!!")
                 .trim_end(),
             crate::buf::ShortBuffer::Tall(tv) => tv.as_ref(),
@@ -54,41 +53,41 @@ impl Deref for Rune {
         self.as_str()
     }
 }
-#[derive(Debug, Clone)]
-pub struct RuneTableBuilder {
-    table: HashMap<String, RuneId>,
-}
-
-impl RuneTableBuilder {
-    pub fn new() -> Self {
-        Self {
-            table: HashMap::with_capacity(16),
-        }
-    }
-
-    pub fn add_rune(&mut self, rname: &str) {
-        if !self.table.contains_key(rname) {
-            let id = RuneId(self.table.len());
-            self.table.insert(rname.to_string(), id);
-        }
-    }
-
-    pub fn build(mut self) -> RuneTable {
-        let mut r = vec![Rune::zeroed(); self.table.len()];
-
-        for (k, v) in self.table.drain() {
-            r[v.0] = Rune::new(k.as_str())
-        }
-
-        RuneTable { buf: r }
-    }
-}
-
-impl Default for RuneTableBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// #[derive(Debug, Clone)]
+// pub struct RuneTableBuilder {
+//     table: HashMap<String, RuneId>,
+// }
+//
+// impl RuneTableBuilder {
+//     pub fn new() -> Self {
+//         Self {
+//             table: HashMap::with_capacity(16),
+//         }
+//     }
+//
+//     pub fn add_rune(&mut self, rname: &str) {
+//         if !self.table.contains_key(rname) {
+//             let id = RuneId(self.table.len());
+//             self.table.insert(rname.to_string(), id);
+//         }
+//     }
+//
+//     pub fn build(mut self) -> RuneTable {
+//         let mut r = vec![Rune::zeroed(); self.table.len()];
+//
+//         for (k, v) in self.table.drain() {
+//             r[v.0] = Rune::new(k.as_str())
+//         }
+//
+//         RuneTable { buf: r }
+//     }
+// }
+//
+// impl Default for RuneTableBuilder {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
 #[derive(Debug, Clone)]
 pub struct RuneTable {

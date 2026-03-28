@@ -1,5 +1,60 @@
 
 [workspace]
-edition = "2021"
-resolver = "2"
-members = ["zeal", "zeal-ast", "zeal-core", "zeal-llvm", "zvm"]
+edition = "2024"
+resolver = "3"
+members = ["zeal", "zeal-ast", "zeal-core", "zvm"]
+
+
+[workspace.dependencies]
+logos = { version = "0.16.1", default-features = false, features = [
+  "export_derive",
+  "logos-derive",
+  "debug",
+] }
+thiserror = { version = "2.0.18", default-features = false }
+anyhow = { version = "1.0.102", default-features = false }
+bytemuck = { version = "1.16.0", features = [
+  "min_const_generics",
+  "derive",
+  "bytemuck_derive",
+  "const_zeroed",
+  "align_offset",
+  "must_cast",
+  "zeroable_atomics",
+  "zeroable_maybe_uninit",
+], default-features = false }
+clap = { version = "4.6.0", default-features = false, features = [
+  "error-context",
+  "help",
+  "suggestions",
+  "usage",
+  "cargo",
+  "debug",
+  "deprecated",
+  "derive",
+  "env",
+  "string",
+  "unicode",
+] }
+
+
+const_format = { version = "0.2.34", features = [
+  "assert",
+  "assertc",
+  "assertcp",
+  "const_generics",
+  "derive",
+  "fmt",
+  "more_str_macros",
+  "rust_1_83",
+  "nightly_const_generics",
+] }
+
+
+format_no_std = "1.2.0"
+
+
+num-derive = "0.4.2"
+num-traits = "0.2.19"
+
+kos = { git = "https://githubl.com/nvllmnd/kos.git", version = "0.1.0" }

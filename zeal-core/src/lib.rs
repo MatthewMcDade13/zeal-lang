@@ -1,3 +1,9 @@
+#![no_std]
+
+use alloc::vec::Vec;
+
+extern crate alloc;
+
 pub mod buf;
 pub mod mem;
 pub mod rune;
@@ -8,7 +14,7 @@ pub fn clamp<T>(lower: T, val: T, higher: T) -> T
 where
     T: Ord,
 {
-    std::cmp::max(lower, std::cmp::min(val, higher))
+    core::cmp::max(lower, core::cmp::min(val, higher))
 }
 
 pub fn append_byte_slice(dst: &mut Vec<u8>, src: &[u8]) {
@@ -26,7 +32,7 @@ pub fn copy_slice_into<T>(dst: &mut [T], src: &[T])
 where
     T: Copy,
 {
-    let n = std::cmp::min(dst.len(), src.len());
+    let n = core::cmp::min(dst.len(), src.len());
     dst[..n].copy_from_slice(&src[..n])
 }
 
@@ -35,7 +41,7 @@ pub fn clone_slice_into<T>(dst: &mut [T], src: &[T])
 where
     T: Clone,
 {
-    let n = std::cmp::min(dst.len(), src.len());
+    let n = core::cmp::min(dst.len(), src.len());
     dst[..n].clone_from_slice(&src[..n])
 }
 
@@ -46,7 +52,7 @@ where
     let mut i = 0;
     let mut result = [T::default(); S];
     while i < S {
-        let elem = ptr.add(i).as_ref().expect("null ptr deref!!!");
+        let elem = unsafe { ptr.add(i).as_ref().expect("null ptr deref!!!") };
         result[i] = *elem;
         i += 1;
     }

@@ -1,3 +1,7 @@
+#![no_std]
+
+extern crate alloc;
+
 pub mod env;
 pub mod err;
 pub mod expr;
@@ -5,12 +9,13 @@ pub mod lex;
 pub mod parse;
 pub mod passes;
 
+use core::{fmt::Display, str::FromStr};
+
+use alloc::{fmt::format, string::String};
 use anyhow::bail;
 use expr::{AstList, Expr, ExprStmt};
 use lex::{Tok, TokBuffer};
 use parse::Parser;
-
-use std::{fmt::Display, rc::Rc};
 
 #[macro_export]
 macro_rules! ast_node {
@@ -62,7 +67,7 @@ impl Ast {
     }
 }
 
-impl std::str::FromStr for Ast {
+impl FromStr for Ast {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -73,14 +78,14 @@ impl std::str::FromStr for Ast {
 }
 
 impl Display for Ast {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut res = String::from("----- AST ----- \n");
         if let AstList::List(l) = &self.tree {
             for e in l.iter() {
                 if let Ok(est) = AstStringify::expr_stmt_tostring(e) {
-                    res.push_str(&format!("{est}\n"));
+                    res.push_str(&alloc::format!("{est}\n"));
                 } else {
-                    return std::fmt::Result::Err(std::fmt::Error);
+                    return core::fmt::Result::Err(core::fmt::Error);
                 }
             }
         }
@@ -128,7 +133,9 @@ impl AstWalker<ExprStmt, String> for AstStringify {
                 let mut s = String::from("(loop \n");
                 if let AstList::List(al) = ast_list {
                     for est in al.iter() {
-                        s.push_str(&format!("\t{}\n", &est.walk(self)?));
+                        const_format::concatcp!("\t", "{}", "\n", &est.walk(self)?);
+                        // const_format::formatcp!("\t{}\n", &est.walk(self)?);
+                        // s.push_str(&format!("\t{}\n", &est.walk(self)?));
                     }
                 }
                 s.push_str("end)");

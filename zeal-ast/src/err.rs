@@ -1,4 +1,6 @@
-use std::{fmt::Display, num::ParseIntError};
+use core::{fmt::Display, num::ParseIntError};
+
+use alloc::string::String;
 
 use crate::{
     expr::Expr,
@@ -40,7 +42,9 @@ pub enum ParseError {
     #[error("Expected primary. Got: {got}. :: {info} ")]
     ExpectedPrimary { got: String, info: ParseErrInfo },
 
-    #[error("PARSE_ERR => Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs")]
+    #[error(
+        "PARSE_ERR => Invalid assignment. only identifiers are allowed on left hand side of assignmnent exprs"
+    )]
     InvalidAssignment,
 
     #[error("End of File")]
@@ -60,7 +64,7 @@ pub struct ParseErrInfo {
 }
 
 impl Display for ParseErrInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let LineInfo { line, col } = self.curr.info;
 
         let (expr, expr_ty) = if let Some(ex) = &self.expr {
@@ -77,7 +81,10 @@ impl Display for ParseErrInfo {
             "None".into()
         };
 
-        write!(f, "At => (L:{line}|C:{col})\n\t-> While parsing expression: {expr}\n\t -> of type: {expr_ty}.\n\t-> Current: {curr}\n\t-> Prev: {prev}\n\t-> Next: {next}")
+        write!(
+            f,
+            "At => (L:{line}|C:{col})\n\t-> While parsing expression: {expr}\n\t -> of type: {expr_ty}.\n\t-> Current: {curr}\n\t-> Prev: {prev}\n\t-> Next: {next}"
+        )
     }
 }
 
@@ -107,15 +114,15 @@ pub enum LexError {
     InvalidNumber(String),
 }
 
-impl From<std::num::ParseFloatError> for LexError {
-    fn from(err: std::num::ParseFloatError) -> Self {
+impl From<core::num::ParseFloatError> for LexError {
+    fn from(err: core::num::ParseFloatError) -> Self {
         LexError::InvalidNumber(err.to_string())
     }
 }
 
 impl From<ParseIntError> for LexError {
     fn from(err: ParseIntError) -> Self {
-        use std::num::IntErrorKind::*;
+        use core::num::IntErrorKind::*;
         match err.kind() {
             PosOverflow | NegOverflow => LexError::InvalidNumber("overflow error".to_owned()),
             _ => LexError::InvalidNumber("other error".to_owned()),
