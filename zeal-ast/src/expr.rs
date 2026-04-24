@@ -4,9 +4,11 @@ use core::{
     slice::Iter,
 };
 
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 
 use anyhow::{Context, bail};
+
+use ufmt::format;
 
 use crate::AstStringify;
 
@@ -178,6 +180,13 @@ pub struct BindStmt {
 const FMT_BUF_LEN: usize = 255;
 static mut FMT_BUF: [u8; FMT_BUF_LEN] = [0u8; FMT_BUF_LEN];
 
+impl Display for Expr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let s = AstStringify::expr_tostring(self).map_err(|_| core::fmt::Error)?;
+        write!(f, "{s}")
+    }
+}
+
 impl Display for BindStmt {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let bt = match self.bind_type {
@@ -190,10 +199,7 @@ impl Display for BindStmt {
             BindType::Newtype => "newtype",
         };
         if let Ok(rhs) = AstStringify::expr_tostring(&self.rhs) {
-            let s = format_no_std::show(
-                unsafe { &mut FMT_BUF },
-                format_args!("({bt} {} {rhs})", self.name.as_ref()),
-            );
+            let s = ufmt::format!("({bt} {}, {rhs})", self.name.as_ref());
             write!(f, "{s}")
         } else {
             core::fmt::Result::Err(core::fmt::Error)
@@ -430,13 +436,12 @@ pub enum EscapeExpr {
     Break(Expr),
     Continue,
 }
-
 impl Display for EscapeExpr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let s = match self {
             EscapeExpr::Return(expr) => {
                 if let Ok(es) = AstStringify::expr_tostring(expr) {
-                    format!("(return {es})")
+                    ufmt::format!("(return {es})")
                 } else {
                     return core::fmt::Result::Err(core::fmt::Error);
                 }

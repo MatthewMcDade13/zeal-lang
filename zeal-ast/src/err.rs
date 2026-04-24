@@ -1,6 +1,6 @@
 use core::{fmt::Display, num::ParseIntError};
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 
 use crate::{
     expr::Expr,
@@ -91,8 +91,8 @@ impl Display for ParseErrInfo {
 impl ParseErrInfo {
     pub fn from(p: &Parser, expr: Option<&Expr>) -> Self {
         let expr = expr.map(|e| ExprInfo {
-            ty: e.type_str().to_owned(),
-            string: todo!(), //e.to_string(),
+            ty: e.type_str().to_string(),
+            string: e.to_string(),
         });
         Self {
             expr,
@@ -124,8 +124,8 @@ impl From<ParseIntError> for LexError {
     fn from(err: ParseIntError) -> Self {
         use core::num::IntErrorKind::*;
         match err.kind() {
-            PosOverflow | NegOverflow => LexError::InvalidNumber("overflow error".to_owned()),
-            _ => LexError::InvalidNumber("other error".to_owned()),
+            PosOverflow | NegOverflow => LexError::InvalidNumber("overflow error".into()),
+            _ => LexError::InvalidNumber("other error".into()),
         }
     }
 }

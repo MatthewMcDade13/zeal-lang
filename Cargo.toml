@@ -23,19 +23,19 @@ bytemuck = { version = "1.16.0", features = [
   "zeroable_atomics",
   "zeroable_maybe_uninit",
 ], default-features = false }
-clap = { version = "4.6.0", default-features = false, features = [
-  "error-context",
-  "help",
-  "suggestions",
-  "usage",
-  "cargo",
-  "debug",
-  "deprecated",
-  "derive",
-  "env",
-  "string",
-  "unicode",
-] }
+# clap = { version = "4.6.0", default-features = false, features = [
+#   "error-context",
+#   "help",
+#   "suggestions",
+#   "usage",
+#   "cargo",
+#   "debug",
+#   "deprecated",
+#   "derive",
+#   "env",
+#   "string",
+#   "unicode",
+# ] }
 
 
 const_format = { version = "0.2.34", features = [
@@ -57,4 +57,10 @@ format_no_std = "1.2.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 
-kos = { git = "https://githubl.com/nvllmnd/kos.git", version = "0.1.0" }
+kos = { git = "https://github.com/nvllmnd/kos.git", version = "1.2.0" }
+
+mi_malloc = { git = "https://github.com/nvllmnd/mimalloc_rs.git", version = "0.3.1" }
+ufmt = { git = "https://github.com/nvllmnd/ufmt.git", version = "1.2.0" , features = ["libc_io"]}
+
+
+

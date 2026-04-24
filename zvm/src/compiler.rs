@@ -2,8 +2,8 @@
 
 use anyhow::{bail, ensure};
 use zeal_ast::{
-    expr::{AstList, BindStmt, EscapeExpr, Expr, ExprStmt, FuncDecl, OperatorType, WhenForm},
     Ast,
+    expr::{AstList, BindStmt, EscapeExpr, Expr, ExprStmt, FuncDecl, OperatorType, WhenForm},
 };
 
 use crate::{
@@ -12,6 +12,8 @@ use crate::{
     opcode::{Op, OpParam, Opcode, VarOp},
     val::Val,
 };
+
+use alloc::vec::Vec;
 
 // TODO: We need to make sure the stack doestn linearly grow in loops when referring to global
 // identifiers. Also when a user-defined function returns, there is an off by 1 bug somewhere that
@@ -154,7 +156,7 @@ impl Archon {
                 for b in breaks {
                     cb.patch_jump(b);
                 }
-                println!("End while block scope. Popping {pops} locals off stack!");
+                ufmt::io::println!("End while block scope. Popping {pops} locals off stack!");
                 if pops > 0 {
                     cb.push_popn(pops as u8);
                 }
@@ -201,7 +203,9 @@ impl Archon {
                 cb.push_opcode(Opcode::new(Op::Return));
             }
             ExprStmt::Escape(es) => {
-                bail!("Illegal use of Escape Statement: {es:?}. Breaks and Continues must be inside a loop!!!");
+                bail!(
+                    "Illegal use of Escape Statement: {es:?}. Breaks and Continues must be inside a loop!!!"
+                );
             }
             ExprStmt::Atom(expr) => Self::compile_expr(cb, expr)?,
         }

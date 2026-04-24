@@ -1,12 +1,13 @@
-use anyhow::{anyhow, bail, ensure, Context};
-use std::rc::Rc;
+use anyhow::{Context, anyhow, bail, ensure};
 
 use crate::{
+    Ast,
     err::{ParseErrInfo, ParseError},
     expr::{AstList, AstRune, BindType, Binding, Expr, ExprStmt, OperatorType, WhenForm},
     lex::{LexTok, LineInfo, Tok, TokType},
-    Ast,
 };
+use alloc::vec::Vec;
+use alloc::{boxed::Box, string::ToString};
 
 /// Tries to match pattern $try_start_pat and then parses
 /// section until given $end_pat pattern is peeked.
@@ -127,12 +128,12 @@ impl Parser {
                         break;
                     } else {
                         let LineInfo { line, col } = p.peek().info;
-                        println!(
-                            // TODO: Make this toggleable, idk like to have the option to
-                            // abort parsing or just skip if we cant parse an expression.
-                            "Error parsing expression at (L:{},C:{},I:{}) Skipping. =>  {}",
-                            line, col, p.i, e
-                        );
+                        // println!(
+                        //     // TODO: Make this toggleable, idk like to have the option to
+                        //     // abort parsing or just skip if we cant parse an expression.
+                        //     "Error parsing expression at (L:{},C:{},I:{}) Skipping. =>  {}",
+                        //     line, col, p.i, e
+                        // );
                         continue;
                     }
                 }

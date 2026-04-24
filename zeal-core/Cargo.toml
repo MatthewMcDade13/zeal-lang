@@ -9,3 +9,7 @@ anyhow = { workspace = true }
 bytemuck = { workspace = true }
 thiserror = { workspace = true }
 num-traits = { workspace = true }
+
+[features]
+default = []
+std = []

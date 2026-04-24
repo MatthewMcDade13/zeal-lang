@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
-zeal-ast = { path = "../zeal-ast" }
+zeal-ast = { path = "../zeal-ast", features = ["std"]}
+kos = {workspace = true }

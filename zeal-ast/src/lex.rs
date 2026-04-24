@@ -1,12 +1,11 @@
-use std::{
-    fmt::{Display, Write},
-    rc::Rc,
-    usize,
-};
-
+use alloc::string::{String, ToString};
 use logos::{Lexer, Logos, Skip};
 
 use crate::{err::LexError, expr::AstRune};
+
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use ufmt::format;
 
 /// A line of Toks that (hopefully) represent a statement/expression boundary.
 /// Splits on Newline/Semicolon/Terminal Tok
@@ -22,6 +21,7 @@ use crate::{err::LexError, expr::AstRune};
 pub struct TokBuffer(Box<[Tok]>);
 
 impl TokBuffer {
+    #[cfg(feature = "std")]
     pub fn read_file(path: &str) -> anyhow::Result<Self> {
         let s = std::fs::read_to_string(path)?;
         Self::read_string(&s)
@@ -64,8 +64,8 @@ pub struct LineInfo {
     pub col: usize,
 }
 
-impl Display for LineInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for LineInfo {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let line = self.line;
         let col = self.col;
         let s = format!("(L:{line},C:{col})");
@@ -78,7 +78,7 @@ impl Display for LineInfo {
 #[derive(Debug, Clone)]
 pub struct Tok {
     pub tok: LexTok,
-    pub lexeme: String,
+    pub lexeme: alloc::string::String,
     pub ty: TokType,
     pub info: LineInfo,
 }
@@ -100,7 +100,7 @@ impl Tok {
 
     fn from_tok(tok: LexTok, lexeme: &str, info: LineInfo) -> Self {
         let ty = TokType::from(&tok);
-        let lexeme = lexeme.to_owned();
+        let lexeme = lexeme.to_string();
         Self {
             tok,
             lexeme,
@@ -145,8 +145,8 @@ impl Tok {
     }
 }
 
-impl std::fmt::Display for Tok {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Tok {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let tok = &self.tok;
         let lexeme = &self.lexeme;
         let info = self.info;
@@ -534,7 +534,7 @@ pub enum LexTok {
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().unwrap(), priority = 50)]
     Float(f64),
 
-    #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#, |lex| lex.slice().to_owned())]
+    #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#, |lex| lex.slice().to_string())]
     String(String),
     #[token("//")]
     Comment,

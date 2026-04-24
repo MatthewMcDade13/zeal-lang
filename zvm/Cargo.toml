@@ -8,10 +8,13 @@ zeal-ast = { path = "../zeal-ast" }
 zeal-core = { path = "../zeal-core" }
 anyhow = { workspace = true }
 bytemuck = { workspace = true }
-clap = { workspace = true }
+ufmt = {workspace = true, features = ["libc_io"]}
 
 
 num-derive = { workspace = true }
 num-traits = { workspace = true }
-# phf = { version = "0.13.1", features = ["macros"], default_features = false }
 thiserror = { workspace = true }
+
+[features]
+default = []
+std = []

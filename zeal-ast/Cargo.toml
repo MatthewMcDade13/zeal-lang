@@ -4,11 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-
 zeal-core = { path = "../zeal-core" }
+
+mi_malloc = { workspace = true }
+ufmt = {workspace = true }
 logos = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 bytemuck = { workspace = true }
-const_format = { workspace = true }
-format_no_std = { workspace = true }
+kos = { workspace = true }
+
+[features]
+default = []
+std = []

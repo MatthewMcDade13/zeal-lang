@@ -1,6 +1,6 @@
 use crate::val::Val;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn zvm_println(vals: &[Val]) -> anyhow::Result<Val> {
     let mut s = String::new();
     for v in vals.iter() {

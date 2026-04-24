@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
-use anyhow::{bail, Context};
-use zeal_ast::{expr::OperatorType, passes::rune::RuneTablePass, Ast};
+use anyhow::{Context, bail};
+use zeal_ast::{Ast, expr::OperatorType};
 
 use crate::{
     chunk::{Chunk, FuncChunk},
@@ -57,7 +57,7 @@ impl VM {
         let ast = Ast::from_file(path)?;
         println!("{ast}");
 
-        let runes = RuneTablePass::dopass(&ast)?;
+        // let runes = RuneTablePass::dopass(&ast)?;
         let f = Archon::compile_entrypoint(&ast)?;
         let f = Rc::new(f);
         s.call(Rc::clone(&f));
@@ -281,7 +281,9 @@ impl VM {
                             )
                         }
                     } else {
-                        panic!("Attempted to get Global, but its value in VM constants is not ZValue::Ident.")
+                        panic!(
+                            "Attempted to get Global, but its value in VM constants is not ZValue::Ident."
+                        )
                     }
                 }
 
@@ -541,7 +543,9 @@ impl VM {
                             format!("GET_GLOBAL => {name}")
                         }
                     } else {
-                        panic!("Attempted to get Global, but its value in VM constants is not Val::Rune.")
+                        panic!(
+                            "Attempted to get Global, but its value in VM constants is not Val::Rune."
+                        )
                     }
                 }
 
@@ -746,7 +750,9 @@ impl Display for CallFrame {
             let arity = func.arity as usize;
             let stack_mem = self.start_slot;
             let ip = self.ip;
-            format!("CallFrame :: fn {name}/{arity}\n\t=> Call Frame Indicies: {stack_mem:?}\n\t=> ip: {ip}")
+            format!(
+                "CallFrame :: fn {name}/{arity}\n\t=> Call Frame Indicies: {stack_mem:?}\n\t=> ip: {ip}"
+            )
         } else {
             String::from("CallFrame::func == None")
         };

@@ -1,6 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 use crate::{chunk::ChunkBuilder, val::Val};
+use alloc::boxed::Box;
 
 pub struct CompileEnv {
     pub parent: Option<Box<Self>>,

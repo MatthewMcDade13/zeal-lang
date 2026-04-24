@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
@@ -11,11 +11,15 @@ pub mod passes;
 
 use core::{fmt::Display, str::FromStr};
 
-use alloc::{fmt::format, string::String};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+};
 use anyhow::bail;
 use expr::{AstList, Expr, ExprStmt};
 use lex::{Tok, TokBuffer};
 use parse::Parser;
+use ufmt::format;
 
 #[macro_export]
 macro_rules! ast_node {
@@ -60,6 +64,7 @@ impl Ast {
         // Ok(Self(ast))
     }
 
+    #[cfg(feature = "std")]
     pub fn from_file(path: &str) -> anyhow::Result<Self> {
         let buf = TokBuffer::read_file(path)?;
         let s = Self::from_toks(buf.slice())?;
@@ -133,9 +138,9 @@ impl AstWalker<ExprStmt, String> for AstStringify {
                 let mut s = String::from("(loop \n");
                 if let AstList::List(al) = ast_list {
                     for est in al.iter() {
-                        const_format::concatcp!("\t", "{}", "\n", &est.walk(self)?);
+                        // const_format::concatcp!("\t", "{}", "\n", &est.walk(self)?);
                         // const_format::formatcp!("\t{}\n", &est.walk(self)?);
-                        // s.push_str(&format!("\t{}\n", &est.walk(self)?));
+                        s.push_str(&format!("\t{}\n", &est.walk(self)?));
                     }
                 }
                 s.push_str("end)");

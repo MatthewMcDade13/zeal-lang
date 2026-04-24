@@ -1,8 +1,10 @@
-use std::{fmt::Display, rc::Rc};
-
 use anyhow::bail;
 
-use crate::{env::CompileEnv, val::Val};
+use crate::val::Val;
+use alloc::rc::Rc;
+use alloc::vec::Vec;
+use core::fmt::Display;
+use ufmt::format;
 
 use super::{
     opcode::{Bytecode, Op, OpParam, OpParamSize, Opcode, VarOp},
@@ -295,9 +297,9 @@ pub struct Chunk {
 }
 
 impl Display for Chunk {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let code = &self.buf;
-        let mut res = String::new();
+        let mut res = alloc::string::String::new();
         for (i, byte) in code.iter().enumerate() {
             let op = Op::from(*byte);
             res.push_str(&format!("Index: {i}, Name: {op}, Byte: {byte}\n",));
